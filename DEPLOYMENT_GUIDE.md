@@ -375,13 +375,7 @@ $deploymentToken = az staticwebapp secrets list `
     --query "properties.apiKey" -o tsv
 ```
 
-### 6.2 Install SWA CLI
-
-```powershell
-npm install -g @azure/static-web-apps-cli
-```
-
-### 6.3 Update Dashboard Configuration
+### 6.2 Update Dashboard Configuration
 
 Edit `dashboard/staticwebapp.config.json` and replace `<YOUR_TENANT_ID>` with your actual tenant ID.
 
@@ -390,19 +384,18 @@ Also update the API endpoint in `dashboard/index.html`:
 const API_BASE_URL = 'https://your-function-app.azurewebsites.net';
 ```
 
-### 6.4 Deploy Dashboard
+### 6.3 Deploy Dashboard
 
 ```powershell
 cd dashboard
 
-# Install dependencies
-npm install
+# Prepare dist folder
+New-Item -ItemType Directory -Path dist -Force
+Copy-Item index.html dist/
+Copy-Item staticwebapp.config.json dist/
 
-# Build
-npm run build
-
-# Deploy
-swa deploy ./dist `
+# Deploy using npx (no global install required)
+npx @azure/static-web-apps-cli deploy ./dist `
     --deployment-token $deploymentToken `
     --env production
 ```

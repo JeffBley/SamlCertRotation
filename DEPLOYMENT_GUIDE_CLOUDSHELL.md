@@ -344,21 +344,23 @@ $htmlContent = $htmlContent -replace "const API_BASE_URL = ''", "const API_BASE_
 Set-Content -Path index.html -Value $htmlContent
 ```
 
-### 7.3 Install SWA CLI and Deploy
+### 7.3 Deploy Dashboard
 
 ```powershell
-# Install Static Web Apps CLI
-npm install -g @azure/static-web-apps-cli
-
-# Build dashboard (simple HTML, just needs to be in dist folder)
+# Prepare dashboard files
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item staticwebapp.config.json dist/
 
-# Deploy
-swa deploy ./dist `
+# Deploy using npx (no global install required)
+npx @azure/static-web-apps-cli deploy ./dist `
     --deployment-token $SWA_TOKEN `
     --env production
+
+# Alternative: If npx fails, you can deploy via the Azure Portal
+# 1. Go to your Static Web App in Azure Portal
+# 2. Click "Deployment Center"
+# 3. Upload the files manually
 ```
 
 ### 7.4 Get Dashboard URL
