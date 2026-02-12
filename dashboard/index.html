@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAML Certificate Rotation Dashboard</title>
+    <style>
+        :root {
+            --primary: #0078d4;
+            --success: #107c10;
+            --warning: #ffb900;
+            --danger: #d13438;
+            --gray: #797775;
+            --bg: #f3f2f1;
+            --card-bg: #ffffff;
+            --text: #323130;
+            --text-secondary: #605e5c;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary), #005a9e);
+            color: white;
+            padding: 24px 0;
+            margin-bottom: 24px;
+        }
+
+        header h1 {
+            font-weight: 600;
+            font-size: 24px;
+        }
+
+        header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card.on .stat-value { color: var(--success); }
+        .stat-card.off .stat-value { color: var(--danger); }
+        .stat-card.null .stat-value { color: var(--gray); }
+        .stat-card.warning .stat-value { color: var(--warning); }
+        .stat-card.expiring .stat-value { color: var(--warning); }
+        .stat-card.expired .stat-value { color: var(--danger); }
+
+        .section {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #edebe9;
+        }
+
+        .section h2 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #005a9e;
+        }
+
+        .btn-secondary {
+            background: #f3f2f1;
+            color: var(--text);
+            border: 1px solid #d2d0ce;
+        }
+
+        .btn-secondary:hover {
+            background: #edebe9;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #edebe9;
+        }
+
+        th {
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        tr:hover {
+            background: #f9f9f9;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-on { background: #dff6dd; color: #0e700e; }
+        .status-off { background: #fde7e9; color: #c42b1c; }
+        .status-null { background: #edebe9; color: #605e5c; }
+
+        .expiry-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .expiry-expired { background: #fde7e9; color: #c42b1c; }
+        .expiry-critical { background: #fde7e9; color: #c42b1c; }
+        .expiry-warning { background: #fff4ce; color: #835c00; }
+        .expiry-attention { background: #fff4ce; color: #835c00; }
+        .expiry-ok { background: #dff6dd; color: #0e700e; }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--primary);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fde7e9;
+            color: #c42b1c;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #edebe9;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--primary);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .last-updated {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .policy-form {
+            max-width: 500px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 6px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d2d0ce;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🔐 SAML Certificate Rotation Dashboard</h1>
+            <p>Automated certificate lifecycle management for Microsoft Entra ID</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <div id="error-container"></div>
+
+        <div class="stats-grid" id="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-total">-</div>
+                <div class="stat-label">Total SAML Apps</div>
+            </div>
+            <div class="stat-card on">
+                <div class="stat-value" id="stat-on">-</div>
+                <div class="stat-label">Auto-Rotate ON</div>
+            </div>
+            <div class="stat-card off">
+                <div class="stat-value" id="stat-off">-</div>
+                <div class="stat-label">Auto-Rotate OFF</div>
+            </div>
+            <div class="stat-card null">
+                <div class="stat-value" id="stat-null">-</div>
+                <div class="stat-label">Not Configured</div>
+            </div>
+            <div class="stat-card expiring">
+                <div class="stat-value" id="stat-expiring-30">-</div>
+                <div class="stat-label">Expiring ≤30 Days</div>
+            </div>
+            <div class="stat-card expired">
+                <div class="stat-value" id="stat-expired">-</div>
+                <div class="stat-label">Expired</div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="applications">Applications</button>
+            <button class="tab" data-tab="policy">Policy Settings</button>
+            <button class="tab" data-tab="audit">Audit Log</button>
+        </div>
+
+        <div id="tab-applications" class="tab-content active">
+            <div class="section">
+                <div class="section-header">
+                    <h2>SAML Applications</h2>
+                    <div>
+                        <span class="last-updated" id="last-updated"></span>
+                        <button class="btn btn-secondary" onclick="loadData()">Refresh</button>
+                    </div>
+                </div>
+                <div id="apps-table-container">
+                    <div class="loading">Loading applications...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-policy" class="tab-content">
+            <div class="section">
+                <div class="section-header">
+                    <h2>Global Rotation Policy</h2>
+                </div>
+                <div class="policy-form">
+                    <div class="form-group">
+                        <label for="createDays">Create new certificate (days before expiry)</label>
+                        <input type="number" id="createDays" min="1" max="365" value="60">
+                    </div>
+                    <div class="form-group">
+                        <label for="activateDays">Activate new certificate (days before expiry)</label>
+                        <input type="number" id="activateDays" min="1" max="365" value="30">
+                    </div>
+                    <button class="btn btn-primary" onclick="savePolicy()">Save Policy</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-audit" class="tab-content">
+            <div class="section">
+                <div class="section-header">
+                    <h2>Audit Log</h2>
+                    <button class="btn btn-secondary" onclick="loadAuditLog()">Refresh</button>
+                </div>
+                <div id="audit-table-container">
+                    <div class="loading">Loading audit log...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        SAML Certificate Rotation Tool &copy; 2026
+    </footer>
+
+    <script>
+        // Configuration - Update this with your Function App URL
+        const API_BASE_URL = ''; // Leave empty for same-origin, or set to your Function App URL
+
+        // Tab navigation
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+
+                if (tab.dataset.tab === 'audit') {
+                    loadAuditLog();
+                } else if (tab.dataset.tab === 'policy') {
+                    loadPolicy();
+                }
+            });
+        });
+
+        // API helper
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/${endpoint}`, {
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                showError(error.message);
+                throw error;
+            }
+        }
+
+        // Show error message
+        function showError(message) {
+            document.getElementById('error-container').innerHTML = `
+                <div class="error">${message}</div>
+            `;
+        }
+
+        // Load dashboard data
+        async function loadData() {
+            try {
+                const stats = await apiCall('dashboard/stats');
+                
+                // Update stats
+                document.getElementById('stat-total').textContent = stats.totalSamlApps;
+                document.getElementById('stat-on').textContent = stats.appsWithAutoRotateOn;
+                document.getElementById('stat-off').textContent = stats.appsWithAutoRotateOff;
+                document.getElementById('stat-null').textContent = stats.appsWithAutoRotateNull;
+                document.getElementById('stat-expiring-30').textContent = stats.appsExpiringIn30Days;
+                document.getElementById('stat-expired').textContent = stats.appsWithExpiredCerts;
+
+                // Update last updated
+                document.getElementById('last-updated').textContent = 
+                    `Last updated: ${new Date(stats.generatedAt).toLocaleString()}`;
+
+                // Build apps table
+                const tableHtml = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Application</th>
+                                <th>Auto-Rotate</th>
+                                <th>Certificate Expiry</th>
+                                <th>Days Remaining</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${stats.apps.map(app => `
+                                <tr>
+                                    <td>${app.displayName}</td>
+                                    <td>
+                                        <span class="status-badge status-${(app.autoRotateStatus || 'null').toLowerCase()}">
+                                            ${app.autoRotateStatus || 'Not Set'}
+                                        </span>
+                                    </td>
+                                    <td>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
+                                    <td>${app.daysUntilExpiry ?? 'N/A'}</td>
+                                    <td>
+                                        <span class="expiry-badge expiry-${app.expiryCategory.toLowerCase()}">
+                                            ${app.expiryCategory}
+                                        </span>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                document.getElementById('apps-table-container').innerHTML = tableHtml;
+
+            } catch (error) {
+                document.getElementById('apps-table-container').innerHTML = 
+                    `<div class="error">Failed to load data: ${error.message}</div>`;
+            }
+        }
+
+        // Load policy settings
+        async function loadPolicy() {
+            try {
+                const policy = await apiCall('policy');
+                document.getElementById('createDays').value = policy.createCertDaysBeforeExpiry;
+                document.getElementById('activateDays').value = policy.activateCertDaysBeforeExpiry;
+            } catch (error) {
+                console.error('Failed to load policy:', error);
+            }
+        }
+
+        // Save policy settings
+        async function savePolicy() {
+            try {
+                const policy = {
+                    createCertDaysBeforeExpiry: parseInt(document.getElementById('createDays').value),
+                    activateCertDaysBeforeExpiry: parseInt(document.getElementById('activateDays').value),
+                    isEnabled: true
+                };
+                await apiCall('policy', {
+                    method: 'PUT',
+                    body: JSON.stringify(policy)
+                });
+                alert('Policy saved successfully!');
+            } catch (error) {
+                alert('Failed to save policy: ' + error.message);
+            }
+        }
+
+        // Load audit log
+        async function loadAuditLog() {
+            try {
+                const entries = await apiCall('audit?days=7');
+                
+                const tableHtml = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Application</th>
+                                <th>Action</th>
+                                <th>Result</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${entries.map(entry => `
+                                <tr>
+                                    <td>${new Date(entry.timestamp).toLocaleString()}</td>
+                                    <td>${entry.appDisplayName}</td>
+                                    <td>${entry.actionType}</td>
+                                    <td>
+                                        <span class="status-badge ${entry.isSuccess ? 'status-on' : 'status-off'}">
+                                            ${entry.isSuccess ? 'Success' : 'Failed'}
+                                        </span>
+                                    </td>
+                                    <td>${entry.description}${entry.errorMessage ? ` - ${entry.errorMessage}` : ''}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                document.getElementById('audit-table-container').innerHTML = tableHtml;
+
+            } catch (error) {
+                document.getElementById('audit-table-container').innerHTML = 
+                    `<div class="error">Failed to load audit log: ${error.message}</div>`;
+            }
+        }
+
+        // Initial load
+        loadData();
+    </script>
+</body>
+</html>

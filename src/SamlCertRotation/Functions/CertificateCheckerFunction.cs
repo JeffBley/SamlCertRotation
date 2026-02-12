@@ -1,0 +1,54 @@
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
+using SamlCertRotation.Services;
+
+namespace SamlCertRotation.Functions;
+
+/// <summary>
+/// Timer-triggered function that runs daily to check and rotate SAML certificates
+/// </summary>
+public class CertificateCheckerFunction
+{
+    private readonly ICertificateRotationService _rotationService;
+    private readonly ILogger<CertificateCheckerFunction> _logger;
+
+    public CertificateCheckerFunction(
+        ICertificateRotationService rotationService,
+        ILogger<CertificateCheckerFunction> logger)
+    {
+        _rotationService = rotationService;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Runs daily at 6:00 AM UTC to check certificates and perform rotation
+    /// </summary>
+    /// <param name="timerInfo">Timer trigger information</param>
+    [Function("CertificateChecker")]
+    public async Task Run([TimerTrigger("0 0 6 * * *")] TimerInfo timerInfo)
+    {
+        _logger.LogInformation("Certificate checker started at: {Time}", DateTime.UtcNow);
+
+        try
+        {
+            var results = await _rotationService.RunRotationAsync();
+
+            var successCount = results.Count(r => r.Success);
+            var failureCount = results.Count(r => !r.Success);
+
+            _logger.LogInformation(
+                "Certificate checker completed. Processed: {Total}, Success: {Success}, Failed: {Failed}",
+                results.Count, successCount, failureCount);
+
+            if (timerInfo.ScheduleStatus != null)
+            {
+                _logger.LogInformation("Next scheduled run: {NextRun}", timerInfo.ScheduleStatus.Next);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Certificate checker failed");
+            throw;
+        }
+    }
+}

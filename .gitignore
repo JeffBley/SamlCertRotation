@@ -1,0 +1,31 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+publish/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Azure Functions
+local.settings.json
+
+# Node modules
+node_modules/
+dashboard/dist/
+
+# Packages
+*.zip
+*.nupkg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deployment outputs
+infrastructure/deployment-outputs.json
+
+# Logs
+*.log

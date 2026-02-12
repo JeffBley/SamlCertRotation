@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "baseName": {
+      "value": "samlcert"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "notificationSenderEmail": {
+      "value": "saml-rotation@entrasme.com"
+    },
+    "adminNotificationEmails": {
+      "value": "mscott@entrasme.com;jhalpert@entrasme.com"
+    },
+    "customSecurityAttributeSet": {
+      "value": "Applications"
+    },
+    "customSecurityAttributeName": {
+      "value": "SamlCertRotation"
+    },
+    "defaultCreateCertDays": {
+      "value": 30
+    },
+    "defaultActivateCertDays": {
+      "value": 14
+    }
+  }
+}
