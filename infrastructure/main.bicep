@@ -47,6 +47,7 @@ var appServicePlanName = '${baseName}-plan-${uniqueSuffix}'
 var appInsightsName = '${baseName}-insights-${uniqueSuffix}'
 var managedIdentityName = '${baseName}-identity'
 var staticWebAppName = '${baseName}-dashboard-${uniqueSuffix}'
+var keyVaultName = '${baseName}-kv-${uniqueSuffix}'
 
 // ============================================================================
 // User-Assigned Managed Identity
@@ -57,6 +58,46 @@ resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
   tags: {
     purpose: 'SAML Certificate Rotation Tool'
     component: 'Identity'
+  }
+}
+
+// ============================================================================
+// Key Vault
+// ============================================================================
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+  name: keyVaultName
+  location: location
+  properties: {
+    sku: {
+      family: 'A'
+      name: 'standard'
+    }
+    tenantId: tenantId
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 90
+    enablePurgeProtection: true
+    publicNetworkAccess: 'Enabled'
+    networkAcls: {
+      defaultAction: 'Allow'
+      bypass: 'AzureServices'
+    }
+  }
+  tags: {
+    purpose: 'SAML Certificate Rotation Tool'
+    component: 'Secrets'
+  }
+}
+
+// Key Vault Secrets Officer role for managed identity
+// This allows the function app to read and write secrets
+resource keyVaultSecretsOfficerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, managedIdentity.id, 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7')
+  scope: keyVault
+  properties: {
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7') // Key Vault Secrets Officer
   }
 }
 
@@ -215,6 +256,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           name: 'DefaultActivateCertDaysBeforeExpiry'
           value: string(defaultActivateCertDays)
         }
+        {
+          name: 'KeyVaultUri'
+          value: keyVault.properties.vaultUri
+        }
       ]
     }
   }
@@ -256,6 +301,8 @@ output staticWebAppName string = staticWebApp.name
 output staticWebAppUrl string = 'https://${staticWebApp.properties.defaultHostname}'
 output storageAccountName string = storageAccount.name
 output appInsightsName string = appInsights.name
+output keyVaultName string = keyVault.name
+output keyVaultUri string = keyVault.properties.vaultUri
 
 // Output instructions
 output nextSteps string = '''

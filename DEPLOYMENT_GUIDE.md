@@ -407,28 +407,56 @@ az ad sp create --id $CLIENT_ID
 Write-Host "Service principal created"
 ```
 
-### 7.6 Configure Static Web App and Function App Settings
+### 7.6 Store Client Secret in Key Vault
+
+The client secret is stored in Azure Key Vault for security. The managed identity has permissions to rotate
+it automatically when it's within 30 days of expiration.
+
+```powershell
+# Get Key Vault name from deployment outputs
+$KEY_VAULT_NAME = $outputs.keyVaultName.value
+
+# Store the client secret in Key Vault
+az keyvault secret set `
+    --vault-name $KEY_VAULT_NAME `
+    --name "SwaClientSecret" `
+    --value $CLIENT_SECRET `
+    --expires (Get-Date).AddYears(2).ToString("yyyy-MM-ddTHH:mm:ssZ") `
+    --tags "AppClientId=$CLIENT_ID" "CreatedBy=ManualDeployment"
+
+Write-Host "Client secret stored in Key Vault as 'SwaClientSecret'"
+```
+
+### 7.7 Configure Static Web App and Function App Settings
 
 ```powershell
 # Get your tenant ID
 $TENANT_ID = az account show --query "tenantId" -o tsv
 
+# Get Key Vault URI
+$KEY_VAULT_URI = $outputs.keyVaultUri.value
+
 # Configure SWA with the app registration credentials
+# AAD_CLIENT_SECRET uses a Key Vault reference for automatic secret retrieval
 az staticwebapp appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
-    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=$CLIENT_SECRET"
+    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=$KEY_VAULT_NAME;SecretName=SwaClientSecret)"
 
-# Configure the Function App with the admin group ID
+# Configure the Function App with the admin group ID and SWA client ID
+# SWA_CLIENT_ID enables automatic secret rotation for the SWA app registration
 az functionapp config appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --settings "SWA_ADMIN_GROUP_ID=$ADMIN_GROUP_ID"
+    --settings "SWA_ADMIN_GROUP_ID=$ADMIN_GROUP_ID" "SWA_CLIENT_ID=$CLIENT_ID"
 
 Write-Host "App settings configured"
+Write-Host ""
+Write-Host "NOTE: The client secret is stored in Key Vault and will be auto-rotated"
+Write-Host "      30 days before expiration by the RotateSwaClientSecret function."
 ```
 
-### 7.7 Link Function App to Static Web App
+### 7.8 Link Function App to Static Web App
 
 The Function App provides the `/api/GetRoles` endpoint that assigns roles based on group membership.
 
@@ -455,7 +483,7 @@ az staticwebapp backends link `
 Write-Host "Function App linked as SWA backend"
 ```
 
-### 7.8 Save Access Control Configuration
+### 7.9 Save Access Control Configuration
 
 ```powershell
 # Save configuration for reference
@@ -464,6 +492,7 @@ $accessControlConfig = @{
     adminGroupId = $ADMIN_GROUP_ID
     tenantId = $TENANT_ID
     swaHostname = $SWA_HOSTNAME
+    keyVaultName = $KEY_VAULT_NAME
 } | ConvertTo-Json
 
 Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.json" -Value $accessControlConfig
@@ -476,9 +505,17 @@ Write-Host "Access control configuration saved to access-control-config.json"
 | Setting | Location | Value |
 |---------|----------|-------|
 | `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
-| `AAD_CLIENT_SECRET` | SWA App Settings | App Registration Secret |
+| `AAD_CLIENT_SECRET` | SWA App Settings | Key Vault Reference |
+| `SwaClientSecret` | Key Vault | The actual client secret |
 | `SWA_ADMIN_GROUP_ID` | Function App Settings | Security Group Object ID |
+| `SWA_CLIENT_ID` | Function App Settings | App Registration Client ID (for auto-rotation) |
+| `KeyVaultUri` | Function App Settings | Key Vault URI (set by Bicep) |
 | Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
+
+> **Note**: Only users who are members of the "SAML Certificate Rotation Admins" security group will be able to access the dashboard. Other authenticated users will see an "Access Denied" page.
+
+> **Auto-Rotation**: The `RotateSwaClientSecret` function runs daily and will automatically create a new
+> client secret and store it in Key Vault when the current secret is within 30 days of expiration.
 
 > **Note**: Only users who are members of the "SAML Certificate Rotation Admins" security group will be able to access the dashboard. Other authenticated users will see an "Access Denied" page.
 

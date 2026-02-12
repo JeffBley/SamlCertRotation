@@ -1,8 +1,8 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Text.Json;
 
 namespace SamlCertRotation.Functions;
@@ -26,8 +26,8 @@ public class RoleFunctions
     /// Called by SWA to get roles for a user based on their group membership.
     /// </summary>
     [Function("GetRoles")]
-    public async Task<IActionResult> GetRoles(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "GetRoles")] HttpRequest req)
+    public async Task<HttpResponseData> GetRoles(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "GetRoles")] HttpRequestData req)
     {
         try
         {
@@ -41,7 +41,7 @@ public class RoleFunctions
             if (clientPrincipal == null)
             {
                 _logger.LogWarning("No client principal provided");
-                return new OkObjectResult(new { roles = Array.Empty<string>() });
+                return await CreateJsonResponse(req, new { roles = Array.Empty<string>() });
             }
 
             _logger.LogInformation("Getting roles for user: {UserId}", clientPrincipal.UserId);
@@ -52,7 +52,7 @@ public class RoleFunctions
             if (string.IsNullOrEmpty(adminGroupId))
             {
                 _logger.LogWarning("SWA_ADMIN_GROUP_ID not configured - no roles assigned");
-                return new OkObjectResult(new { roles = Array.Empty<string>() });
+                return await CreateJsonResponse(req, new { roles = Array.Empty<string>() });
             }
 
             var roles = new List<string>();
@@ -77,13 +77,21 @@ public class RoleFunctions
                 }
             }
 
-            return new OkObjectResult(new { roles = roles.ToArray() });
+            return await CreateJsonResponse(req, new { roles = roles.ToArray() });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting roles");
-            return new OkObjectResult(new { roles = Array.Empty<string>() });
+            return await CreateJsonResponse(req, new { roles = Array.Empty<string>() });
         }
+    }
+
+    private static async Task<HttpResponseData> CreateJsonResponse<T>(HttpRequestData req, T data)
+    {
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        await response.WriteStringAsync(JsonSerializer.Serialize(data));
+        return response;
     }
 }
 
