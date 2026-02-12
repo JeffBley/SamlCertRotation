@@ -886,6 +886,7 @@ the resource group, but the role assignments may persist briefly):
 | Storage Account | Resource Group | `az group delete` |
 | Key Vault | Resource Group | `az group delete` (soft-delete for 90 days) |
 | Static Web App | Resource Group | `az group delete` |
+| Log Analytics Workspace | Resource Group | `az group delete` |
 | App Insights | Resource Group | `az group delete` |
 | Managed Identity | Resource Group | `az group delete` |
 | App Registration | Entra ID (Tenant) | `az ad app delete` |

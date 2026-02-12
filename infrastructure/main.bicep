@@ -45,6 +45,7 @@ var storageAccountName = toLower('${baseName}${uniqueSuffix}')
 var functionAppName = '${baseName}-func-${uniqueSuffix}'
 var appServicePlanName = '${baseName}-plan-${uniqueSuffix}'
 var appInsightsName = '${baseName}-insights-${uniqueSuffix}'
+var logAnalyticsName = '${baseName}-logs-${uniqueSuffix}'
 var managedIdentityName = '${baseName}-identity'
 var staticWebAppName = '${baseName}-dashboard-${uniqueSuffix}'
 var keyVaultName = '${baseName}-kv-${uniqueSuffix}'
@@ -127,6 +128,26 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
 
 // ============================================================================
+// Log Analytics Workspace
+// ============================================================================
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+  name: logAnalyticsName
+  location: location
+  properties: {
+    sku: {
+      name: 'PerGB2018'
+    }
+    retentionInDays: 90
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Enabled'
+  }
+  tags: {
+    purpose: 'SAML Certificate Rotation Tool'
+    component: 'Monitoring'
+  }
+}
+
+// ============================================================================
 // Application Insights
 // ============================================================================
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
@@ -137,6 +158,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
     Application_Type: 'web'
     Request_Source: 'rest'
     RetentionInDays: 90
+    WorkspaceResourceId: logAnalyticsWorkspace.id
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
   }
@@ -301,6 +323,7 @@ output staticWebAppName string = staticWebApp.name
 output staticWebAppUrl string = 'https://${staticWebApp.properties.defaultHostname}'
 output storageAccountName string = storageAccount.name
 output appInsightsName string = appInsights.name
+output logAnalyticsWorkspaceName string = logAnalyticsWorkspace.name
 output keyVaultName string = keyVault.name
 output keyVaultUri string = keyVault.properties.vaultUri
 
