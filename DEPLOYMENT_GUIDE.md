@@ -587,7 +587,7 @@ Write-Host "Access control configuration saved to access-control-config.json"
 
 ## Step 9: Configure Email Notifications
 
-Email notifications are sent via a Logic App with Office 365 Outlook connector. This approach requires no Mail.Send Graph permission on the managed identity.
+Email notifications are sent via a Logic App with Office 365 Outlook connector. The workflow is pre-configured - you just need to authorize the Office 365 connection.
 
 ### 9.1 Get Logic App Name
 
@@ -597,30 +597,29 @@ $LOGIC_APP_NAME = $outputs.logicAppName.value
 Write-Host "Logic App: $LOGIC_APP_NAME"
 ```
 
-### 9.2 Configure Logic App with Office 365 Connector
+### 9.2 Authorize the Office 365 Connection
+
+The Logic App workflow is already configured with the Send Email action. You just need to authorize the API connection:
 
 1. Go to [Azure Portal](https://portal.azure.com)
-2. Navigate to your resource group: `$RESOURCE_GROUP`
-3. Find and open the Logic App (named like `samlcert-email-*`)
-4. Click **Logic app designer**
+2. Navigate to your resource group
+3. Find the **API Connection** resource named `samlcert-office365`
+4. Click on it and go to **Edit API connection**
+5. Click **Authorize**
+6. Sign in with the account that will send emails (e.g., a shared mailbox or service account)
+7. Click **Save**
 
-### 9.3 Add Office 365 Send Email Action
+> **Note**: The account you authorize will be the sender of all notification emails. Consider using a shared mailbox like `saml-notifications@yourdomain.com`.
 
-1. In the designer, you'll see the **When a HTTP request is received** trigger
-2. Click **+ New step**
-3. Search for **Office 365 Outlook**
-4. Select **Send an email (V2)**
-5. Sign in with a user account that will send the emails (e.g., a shared mailbox delegate or service account)
-6. Configure the action:
-   - **To**: Click in the field → **Add dynamic content** → Select `to`
-   - **Subject**: Click in the field → **Add dynamic content** → Select `subject`
-   - **Body**: Click in the field → **Add dynamic content** → Select `body`
-7. Delete the existing **Response** action (we'll add it after the email)
-8. Click **+ New step** → Search for **Response**
-9. Configure the Response:
-   - **Status Code**: `200`
-   - **Body**: `{"status": "sent"}`
-10. Click **Save**
+### 9.3 Verify Logic App Configuration
+
+1. Go to the Logic App (named like `samlcert-email-*`)
+2. Click **Logic app designer**
+3. Verify you see:
+   - **When a HTTP request is received** trigger
+   - **Send an email (V2)** action (should show green checkmark after authorization)
+   - **Response** action
+4. If the Send email step shows an error, click on it and re-select the authorized connection
 
 ### 9.4 Get Logic App Callback URL
 

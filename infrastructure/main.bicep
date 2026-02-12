@@ -314,6 +314,24 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-01-01' = {
 }
 
 // ============================================================================
+// Logic App API Connection (Office 365 Outlook)
+// ============================================================================
+resource office365Connection 'Microsoft.Web/connections@2016-06-01' = {
+  name: '${baseName}-office365'
+  location: location
+  properties: {
+    displayName: 'Office 365 Outlook - SAML Cert Rotation'
+    api: {
+      id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'office365')
+    }
+  }
+  tags: {
+    purpose: 'SAML Certificate Rotation Tool'
+    component: 'Email Notifications'
+  }
+}
+
+// ============================================================================
 // Logic App (Email Notifications)
 // ============================================================================
 resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
@@ -361,19 +379,53 @@ resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
         }
       }
       actions: {
+        Send_an_email_V2: {
+          type: 'ApiConnection'
+          runAfter: {}
+          inputs: {
+            host: {
+              connection: {
+                name: '@parameters(\'$connections\')[\'office365\'][\'connectionId\']'
+              }
+            }
+            method: 'post'
+            path: '/v2/Mail'
+            body: {
+              To: '@triggerBody()?[\'to\']'
+              Subject: '@triggerBody()?[\'subject\']'
+              Body: '<p>@{triggerBody()?[\'body\']}</p>'
+              Importance: 'Normal'
+            }
+          }
+        }
         Response: {
           type: 'Response'
           kind: 'Http'
-          runAfter: {}
+          runAfter: {
+            Send_an_email_V2: [
+              'Succeeded'
+            ]
+          }
           inputs: {
             statusCode: 200
             body: {
-              status: 'Email trigger received. Configure Office 365 connector in Azure Portal.'
+              status: 'sent'
             }
           }
         }
       }
       outputs: {}
+    }
+    parameters: {
+      '$connections': {
+        value: {
+          office365: {
+            connectionId: office365Connection.id
+            connectionName: office365Connection.name
+            id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'office365')
+          }
+        }
+      }
     }
   }
   tags: {
