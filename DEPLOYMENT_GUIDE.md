@@ -422,9 +422,24 @@ Write-Host "Service principal created"
 The client secret is stored in Azure Key Vault for security. The managed identity has permissions to rotate
 it automatically when it's within 30 days of expiration.
 
+The Bicep template grants the managed identity access to Key Vault, but you need to grant your own account
+access to store the initial secret.
+
 ```powershell
 # Get Key Vault name from deployment outputs
 $KEY_VAULT_NAME = $outputs.keyVaultName.value
+
+# Get your user object ID
+$USER_OBJECT_ID = az ad signed-in-user show --query id -o tsv
+
+# Grant yourself Key Vault Secrets Officer role
+az role assignment create `
+    --role "Key Vault Secrets Officer" `
+    --assignee $USER_OBJECT_ID `
+    --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KEY_VAULT_NAME"
+
+Write-Host "Waiting 30 seconds for role assignment to propagate..."
+Start-Sleep -Seconds 30
 
 # Store the client secret in Key Vault
 az keyvault secret set `
