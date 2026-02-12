@@ -41,6 +41,7 @@ param defaultActivateCertDays int = 30
 
 // Variables
 var uniqueSuffix = uniqueString(resourceGroup().id)
+var shortSuffix = substring(uniqueSuffix, 0, 8)
 var storageAccountName = toLower('${baseName}${uniqueSuffix}')
 var functionAppName = '${baseName}-func-${uniqueSuffix}'
 var appServicePlanName = '${baseName}-plan-${uniqueSuffix}'
@@ -48,7 +49,7 @@ var appInsightsName = '${baseName}-insights-${uniqueSuffix}'
 var logAnalyticsName = '${baseName}-logs-${uniqueSuffix}'
 var managedIdentityName = '${baseName}-identity'
 var staticWebAppName = '${baseName}-dashboard-${uniqueSuffix}'
-var keyVaultName = '${baseName}-kv-${uniqueSuffix}'
+var keyVaultName = '${baseName}kv${shortSuffix}'
 var logicAppName = '${baseName}-email-${uniqueSuffix}'
 
 // ============================================================================
