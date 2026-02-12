@@ -1,13 +1,9 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/{*path}", "/.auth/*"]
+    "exclude": ["*.{js,css,ico,png,jpg,svg,json}", "/api/*", "/.auth/*"]
   },
   "routes": [
-    {
-      "route": "/api/{*path}",
-      "allowedRoles": ["authenticated"]
-    },
     {
       "route": "/*",
       "allowedRoles": ["authenticated"]
