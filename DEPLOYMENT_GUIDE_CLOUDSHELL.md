@@ -287,8 +287,16 @@ dotnet publish src/SamlCertRotation/SamlCertRotation.csproj `
 ### 6.2 Create Deployment Package
 
 ```powershell
-# Create zip file for deployment
-Compress-Archive -Path ./publish/* -DestinationPath ./function-app.zip -Force
+# IMPORTANT: Copy functions.metadata into .azurefunctions folder
+Copy-Item "publish/functions.metadata" "publish/.azurefunctions/" -ErrorAction SilentlyContinue
+
+# Create zip using .NET (Compress-Archive doesn't properly include dot-folders)
+Remove-Item function-app.zip -Force -ErrorAction SilentlyContinue
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory(
+    "$PWD/publish",
+    "$PWD/function-app.zip"
+)
 ```
 
 ### 6.3 Deploy to Azure Function App

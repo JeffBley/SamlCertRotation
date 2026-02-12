@@ -333,8 +333,16 @@ dotnet publish src/SamlCertRotation/SamlCertRotation.csproj `
 ### 5.2 Deploy to Azure
 
 ```powershell
-# Zip the published files
-Compress-Archive -Path ./publish/* -DestinationPath ./function-app.zip -Force
+# IMPORTANT: Copy functions.metadata into .azurefunctions folder
+Copy-Item "publish/functions.metadata" "publish/.azurefunctions/" -ErrorAction SilentlyContinue
+
+# Create zip using .NET (Compress-Archive doesn't properly include dot-folders)
+Remove-Item function-app.zip -Force -ErrorAction SilentlyContinue
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory(
+    "$PWD/publish",
+    "$PWD/function-app.zip"
+)
 
 # Deploy to Function App
 az functionapp deployment source config-zip `
@@ -706,7 +714,10 @@ git pull
 
 # Rebuild and deploy
 dotnet publish src/SamlCertRotation/SamlCertRotation.csproj -c Release -o ./publish
-Compress-Archive -Path ./publish/* -DestinationPath ./function-app.zip -Force
+Copy-Item "publish/functions.metadata" "publish/.azurefunctions/" -ErrorAction SilentlyContinue
+Remove-Item function-app.zip -Force -ErrorAction SilentlyContinue
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory("$PWD/publish", "$PWD/function-app.zip")
 az functionapp deployment source config-zip --resource-group $resourceGroupName --name $functionAppName --src ./function-app.zip
 ```
 
