@@ -1,6 +1,6 @@
-# SAML Certificate Rotation Tool - Azure Cloud Shell Deployment Guide
+# SAML Certificate Rotation Tool - Azure Cloud Shell Deployment Guide (PowerShell)
 
-This guide walks you through deploying the SAML Certificate Rotation Tool using **Azure Cloud Shell**.
+This guide walks you through deploying the SAML Certificate Rotation Tool using **Azure Cloud Shell** with **PowerShell**.
 
 ## Table of Contents
 
@@ -25,9 +25,9 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 - [ ] **Microsoft Entra ID** with one of:
   - Global Administrator role, OR
   - Application Administrator + Attribute Definition Administrator roles
-- [ ] Access to **Azure Cloud Shell** (https://shell.azure.com)
+- [ ] Access to **Azure Cloud Shell** (https://shell.azure.com) - **Select PowerShell mode**
 
-> **Note**: Azure Cloud Shell already has Azure CLI, .NET SDK, and Node.js pre-installed.
+> **Note**: Azure Cloud Shell already has Azure CLI, .NET SDK, PowerShell, and Node.js pre-installed.
 
 ---
 
@@ -35,12 +35,10 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 
 ### Option A: Clone from Git Repository (Recommended)
 
-If you have the project in a Git repository:
-
-```bash
+```powershell
 # Clone the repository
 git clone https://github.com/JeffBley/SamlCertRotation.git
-cd SamlCertRotation
+Set-Location SamlCertRotation
 ```
 
 ### Option B: Upload ZIP File
@@ -50,16 +48,13 @@ cd SamlCertRotation
 3. Select **Upload** and choose your zip file
 4. Extract in Cloud Shell:
 
-```bash
+```powershell
 # Create project directory
-mkdir -p ~/SamlCertRotation
-cd ~/SamlCertRotation
+New-Item -ItemType Directory -Path "$HOME/SamlCertRotation" -Force
+Set-Location "$HOME/SamlCertRotation"
 
 # Unzip (file will be in your home directory after upload)
-unzip ~/SamlCertRotation.zip -d .
-
-# If files are in a subfolder, move them up
-# ls to check structure, then adjust as needed
+Expand-Archive -Path "$HOME/SamlCertRotation.zip" -DestinationPath . -Force
 ```
 
 ### Option C: Upload Individual Files via Cloud Shell Editor
@@ -70,10 +65,10 @@ unzip ~/SamlCertRotation.zip -d .
 
 ### Verify Files Are Present
 
-```bash
+```powershell
 # Navigate to project root and verify structure
-cd ~/SamlCertRotation
-ls -la
+Set-Location "$HOME/SamlCertRotation"
+Get-ChildItem
 
 # You should see:
 # - infrastructure/
@@ -90,7 +85,7 @@ ls -la
 
 Cloud Shell is automatically authenticated. Verify your subscription:
 
-```bash
+```powershell
 # Check current subscription
 az account show --query "{Name:name, SubscriptionId:id}" -o table
 
@@ -101,10 +96,10 @@ az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
 
 ### 2.2 Set Environment Variables
 
-```bash
+```powershell
 # Set variables (modify as needed)
-export RESOURCE_GROUP="rg-saml-cert-rotation"
-export LOCATION="eastus"
+$RESOURCE_GROUP = "rg-saml-cert-rotation"
+$LOCATION = "eastus"
 
 # Create resource group
 az group create --name $RESOURCE_GROUP --location $LOCATION
@@ -142,8 +137,8 @@ Custom Security Attributes allow you to tag which SAML apps should be auto-rotat
 
 Edit the parameters file with your values:
 
-```bash
-cd ~/SamlCertRotation/infrastructure
+```powershell
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 
 # Open in Cloud Shell editor
 code main.parameters.json
@@ -157,51 +152,53 @@ Save the file (Ctrl+S) and close the editor.
 
 ### 4.2 Deploy Infrastructure with Bicep
 
-```bash
+```powershell
 # Make sure you're in the infrastructure directory
-cd ~/SamlCertRotation/infrastructure
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 
 # Deploy the infrastructure
-az deployment group create \
-    --resource-group $RESOURCE_GROUP \
-    --template-file main.bicep \
-    --parameters main.parameters.json \
-    --query "properties.outputs" \
-    -o json > deployment-outputs.json
+az deployment group create `
+    --resource-group $RESOURCE_GROUP `
+    --template-file main.bicep `
+    --parameters main.parameters.json `
+    --query "properties.outputs" `
+    -o json | Out-File -FilePath deployment-outputs.json -Encoding utf8
 
 # View the outputs
-cat deployment-outputs.json | jq .
+Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 ```
 
-### 4.3 Save Output Values as Environment Variables
+### 4.3 Save Output Values as Variables
 
-```bash
-# Parse outputs and set as environment variables
-export MANAGED_IDENTITY_PRINCIPAL_ID=$(cat deployment-outputs.json | jq -r '.managedIdentityPrincipalId.value')
-export MANAGED_IDENTITY_CLIENT_ID=$(cat deployment-outputs.json | jq -r '.managedIdentityClientId.value')
-export MANAGED_IDENTITY_NAME=$(cat deployment-outputs.json | jq -r '.managedIdentityName.value')
-export FUNCTION_APP_NAME=$(cat deployment-outputs.json | jq -r '.functionAppName.value')
-export FUNCTION_APP_URL=$(cat deployment-outputs.json | jq -r '.functionAppUrl.value')
-export STATIC_WEB_APP_NAME=$(cat deployment-outputs.json | jq -r '.staticWebAppName.value')
-export STORAGE_ACCOUNT_NAME=$(cat deployment-outputs.json | jq -r '.storageAccountName.value')
+```powershell
+# Parse outputs and set as variables
+$outputs = Get-Content deployment-outputs.json | ConvertFrom-Json
+
+$MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
+$MANAGED_IDENTITY_CLIENT_ID = $outputs.managedIdentityClientId.value
+$MANAGED_IDENTITY_NAME = $outputs.managedIdentityName.value
+$FUNCTION_APP_NAME = $outputs.functionAppName.value
+$FUNCTION_APP_URL = $outputs.functionAppUrl.value
+$STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
+$STORAGE_ACCOUNT_NAME = $outputs.storageAccountName.value
 
 # Verify variables are set
-echo "Managed Identity Principal ID: $MANAGED_IDENTITY_PRINCIPAL_ID"
-echo "Managed Identity Name: $MANAGED_IDENTITY_NAME"
-echo "Function App: $FUNCTION_APP_NAME"
-echo "Function App URL: $FUNCTION_APP_URL"
-echo "Static Web App: $STATIC_WEB_APP_NAME"
+Write-Host "Managed Identity Principal ID: $MANAGED_IDENTITY_PRINCIPAL_ID"
+Write-Host "Managed Identity Name: $MANAGED_IDENTITY_NAME"
+Write-Host "Function App: $FUNCTION_APP_NAME"
+Write-Host "Function App URL: $FUNCTION_APP_URL"
+Write-Host "Static Web App: $STATIC_WEB_APP_NAME"
 ```
 
-> **Important**: Save these values! If your Cloud Shell session times out, you'll need to re-run the export commands or retrieve values from the Azure Portal.
+> **Important**: Save these values! If your Cloud Shell session times out, you'll need to re-run the variable assignment commands or retrieve values from the Azure Portal.
 
 ---
 
 ## Step 5: Grant Microsoft Graph Permissions
 
-The managed identity needs Microsoft Graph API permissions. This is easiest to do via the Azure Portal.
+The managed identity needs Microsoft Graph API permissions.
 
-### 5.1 Grant Permissions via Azure Portal
+### 5.1 Grant Permissions via Azure Portal (Easiest)
 
 1. Go to [Azure Portal](https://portal.azure.com)
 2. Search for **Enterprise applications**
@@ -211,16 +208,9 @@ The managed identity needs Microsoft Graph API permissions. This is easiest to d
 6. Go to **Permissions** in the left menu
 7. Click **Grant admin consent for [your tenant]** if available
 
-If permissions aren't listed, you need to add them via PowerShell:
+If permissions aren't listed, use PowerShell below:
 
-### 5.2 Grant Permissions via Cloud Shell (PowerShell)
-
-```bash
-# Switch to PowerShell in Cloud Shell
-pwsh
-```
-
-Then run in PowerShell:
+### 5.2 Grant Permissions via PowerShell
 
 ```powershell
 # Install Microsoft Graph module if needed
@@ -229,11 +219,8 @@ Install-Module Microsoft.Graph -Scope CurrentUser -Force
 # Connect to Microsoft Graph (will open browser for auth)
 Connect-MgGraph -Scopes "Application.Read.All","AppRoleAssignment.ReadWrite.All"
 
-# Set the managed identity principal ID (copy from earlier output)
-$managedIdentityPrincipalId = $env:MANAGED_IDENTITY_PRINCIPAL_ID
-
 # Get the managed identity service principal
-$managedIdentitySP = Get-MgServicePrincipal -ServicePrincipalId $managedIdentityPrincipalId
+$managedIdentitySP = Get-MgServicePrincipal -ServicePrincipalId $MANAGED_IDENTITY_PRINCIPAL_ID
 
 # Get Microsoft Graph service principal
 $graphSP = Get-MgServicePrincipal -Filter "displayName eq 'Microsoft Graph'" | Select-Object -First 1
@@ -265,9 +252,6 @@ foreach ($permissionName in $requiredPermissions) {
         }
     }
 }
-
-# Exit PowerShell to return to bash
-exit
 ```
 
 ### 5.3 Verify Permissions in Portal
@@ -286,43 +270,40 @@ exit
 
 ### 6.1 Build the Project
 
-```bash
-# Return to bash if still in PowerShell
+```powershell
 # Navigate to project root
-cd ~/SamlCertRotation
+Set-Location "$HOME/SamlCertRotation"
 
 # Restore and build
 dotnet restore src/SamlCertRotation/SamlCertRotation.csproj
 dotnet build src/SamlCertRotation/SamlCertRotation.csproj --configuration Release
 
 # Publish
-dotnet publish src/SamlCertRotation/SamlCertRotation.csproj \
-    --configuration Release \
+dotnet publish src/SamlCertRotation/SamlCertRotation.csproj `
+    --configuration Release `
     --output ./publish
 ```
 
 ### 6.2 Create Deployment Package
 
-```bash
+```powershell
 # Create zip file for deployment
-cd ~/SamlCertRotation/publish
-zip -r ../function-app.zip .
-cd ~/SamlCertRotation
+Compress-Archive -Path ./publish/* -DestinationPath ./function-app.zip -Force
 ```
 
 ### 6.3 Deploy to Azure Function App
 
-```bash
+```powershell
 # Deploy the zip package
-az functionapp deployment source config-zip \
-    --resource-group $RESOURCE_GROUP \
-    --name $FUNCTION_APP_NAME \
+az functionapp deployment source config-zip `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
     --src function-app.zip
 
 # Verify deployment - list functions
-az functionapp function list \
-    --resource-group $RESOURCE_GROUP \
-    --name $FUNCTION_APP_NAME \
+az functionapp function list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
     --output table
 ```
 
@@ -334,56 +315,62 @@ You should see `CertificateChecker` and several `Dashboard*` functions listed.
 
 ### 7.1 Get Static Web App Deployment Token
 
-```bash
+```powershell
 # Get deployment token
-export SWA_TOKEN=$(az staticwebapp secrets list \
-    --resource-group $RESOURCE_GROUP \
-    --name $STATIC_WEB_APP_NAME \
-    --query "properties.apiKey" -o tsv)
+$SWA_TOKEN = az staticwebapp secrets list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "properties.apiKey" -o tsv
 
-echo "Deployment token retrieved"
+Write-Host "Deployment token retrieved"
 ```
 
 ### 7.2 Update Dashboard Configuration
 
-```bash
-cd ~/SamlCertRotation/dashboard
+```powershell
+Set-Location "$HOME/SamlCertRotation/dashboard"
 
 # Get your tenant ID
-export TENANT_ID=$(az account show --query tenantId -o tsv)
+$TENANT_ID = az account show --query tenantId -o tsv
 
 # Update the staticwebapp.config.json with your tenant ID
-sed -i "s/<YOUR_TENANT_ID>/$TENANT_ID/g" staticwebapp.config.json
+$configContent = Get-Content staticwebapp.config.json -Raw
+$configContent = $configContent -replace '<YOUR_TENANT_ID>', $TENANT_ID
+Set-Content -Path staticwebapp.config.json -Value $configContent
 
 # Update the API endpoint in index.html
-sed -i "s|const API_BASE_URL = ''|const API_BASE_URL = '$FUNCTION_APP_URL'|g" index.html
+$htmlContent = Get-Content index.html -Raw
+$htmlContent = $htmlContent -replace "const API_BASE_URL = ''", "const API_BASE_URL = '$FUNCTION_APP_URL'"
+Set-Content -Path index.html -Value $htmlContent
 ```
 
 ### 7.3 Install SWA CLI and Deploy
 
-```bash
+```powershell
 # Install Static Web Apps CLI
 npm install -g @azure/static-web-apps-cli
 
 # Build dashboard (simple HTML, just needs to be in dist folder)
-mkdir -p dist
-cp index.html dist/
-cp staticwebapp.config.json dist/
+New-Item -ItemType Directory -Path dist -Force
+Copy-Item index.html dist/
+Copy-Item staticwebapp.config.json dist/
 
 # Deploy
-swa deploy ./dist \
-    --deployment-token $SWA_TOKEN \
+swa deploy ./dist `
+    --deployment-token $SWA_TOKEN `
     --env production
 ```
 
 ### 7.4 Get Dashboard URL
 
-```bash
+```powershell
 # Get the Static Web App URL
-az staticwebapp show \
-    --resource-group $RESOURCE_GROUP \
-    --name $STATIC_WEB_APP_NAME \
+$dashboardUrl = az staticwebapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
     --query "defaultHostname" -o tsv
+
+Write-Host "Dashboard URL: https://$dashboardUrl"
 ```
 
 ---
@@ -400,10 +387,10 @@ az staticwebapp show \
 
 If you need to change the notification sender email:
 
-```bash
-az functionapp config appsettings set \
-    --resource-group $RESOURCE_GROUP \
-    --name $FUNCTION_APP_NAME \
+```powershell
+az functionapp config appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
     --settings "NotificationSenderEmail=your-sender@yourdomain.com"
 ```
 
@@ -424,14 +411,10 @@ az functionapp config appsettings set \
    - Assigned values: `on`
 7. Click **Save**
 
-### Via PowerShell in Cloud Shell
-
-```bash
-pwsh
-```
+### Via PowerShell
 
 ```powershell
-# Connect to Graph
+# Connect to Graph (if not already connected)
 Connect-MgGraph -Scopes "Application.ReadWrite.All", "CustomSecAttributeAssignment.ReadWrite.All"
 
 # Set attribute on a specific app (replace with your app display name)
@@ -449,8 +432,6 @@ $customAttributes = @{
 
 Update-MgServicePrincipal -ServicePrincipalId $sp.Id -BodyParameter $customAttributes
 Write-Host "Tagged: $appDisplayName"
-
-exit
 ```
 
 ---
@@ -459,30 +440,32 @@ exit
 
 ### 10.1 Test the Function App API
 
-```bash
+```powershell
 # Get Function App key
-FUNCTION_KEY=$(az functionapp keys list \
-    --resource-group $RESOURCE_GROUP \
-    --name $FUNCTION_APP_NAME \
-    --query "functionKeys.default" -o tsv)
+$FUNCTION_KEY = az functionapp keys list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "functionKeys.default" -o tsv
 
 # Test dashboard stats endpoint
-curl -s "$FUNCTION_APP_URL/api/dashboard/stats?code=$FUNCTION_KEY" | jq .
+$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats?code=$FUNCTION_KEY" -Method Get
+$response | ConvertTo-Json -Depth 5
 ```
 
 ### 10.2 Manually Trigger Rotation
 
-```bash
+```powershell
 # Trigger manual rotation
-curl -s -X POST "$FUNCTION_APP_URL/api/admin/trigger-rotation?code=$FUNCTION_KEY" | jq .
+$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/admin/trigger-rotation?code=$FUNCTION_KEY" -Method Post
+$response | ConvertTo-Json -Depth 5
 ```
 
 ### 10.3 View Function Logs
 
-```bash
+```powershell
 # Stream logs (Ctrl+C to stop)
-az functionapp log tail \
-    --resource-group $RESOURCE_GROUP \
+az functionapp log tail `
+    --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME
 ```
 
@@ -503,31 +486,33 @@ https://<your-static-web-app-name>.azurestaticapps.net
 - Check that admin consent was provided
 - Wait 5-10 minutes for permissions to propagate
 
-### Environment variables lost
+### Variables lost after session timeout
 
 Cloud Shell sessions timeout after ~20 minutes of inactivity. Re-run:
 
-```bash
-cd ~/SamlCertRotation/infrastructure
-export RESOURCE_GROUP="rg-saml-cert-rotation"
-export FUNCTION_APP_NAME=$(cat deployment-outputs.json | jq -r '.functionAppName.value')
-export FUNCTION_APP_URL=$(cat deployment-outputs.json | jq -r '.functionAppUrl.value')
-# ... etc
+```powershell
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+$RESOURCE_GROUP = "rg-saml-cert-rotation"
+$outputs = Get-Content deployment-outputs.json | ConvertFrom-Json
+$FUNCTION_APP_NAME = $outputs.functionAppName.value
+$FUNCTION_APP_URL = $outputs.functionAppUrl.value
+$STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
+$MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
 ```
 
 ### Function not triggering
 
-```bash
+```powershell
 # Check if functions are deployed
-az functionapp function list \
-    --resource-group $RESOURCE_GROUP \
-    --name $FUNCTION_APP_NAME \
+az functionapp function list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
     --output table
 
 # Check application settings
-az functionapp config appsettings list \
-    --resource-group $RESOURCE_GROUP \
-    --name $FUNCTION_APP_NAME \
+az functionapp config appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
     --output table
 ```
 
@@ -541,18 +526,19 @@ az functionapp config appsettings list \
 
 ## Quick Reference: Key Commands
 
-```bash
-# Re-export variables after session timeout
-cd ~/SamlCertRotation/infrastructure
-export RESOURCE_GROUP="rg-saml-cert-rotation"
-export FUNCTION_APP_NAME=$(cat deployment-outputs.json | jq -r '.functionAppName.value')
-export FUNCTION_APP_URL=$(cat deployment-outputs.json | jq -r '.functionAppUrl.value')
-export STATIC_WEB_APP_NAME=$(cat deployment-outputs.json | jq -r '.staticWebAppName.value')
-export MANAGED_IDENTITY_PRINCIPAL_ID=$(cat deployment-outputs.json | jq -r '.managedIdentityPrincipalId.value')
+```powershell
+# Re-set variables after session timeout
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+$RESOURCE_GROUP = "rg-saml-cert-rotation"
+$outputs = Get-Content deployment-outputs.json | ConvertFrom-Json
+$FUNCTION_APP_NAME = $outputs.functionAppName.value
+$FUNCTION_APP_URL = $outputs.functionAppUrl.value
+$STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
+$MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
 
 # Test API
-FUNCTION_KEY=$(az functionapp keys list --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME --query "functionKeys.default" -o tsv)
-curl -s "$FUNCTION_APP_URL/api/dashboard/stats?code=$FUNCTION_KEY" | jq .
+$FUNCTION_KEY = az functionapp keys list --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME --query "functionKeys.default" -o tsv
+Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats?code=$FUNCTION_KEY" | ConvertTo-Json
 
 # View logs
 az functionapp log tail --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
