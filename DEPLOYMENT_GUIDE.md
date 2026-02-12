@@ -352,39 +352,40 @@ Set-Content -Path staticwebapp.config.json -Value $configContent
 
 ### 7.3 Deploy Dashboard
 
-The simplest method is to deploy via the Azure Portal:
-
-#### Option A: Azure Portal (Recommended)
-
-1. Open [Azure Portal](https://portal.azure.com)
-2. Navigate to your Static Web App: `$STATIC_WEB_APP_NAME`
-3. Go to **Overview** → Click the **URL** to open the app
-4. Go to **Settings** → **Configuration** to verify settings
-5. For manual upload, go to the **Deployment Center**
-
-**Note**: For Static Web Apps with a simple HTML file, you can also use GitHub Actions:
-- Push your dashboard folder to a GitHub repo
-- Connect the Static Web App to the repo via Deployment Center
-
-#### Option B: SWA CLI via npx
-
-If you prefer command-line deployment:
+Deploy the dashboard files using the SWA CLI:
 
 ```powershell
-# Prepare dashboard files
+# Make sure you're in the dashboard folder
+Set-Location "$HOME/SamlCertRotation/dashboard"
+
+# Prepare dashboard files for deployment
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item unauthorized.html dist/
 Copy-Item staticwebapp.config.json dist/
 
-# Deploy using npx (will show dependency warnings - these are safe to ignore)
+# Verify files were copied
+Get-ChildItem dist/
+
+# Deploy using SWA CLI
 npx -y @azure/static-web-apps-cli deploy ./dist `
     --deployment-token $SWA_TOKEN `
     --env production
 ```
 
-> **Note**: You may see npm warnings about deprecated packages. These come from the
-> SWA CLI's dependencies and are safe to ignore - they don't affect functionality.
+**Expected output**: You should see "Deployment complete" or similar success message.
+
+> **Note**: You may see npm warnings about deprecated packages. These are safe to ignore.
+
+#### Alternative: GitHub Actions
+
+Instead of CLI deployment, you can connect your Static Web App to a GitHub repository:
+1. Push your code to GitHub
+2. In Azure Portal, go to your Static Web App → **Deployment Center**
+3. Connect to your GitHub repository and configure the build settings:
+   - **App location**: `/dashboard`
+   - **Output location**: Leave empty (or `dist` if using Vite build)
+4. GitHub Actions will automatically deploy on push
 
 ### 7.4 Get Dashboard URL
 
@@ -783,6 +784,39 @@ New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item staticwebapp.config.json dist/
 ```
+
+### Dashboard shows 404 Not Found
+
+This means the deployment didn't succeed or files weren't deployed correctly:
+
+```powershell
+# 1. Verify dist folder has the correct files
+Set-Location "$HOME/SamlCertRotation/dashboard"
+Get-ChildItem dist/
+
+# Should show: index.html, staticwebapp.config.json, unauthorized.html
+
+# 2. Verify deployment token is set
+Write-Host "Token set: $([bool]$SWA_TOKEN)"
+
+# 3. If token is missing, get it again
+$SWA_TOKEN = az staticwebapp secrets list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "properties.apiKey" -o tsv
+
+# 4. Re-deploy
+npx -y @azure/static-web-apps-cli deploy ./dist `
+    --deployment-token $SWA_TOKEN `
+    --env production
+
+# 5. Wait 1-2 minutes and refresh the browser
+```
+
+If you still see 404, check the Azure Portal:
+1. Go to your Static Web App resource
+2. Click **Environment** in the left menu
+3. Verify there's a deployment under "Production"
 
 ### npm warnings about deprecated packages
 
