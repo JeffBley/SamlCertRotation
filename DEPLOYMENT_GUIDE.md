@@ -318,14 +318,15 @@ az functionapp deployment source config-zip `
     --name $FUNCTION_APP_NAME `
     --src function-app.zip
 
-# Verify deployment - list functions
+# Verify deployment - list function names
 az functionapp function list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
+    --query "[].{Name:name}" `
     --output table
 ```
 
-You should see `CertificateChecker` and several `Dashboard*` functions listed.
+You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, `RotateSwaClientSecret`, etc.
 
 ---
 
@@ -833,12 +834,14 @@ $MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
 az functionapp function list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
+    --query "[].{Name:name}" `
     --output table
 
 # Check application settings
 az functionapp config appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
+    --query "[].{Name:name, Value:value}" `
     --output table
 ```
 
