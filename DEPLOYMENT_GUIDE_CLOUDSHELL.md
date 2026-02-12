@@ -40,7 +40,7 @@ If you have the project in a Git repository:
 ```bash
 # Clone your repository
 git clone https://github.com/YOUR_ORG/saml-cert-rotation.git
-cd saml-cert-rotation
+cd SamlCertRotation
 ```
 
 ### Option B: Upload ZIP File
