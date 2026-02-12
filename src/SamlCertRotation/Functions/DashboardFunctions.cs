@@ -44,7 +44,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("GetDashboardStats")]
     public async Task<HttpResponseData> GetDashboardStats(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "dashboard/stats")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "dashboard/stats")] HttpRequestData req)
     {
         _logger.LogInformation("Getting dashboard stats");
 
@@ -65,7 +65,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("GetApplications")]
     public async Task<HttpResponseData> GetApplications(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "applications")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "applications")] HttpRequestData req)
     {
         _logger.LogInformation("Getting all SAML applications");
 
@@ -86,7 +86,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("GetApplication")]
     public async Task<HttpResponseData> GetApplication(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "applications/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "applications/{id}")] HttpRequestData req,
         string id)
     {
         _logger.LogInformation("Getting application {Id}", id);
@@ -113,7 +113,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("GetGlobalPolicy")]
     public async Task<HttpResponseData> GetGlobalPolicy(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "policy")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "policy")] HttpRequestData req)
     {
         _logger.LogInformation("Getting global policy");
 
@@ -134,7 +134,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("UpdateGlobalPolicy")]
     public async Task<HttpResponseData> UpdateGlobalPolicy(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "policy")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "policy")] HttpRequestData req)
     {
         _logger.LogInformation("Updating global policy");
 
@@ -174,7 +174,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("GetAppPolicy")]
     public async Task<HttpResponseData> GetAppPolicy(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "policy/app/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "policy/app/{id}")] HttpRequestData req,
         string id)
     {
         _logger.LogInformation("Getting app policy for {Id}", id);
@@ -210,7 +210,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("UpdateAppPolicy")]
     public async Task<HttpResponseData> UpdateAppPolicy(
-        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "policy/app/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "policy/app/{id}")] HttpRequestData req,
         string id)
     {
         _logger.LogInformation("Updating app policy for {Id}", id);
@@ -253,7 +253,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("GetAuditLogs")]
     public async Task<HttpResponseData> GetAuditLogs(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "audit")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "audit")] HttpRequestData req)
     {
         _logger.LogInformation("Getting audit logs");
 
@@ -280,7 +280,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("GetAppAuditLogs")]
     public async Task<HttpResponseData> GetAppAuditLogs(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "audit/app/{id}")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "audit/app/{id}")] HttpRequestData req,
         string id)
     {
         _logger.LogInformation("Getting audit logs for app {Id}", id);
@@ -302,7 +302,7 @@ public class DashboardFunctions
     /// </summary>
     [Function("TriggerRotation")]
     public async Task<HttpResponseData> TriggerRotation(
-        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "admin/trigger-rotation")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation")] HttpRequestData req)
     {
         _logger.LogInformation("Manual rotation triggered");
 
