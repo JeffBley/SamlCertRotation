@@ -300,8 +300,8 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-01-01' = {
   name: staticWebAppName
   location: 'eastus2' // Static Web Apps have limited region availability
   sku: {
-    name: 'Free'
-    tier: 'Free'
+    name: 'Standard'
+    tier: 'Standard'
   }
   properties: {
     stagingEnvironmentPolicy: 'Enabled'
