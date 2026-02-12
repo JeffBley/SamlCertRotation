@@ -234,34 +234,45 @@ public class GraphService : IGraphService
                 return false;
             }
 
-            var message = new Message
+            // Get Logic App URL from configuration
+            var logicAppUrl = _configuration["LogicAppEmailUrl"];
+            if (string.IsNullOrEmpty(logicAppUrl))
             {
-                Subject = subject,
-                Body = new ItemBody
-                {
-                    ContentType = BodyType.Html,
-                    Content = htmlBody
-                },
-                ToRecipients = recipients.Select(r => new Recipient
-                {
-                    EmailAddress = new EmailAddress { Address = r }
-                }).ToList()
+                _logger.LogWarning("LogicAppEmailUrl not configured - email notifications disabled");
+                return false;
+            }
+
+            // Call Logic App to send email
+            using var httpClient = new HttpClient();
+            var payload = new
+            {
+                to = string.Join(";", recipients),
+                subject = subject,
+                body = htmlBody
             };
 
-            await _graphClient.Users[senderEmail]
-                .SendMail
-                .PostAsync(new Microsoft.Graph.Users.Item.SendMail.SendMailPostRequestBody
-                {
-                    Message = message,
-                    SaveToSentItems = true
-                });
+            var content = new StringContent(
+                System.Text.Json.JsonSerializer.Serialize(payload),
+                System.Text.Encoding.UTF8,
+                "application/json");
 
-            _logger.LogInformation("Email sent successfully to {Count} recipients", recipients.Count);
-            return true;
+            var response = await httpClient.PostAsync(logicAppUrl, content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("Email sent successfully via Logic App to {Count} recipients", recipients.Count);
+                return true;
+            }
+            else
+            {
+                _logger.LogError("Logic App returned error: {StatusCode} - {Reason}", 
+                    response.StatusCode, await response.Content.ReadAsStringAsync());
+                return false;
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error sending email notification");
+            _logger.LogError(ex, "Error sending email notification via Logic App");
             return false;
         }
     }

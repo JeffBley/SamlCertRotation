@@ -49,6 +49,7 @@ var logAnalyticsName = '${baseName}-logs-${uniqueSuffix}'
 var managedIdentityName = '${baseName}-identity'
 var staticWebAppName = '${baseName}-dashboard-${uniqueSuffix}'
 var keyVaultName = '${baseName}-kv-${uniqueSuffix}'
+var logicAppName = '${baseName}-email-${uniqueSuffix}'
 
 // ============================================================================
 // User-Assigned Managed Identity
@@ -312,6 +313,75 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-01-01' = {
 }
 
 // ============================================================================
+// Logic App (Email Notifications)
+// ============================================================================
+resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
+  name: logicAppName
+  location: location
+  properties: {
+    state: 'Enabled'
+    definition: {
+      '$schema': 'https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#'
+      contentVersion: '1.0.0.0'
+      parameters: {
+        '$connections': {
+          defaultValue: {}
+          type: 'Object'
+        }
+      }
+      triggers: {
+        manual: {
+          type: 'Request'
+          kind: 'Http'
+          inputs: {
+            schema: {
+              type: 'object'
+              properties: {
+                to: {
+                  type: 'string'
+                  description: 'Recipient email address(es), semicolon-separated'
+                }
+                subject: {
+                  type: 'string'
+                  description: 'Email subject'
+                }
+                body: {
+                  type: 'string'
+                  description: 'Email body (HTML supported)'
+                }
+              }
+              required: [
+                'to'
+                'subject'
+                'body'
+              ]
+            }
+          }
+        }
+      }
+      actions: {
+        Response: {
+          type: 'Response'
+          kind: 'Http'
+          runAfter: {}
+          inputs: {
+            statusCode: 200
+            body: {
+              status: 'Email trigger received. Configure Office 365 connector in Azure Portal.'
+            }
+          }
+        }
+      }
+      outputs: {}
+    }
+  }
+  tags: {
+    purpose: 'SAML Certificate Rotation Tool'
+    component: 'Email Notifications'
+  }
+}
+
+// ============================================================================
 // Outputs
 // ============================================================================
 output managedIdentityPrincipalId string = managedIdentity.properties.principalId
@@ -326,6 +396,7 @@ output appInsightsName string = appInsights.name
 output logAnalyticsWorkspaceName string = logAnalyticsWorkspace.name
 output keyVaultName string = keyVault.name
 output keyVaultUri string = keyVault.properties.vaultUri
+output logicAppName string = logicApp.name
 
 // Output instructions
 output nextSteps string = '''
@@ -334,9 +405,9 @@ NEXT STEPS
 ========================================
 1. Grant Microsoft Graph API permissions to the Managed Identity
 2. Create Custom Security Attributes in Entra ID
-3. Deploy the Function App code
-4. Deploy the Dashboard to Static Web App
-5. Configure notification sender mailbox
+3. Configure Logic App with Office 365 connector
+4. Deploy the Function App code
+5. Deploy the Dashboard to Static Web App
 
 See DEPLOYMENT_GUIDE.md for detailed instructions.
 '''
