@@ -467,15 +467,18 @@ Write-Host "Client secret stored in Key Vault as 'SwaClientSecret'"
 # Get your tenant ID
 $TENANT_ID = az account show --query "tenantId" -o tsv
 
-# Get Key Vault URI
-$KEY_VAULT_URI = $outputs.keyVaultUri.value
-
 # Configure SWA with the app registration credentials
-# AAD_CLIENT_SECRET uses a Key Vault reference for automatic secret retrieval
+# Note: SWA custom auth requires the actual secret value, not Key Vault references
 az staticwebapp appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
-    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=$KEY_VAULT_NAME;SecretName=SwaClientSecret)"
+    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=$CLIENT_SECRET"
+
+# Verify settings were applied (the 'set' command may show null due to redaction)
+az staticwebapp appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "properties" -o json
 
 # Configure the Function App with the SWA client ID for auto-rotation
 az functionapp config appsettings set `
@@ -485,9 +488,10 @@ az functionapp config appsettings set `
 
 Write-Host "App settings configured"
 Write-Host ""
-Write-Host "NOTE: The client secret is stored in Key Vault and will be auto-rotated"
-Write-Host "      30 days before expiration by the RotateSwaClientSecret function."
+Write-Host "NOTE: The client secret is also stored in Key Vault for backup/rotation purposes."
 ```
+
+> **Important**: The `az staticwebapp appsettings set` command may display `null` for values due to security redaction. Use the `list` command to verify the settings were applied correctly.
 
 ### 7.7 Disable Easy Auth on Function App
 
@@ -888,6 +892,25 @@ $FUNCTION_APP_NAME = $outputs.functionAppName.value
 $FUNCTION_APP_URL = $outputs.functionAppUrl.value
 $STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
 $MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
+$KEY_VAULT_NAME = $outputs.keyVaultName.value
+```
+
+### Recover CLIENT_ID and CLIENT_SECRET
+
+If you lose these variables during Step 7:
+
+```powershell
+# Recover CLIENT_ID from the app registration
+$APP_NAME = "SAML Certificate Rotation Dashboard"
+$CLIENT_ID = az ad app list --filter "displayName eq '$APP_NAME'" --query "[0].appId" -o tsv
+Write-Host "CLIENT_ID: $CLIENT_ID"
+
+# Recover CLIENT_SECRET from Key Vault (if Step 7.5 was completed)
+$CLIENT_SECRET = az keyvault secret show --vault-name $KEY_VAULT_NAME --name "SwaClientSecret" --query "value" -o tsv
+Write-Host "CLIENT_SECRET length: $($CLIENT_SECRET.Length)"
+
+# If the secret is not in Key Vault, generate a new one:
+# $CLIENT_SECRET = az ad app credential reset --id $CLIENT_ID --display-name "SWA Auth Secret" --years 2 --query "password" -o tsv
 ```
 
 ### Function not triggering
@@ -942,6 +965,7 @@ $FUNCTION_APP_NAME = $outputs.functionAppName.value
 $FUNCTION_APP_URL = $outputs.functionAppUrl.value
 $STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
 $MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
+$KEY_VAULT_NAME = $outputs.keyVaultName.value
 
 # Test API
 $FUNCTION_KEY = az functionapp keys list --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME --query "functionKeys.default" -o tsv
