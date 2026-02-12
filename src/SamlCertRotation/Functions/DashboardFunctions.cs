@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using SamlCertRotation.Models;
 using SamlCertRotation.Services;
@@ -17,6 +18,7 @@ public class DashboardFunctions
     private readonly IGraphService _graphService;
     private readonly IPolicyService _policyService;
     private readonly IAuditService _auditService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<DashboardFunctions> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -30,12 +32,14 @@ public class DashboardFunctions
         IGraphService graphService,
         IPolicyService policyService,
         IAuditService auditService,
+        IConfiguration configuration,
         ILogger<DashboardFunctions> logger)
     {
         _rotationService = rotationService;
         _graphService = graphService;
         _policyService = policyService;
         _auditService = auditService;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -293,6 +297,75 @@ public class DashboardFunctions
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting app audit logs");
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Get application settings
+    /// </summary>
+    [Function("GetSettings")]
+    public async Task<HttpResponseData> GetSettings(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "settings")] HttpRequestData req)
+    {
+        _logger.LogInformation("Getting settings");
+
+        try
+        {
+            var settings = new
+            {
+                notificationEmails = _configuration["AdminNotificationEmails"] ?? "",
+                senderEmail = _configuration["NotificationSenderEmail"] ?? "",
+                tenantId = _configuration["TenantId"] ?? ""
+            };
+            return await CreateJsonResponse(req, settings);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting settings");
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Update notification emails (note: this updates in-memory only, 
+    /// permanent changes require updating App Settings in Azure Portal)
+    /// </summary>
+    [Function("UpdateSettings")]
+    public async Task<HttpResponseData> UpdateSettings(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "settings")] HttpRequestData req)
+    {
+        _logger.LogInformation("Updating settings");
+
+        try
+        {
+            var body = await req.ReadAsStringAsync();
+            var settings = JsonSerializer.Deserialize<SettingsUpdateRequest>(body ?? "{}", new JsonSerializerOptions 
+            { 
+                PropertyNameCaseInsensitive = true 
+            });
+
+            if (settings == null)
+            {
+                return await CreateErrorResponse(req, "Invalid settings data", HttpStatusCode.BadRequest);
+            }
+
+            // Note: We can't actually update Azure App Settings from within the function
+            // This would require Azure Management API access. For now, we'll store in Table Storage
+            // alongside policies, or return instructions.
+            
+            // Store settings in policy service (we'll reuse the table)
+            await _policyService.UpdateNotificationEmailsAsync(settings.NotificationEmails ?? "");
+
+            return await CreateJsonResponse(req, new 
+            { 
+                message = "Settings updated successfully",
+                notificationEmails = settings.NotificationEmails
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating settings");
             return await CreateErrorResponse(req, ex.Message);
         }
     }

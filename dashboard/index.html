@@ -409,6 +409,7 @@
         <div class="tabs">
             <button class="tab active" data-tab="applications">Applications</button>
             <button class="tab" data-tab="policy">Policy Settings</button>
+            <button class="tab" data-tab="settings">Settings</button>
             <button class="tab" data-tab="audit">Audit Log</button>
         </div>
 
@@ -482,6 +483,27 @@
                 </div>
             </div>
         </div>
+
+        <div id="tab-settings" class="tab-content">
+            <div class="section">
+                <div class="section-header">
+                    <h2>Notification Settings</h2>
+                </div>
+                <div class="policy-form">
+                    <div class="form-group">
+                        <label for="notificationEmails">Notification Email Addresses</label>
+                        <p style="font-size:12px;color:#666;margin-bottom:8px;">Enter email addresses that should receive rotation notifications. Separate multiple addresses with commas.</p>
+                        <textarea id="notificationEmails" rows="3" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;resize:vertical;" placeholder="admin@example.com, security@example.com"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Sender Email (read-only)</label>
+                        <input type="text" id="senderEmail" readonly style="background:#f4f4f4;">
+                        <p style="font-size:11px;color:#888;margin-top:4px;">To change the sender email, update the NotificationSenderEmail app setting in Azure Portal.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <footer>
@@ -512,6 +534,8 @@
                     loadAuditLog();
                 } else if (tab.dataset.tab === 'policy') {
                     loadPolicy();
+                } else if (tab.dataset.tab === 'settings') {
+                    loadSettings();
                 }
             });
         });
@@ -680,6 +704,33 @@
                 alert('Policy saved successfully!');
             } catch (error) {
                 alert('Failed to save policy: ' + error.message);
+            }
+        }
+
+        // Load settings
+        async function loadSettings() {
+            try {
+                const settings = await apiCall('settings');
+                document.getElementById('notificationEmails').value = settings.notificationEmails || '';
+                document.getElementById('senderEmail').value = settings.senderEmail || 'Not configured';
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+            }
+        }
+
+        // Save settings
+        async function saveSettings() {
+            try {
+                const settings = {
+                    notificationEmails: document.getElementById('notificationEmails').value.trim()
+                };
+                await apiCall('settings', {
+                    method: 'PUT',
+                    body: JSON.stringify(settings)
+                });
+                alert('Settings saved successfully!');
+            } catch (error) {
+                alert('Failed to save settings: ' + error.message);
             }
         }
 

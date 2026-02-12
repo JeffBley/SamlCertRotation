@@ -159,4 +159,41 @@ public class PolicyService : IPolicyService
 
         return policies;
     }
+
+    /// <inheritdoc />
+    public async Task<string> GetNotificationEmailsAsync()
+    {
+        try
+        {
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "NotificationEmails");
+            if (response.HasValue && response.Value != null)
+            {
+                return response.Value.GetString("Emails") ?? "";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting notification emails from storage");
+        }
+        return "";
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateNotificationEmailsAsync(string emails)
+    {
+        try
+        {
+            var entity = new TableEntity("Settings", "NotificationEmails")
+            {
+                { "Emails", emails }
+            };
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated notification emails: {Emails}", emails);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating notification emails");
+            throw;
+        }
+    }
 }

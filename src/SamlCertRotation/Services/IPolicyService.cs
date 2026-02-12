@@ -36,4 +36,14 @@ public interface IPolicyService
     /// List all app-specific policies
     /// </summary>
     Task<List<AppPolicy>> ListAppPoliciesAsync();
+
+    /// <summary>
+    /// Get notification emails from settings
+    /// </summary>
+    Task<string> GetNotificationEmailsAsync();
+
+    /// <summary>
+    /// Update notification emails setting
+    /// </summary>
+    Task UpdateNotificationEmailsAsync(string emails);
 }
