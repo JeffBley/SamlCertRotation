@@ -11,13 +11,12 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 5. [Step 4: Deploy Azure Infrastructure](#step-4-deploy-azure-infrastructure)
 6. [Step 5: Grant Microsoft Graph Permissions](#step-5-grant-microsoft-graph-permissions)
 7. [Step 6: Deploy the Function App Code](#step-6-deploy-the-function-app-code)
-8. [Step 7: Configure Dashboard Access Control](#step-7-configure-dashboard-access-control)
-9. [Step 8: Deploy the Dashboard](#step-8-deploy-the-dashboard)
+8. [Step 7: Deploy the Dashboard](#step-7-deploy-the-dashboard)
+9. [Step 8: Configure Dashboard Access Control](#step-8-configure-dashboard-access-control)
 10. [Step 9: Configure Email Notifications](#step-9-configure-email-notifications)
 11. [Step 10: Tag Applications for Auto-Rotation](#step-10-tag-applications-for-auto-rotation)
 12. [Step 11: Verify the Deployment](#step-11-verify-the-deployment)
 13. [Troubleshooting](#troubleshooting)
-14. [Cleanup / Teardown](#cleanup--teardown)
 
 ---
 
@@ -183,23 +182,13 @@ $FUNCTION_APP_NAME = $outputs.functionAppName.value
 $FUNCTION_APP_URL = $outputs.functionAppUrl.value
 $STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
 $STORAGE_ACCOUNT_NAME = $outputs.storageAccountName.value
-$KEY_VAULT_NAME = $outputs.keyVaultName.value
-$KEY_VAULT_URI = $outputs.keyVaultUri.value
-$LOG_ANALYTICS_NAME = $outputs.logAnalyticsWorkspaceName.value
-$LOGIC_APP_NAME = $outputs.logicAppName.value
 
 # Verify variables are set
 Write-Host "Managed Identity Principal ID: $MANAGED_IDENTITY_PRINCIPAL_ID"
-Write-Host "Managed Identity Client ID: $MANAGED_IDENTITY_CLIENT_ID"
 Write-Host "Managed Identity Name: $MANAGED_IDENTITY_NAME"
 Write-Host "Function App: $FUNCTION_APP_NAME"
 Write-Host "Function App URL: $FUNCTION_APP_URL"
 Write-Host "Static Web App: $STATIC_WEB_APP_NAME"
-Write-Host "Storage Account: $STORAGE_ACCOUNT_NAME"
-Write-Host "Key Vault: $KEY_VAULT_NAME"
-Write-Host "Key Vault URI: $KEY_VAULT_URI"
-Write-Host "Log Analytics Workspace: $LOG_ANALYTICS_NAME"
-Write-Host "Logic App: $LOGIC_APP_NAME"
 ```
 
 > **Important**: Save these values! If your Cloud Shell session times out, you'll need to re-run the variable assignment commands or retrieve values from the Azure Portal.
@@ -240,7 +229,8 @@ $graphSP = Get-MgServicePrincipal -Filter "displayName eq 'Microsoft Graph'" | S
 # Define required permissions
 $requiredPermissions = @(
     "Application.ReadWrite.All",
-    "CustomSecAttributeAssignment.Read.All"
+    "CustomSecAttributeAssignment.Read.All",
+    "Mail.Send"
 )
 
 # Grant each permission
@@ -273,6 +263,7 @@ foreach ($permissionName in $requiredPermissions) {
 4. Go to **Permissions** and verify these are listed:
    - `Application.ReadWrite.All`
    - `CustomSecAttributeAssignment.Read.All`
+   - `Mail.Send`
 
 ---
 
@@ -318,23 +309,105 @@ az functionapp deployment source config-zip `
     --name $FUNCTION_APP_NAME `
     --src function-app.zip
 
-# Verify deployment - list function names
+# Verify deployment - list functions
 az functionapp function list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --query "[].{Name:name}" `
     --output table
 ```
 
-You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, `RotateSwaClientSecret`, etc.
+You should see `CertificateChecker` and several `Dashboard*` functions listed.
 
 ---
 
-## Step 7: Configure Dashboard Access Control
+## Step 7: Deploy the Dashboard
+
+### 7.1 Get Static Web App Deployment Token
+
+```powershell
+# Get deployment token
+$SWA_TOKEN = az staticwebapp secrets list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "properties.apiKey" -o tsv
+
+Write-Host "Deployment token retrieved"
+```
+
+### 7.2 Update Dashboard Configuration
+
+```powershell
+Set-Location "$HOME/SamlCertRotation/dashboard"
+
+# Get your tenant ID
+$TENANT_ID = az account show --query tenantId -o tsv
+
+# Update the staticwebapp.config.json with your tenant ID
+$configContent = Get-Content staticwebapp.config.json -Raw
+$configContent = $configContent -replace '<YOUR_TENANT_ID>', $TENANT_ID
+Set-Content -Path staticwebapp.config.json -Value $configContent
+
+# Update the API endpoint in index.html
+$htmlContent = Get-Content index.html -Raw
+$htmlContent = $htmlContent -replace "const API_BASE_URL = ''", "const API_BASE_URL = '$FUNCTION_APP_URL'"
+Set-Content -Path index.html -Value $htmlContent
+```
+
+### 7.3 Deploy Dashboard
+
+The simplest method is to deploy via the Azure Portal:
+
+#### Option A: Azure Portal (Recommended)
+
+1. Open [Azure Portal](https://portal.azure.com)
+2. Navigate to your Static Web App: `$STATIC_WEB_APP_NAME`
+3. Go to **Overview** → Click the **URL** to open the app
+4. Go to **Settings** → **Configuration** to verify settings
+5. For manual upload, go to the **Deployment Center**
+
+**Note**: For Static Web Apps with a simple HTML file, you can also use GitHub Actions:
+- Push your dashboard folder to a GitHub repo
+- Connect the Static Web App to the repo via Deployment Center
+
+#### Option B: SWA CLI via npx
+
+If you prefer command-line deployment:
+
+```powershell
+# Prepare dashboard files
+New-Item -ItemType Directory -Path dist -Force
+Copy-Item index.html dist/
+Copy-Item unauthorized.html dist/
+Copy-Item staticwebapp.config.json dist/
+
+# Deploy using npx (will show dependency warnings - these are safe to ignore)
+npx -y @azure/static-web-apps-cli deploy ./dist `
+    --deployment-token $SWA_TOKEN `
+    --env production
+```
+
+> **Note**: You may see npm warnings about deprecated packages. These come from the
+> SWA CLI's dependencies and are safe to ignore - they don't affect functionality.
+
+### 7.4 Get Dashboard URL
+
+```powershell
+# Get the Static Web App URL
+$dashboardUrl = az staticwebapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "defaultHostname" -o tsv
+
+Write-Host "Dashboard URL: https://$dashboardUrl"
+```
+
+---
+
+## Step 8: Configure Dashboard Access Control
 
 The dashboard uses Azure AD authentication with Enterprise Application assignment to control access. Only users or groups assigned to the Enterprise Application can access the dashboard.
 
-### 7.1 Create an App Registration
+### 8.1 Create an App Registration
 
 ```powershell
 # Get Static Web App hostname
@@ -361,7 +434,7 @@ Write-Host "Client ID: $CLIENT_ID"
 Write-Host "App Object ID: $APP_OBJECT_ID"
 ```
 
-### 7.2 Create Client Secret
+### 8.2 Create Client Secret
 
 ```powershell
 # Create client secret (valid for 2 years)
@@ -375,7 +448,7 @@ Write-Host "Client Secret: $CLIENT_SECRET"
 Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!"
 ```
 
-### 7.3 Create Service Principal (Enterprise App)
+### 8.3 Create Service Principal (Enterprise App)
 
 ```powershell
 # Create service principal for the app
@@ -386,7 +459,7 @@ $SP_ID = az ad sp list --filter "appId eq '$CLIENT_ID'" --query "[0].id" -o tsv
 Write-Host "Service Principal ID: $SP_ID"
 ```
 
-### 7.4 Configure User/Group Assignment
+### 8.4 Configure User/Group Assignment
 
 This step restricts dashboard access to specific users or groups.
 
@@ -429,67 +502,22 @@ az rest --method POST `
 Write-Host "User assigned to Enterprise Application"
 ```
 
-### 7.5 Store Client Secret in Key Vault
-
-The client secret is stored in Azure Key Vault for security. The managed identity has permissions to rotate
-it automatically when it's within 30 days of expiration.
-
-```powershell
-# Get Key Vault name from deployment outputs
-$KEY_VAULT_NAME = $outputs.keyVaultName.value
-
-# Get your user object ID
-$USER_OBJECT_ID = az ad signed-in-user show --query id -o tsv
-
-# Grant yourself Key Vault Secrets Officer role
-az role assignment create `
-    --role "Key Vault Secrets Officer" `
-    --assignee $USER_OBJECT_ID `
-    --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KEY_VAULT_NAME"
-
-Write-Host "Waiting 30 seconds for role assignment to propagate..."
-Start-Sleep -Seconds 30
-
-# Store the client secret in Key Vault
-az keyvault secret set `
-    --vault-name $KEY_VAULT_NAME `
-    --name "SwaClientSecret" `
-    --value $CLIENT_SECRET `
-    --expires (Get-Date).AddYears(2).ToString("yyyy-MM-ddTHH:mm:ssZ") `
-    --tags "AppClientId=$CLIENT_ID" "CreatedBy=ManualDeployment"
-
-Write-Host "Client secret stored in Key Vault as 'SwaClientSecret'"
-```
-
-### 7.6 Configure Static Web App and Function App Settings
+### 8.5 Configure Static Web App Settings
 
 ```powershell
 # Get your tenant ID
 $TENANT_ID = az account show --query "tenantId" -o tsv
 
-# Get Key Vault URI
-$KEY_VAULT_URI = $outputs.keyVaultUri.value
-
 # Configure SWA with the app registration credentials
-# AAD_CLIENT_SECRET uses a Key Vault reference for automatic secret retrieval
 az staticwebapp appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
-    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=$KEY_VAULT_NAME;SecretName=SwaClientSecret)"
+    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=$CLIENT_SECRET"
 
-# Configure the Function App with the SWA client ID for auto-rotation
-az functionapp config appsettings set `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --settings "SWA_CLIENT_ID=$CLIENT_ID"
-
-Write-Host "App settings configured"
-Write-Host ""
-Write-Host "NOTE: The client secret is stored in Key Vault and will be auto-rotated"
-Write-Host "      30 days before expiration by the RotateSwaClientSecret function."
+Write-Host "SWA app settings configured"
 ```
 
-### 7.7 Disable Easy Auth on Function App
+### 8.6 Disable Easy Auth on Function App
 
 The Function App must NOT have Easy Auth enabled since API authentication is handled through the SWA backend link.
 
@@ -502,7 +530,7 @@ az rest --method PUT `
 Write-Host "Easy Auth disabled on Function App"
 ```
 
-### 7.8 Link Function App to Static Web App
+### 8.7 Link Function App to Static Web App
 
 ```powershell
 # Get the Function App resource ID
@@ -511,8 +539,8 @@ $FUNCTION_APP_ID = az functionapp show `
     --name $FUNCTION_APP_NAME `
     --query "id" -o tsv
 
-# Get the location
-$LOCATION = az staticwebapp show `
+# Get the Static Web App location
+$SWA_LOCATION = az staticwebapp show `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
     --query "location" -o tsv
@@ -522,12 +550,12 @@ az staticwebapp backends link `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
     --backend-resource-id $FUNCTION_APP_ID `
-    --backend-region $LOCATION
+    --backend-region $SWA_LOCATION
 
 Write-Host "Function App linked as SWA backend"
 ```
 
-### 7.9 Save Access Control Configuration
+### 8.8 Save Access Control Configuration
 
 ```powershell
 # Save configuration for reference
@@ -536,7 +564,6 @@ $accessControlConfig = @{
     servicePrincipalId = $SP_ID
     tenantId = $TENANT_ID
     swaHostname = $SWA_HOSTNAME
-    keyVaultName = $KEY_VAULT_NAME
 } | ConvertTo-Json
 
 Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.json" -Value $accessControlConfig
@@ -549,167 +576,32 @@ Write-Host "Access control configuration saved to access-control-config.json"
 | Setting | Location | Value |
 |---------|----------|-------|
 | `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
-| `AAD_CLIENT_SECRET` | SWA App Settings | Key Vault Reference |
-| `SwaClientSecret` | Key Vault | The actual client secret |
-| `SWA_CLIENT_ID` | Function App Settings | App Registration Client ID (for auto-rotation) |
-| `KeyVaultUri` | Function App Settings | Key Vault URI (set by Bicep) |
+| `AAD_CLIENT_SECRET` | SWA App Settings | App Registration Secret |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
-| Easy Auth | Function App | Disabled |
 | Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
+| Easy Auth | Function App | Disabled |
 
 > **Note**: Only users or groups assigned to the Enterprise Application can access the dashboard. Users not assigned will see "Access Denied" from Azure AD before reaching the application.
-
-> **Auto-Rotation**: The `RotateSwaClientSecret` function runs daily and will automatically create a new
-> client secret and store it in Key Vault when the current secret is within 30 days of expiration.
-
----
-
-## Step 8: Deploy the Dashboard
-
-### 8.1 Get Static Web App Deployment Token
-
-```powershell
-# Get deployment token
-$SWA_TOKEN = az staticwebapp secrets list `
-    --resource-group $RESOURCE_GROUP `
-    --name $STATIC_WEB_APP_NAME `
-    --query "properties.apiKey" -o tsv
-
-Write-Host "Deployment token retrieved"
-```
-
-### 8.2 Update Dashboard Configuration
-
-```powershell
-Set-Location "$HOME/SamlCertRotation/dashboard"
-
-# Update the staticwebapp.config.json with your tenant ID (if not done in Step 7)
-$configContent = Get-Content staticwebapp.config.json -Raw
-$configContent = $configContent -replace '<YOUR_TENANT_ID>', $TENANT_ID
-Set-Content -Path staticwebapp.config.json -Value $configContent
-
-# Update the API endpoint in index.html
-$htmlContent = Get-Content index.html -Raw
-$htmlContent = $htmlContent -replace "const API_BASE_URL = ''", "const API_BASE_URL = '$FUNCTION_APP_URL'"
-Set-Content -Path index.html -Value $htmlContent
-```
-
-### 8.3 Deploy Dashboard
-
-The simplest method is to deploy via the Azure Portal:
-
-#### Option A: Azure Portal (Recommended)
-
-1. Open [Azure Portal](https://portal.azure.com)
-2. Navigate to your Static Web App: `$STATIC_WEB_APP_NAME`
-3. Go to **Overview** → Click the **URL** to open the app
-4. Go to **Settings** → **Configuration** to verify settings
-5. For manual upload, go to the **Deployment Center**
-
-**Note**: For Static Web Apps with a simple HTML file, you can also use GitHub Actions:
-- Push your dashboard folder to a GitHub repo
-- Connect the Static Web App to the repo via Deployment Center
-
-#### Option B: SWA CLI via npx
-
-If you prefer command-line deployment:
-
-```powershell
-# Prepare dashboard files
-New-Item -ItemType Directory -Path dist -Force
-Copy-Item index.html dist/
-Copy-Item unauthorized.html dist/
-Copy-Item staticwebapp.config.json dist/
-
-# Deploy using npx (will show dependency warnings - these are safe to ignore)
-npx -y @azure/static-web-apps-cli deploy ./dist `
-    --deployment-token $SWA_TOKEN `
-    --env production
-```
-
-> **Note**: You may see npm warnings about deprecated packages. These come from the
-> SWA CLI's dependencies and are safe to ignore - they don't affect functionality.
-
-### 8.4 Get Dashboard URL
-
-```powershell
-# Get the Static Web App URL
-$dashboardUrl = az staticwebapp show `
-    --resource-group $RESOURCE_GROUP `
-    --name $STATIC_WEB_APP_NAME `
-    --query "defaultHostname" -o tsv
-
-Write-Host "Dashboard URL: https://$dashboardUrl"
-```
 
 ---
 
 ## Step 9: Configure Email Notifications
 
-The tool uses a Logic App with an Office 365 connector to send email notifications.
-This approach requires no Mail.Send Graph permission on the managed identity.
+### Option A: Use a Shared Mailbox (Recommended)
 
-### 9.1 Configure Logic App with Office 365 Connector
+1. Go to [Microsoft 365 Admin Center](https://admin.microsoft.com)
+2. Create a shared mailbox (e.g., `saml-rotation@yourdomain.com`)
+3. The `Mail.Send` permission allows the managed identity to send as this mailbox
 
-1. Go to [Azure Portal](https://portal.azure.com)
-2. Navigate to your resource group: `$RESOURCE_GROUP`
-3. Find and open the Logic App: `$LOGIC_APP_NAME`
-4. Click **Logic app designer**
+### Option B: Update Function App Settings
 
-### 9.2 Add Office 365 Send Email Action
-
-1. In the designer, you'll see the **When a HTTP request is received** trigger
-2. Click **+ New step**
-3. Search for **Office 365 Outlook**
-4. Select **Send an email (V2)**
-5. Sign in with a user account that will send the emails (e.g., a shared mailbox delegate or service account)
-6. Configure the action:
-   - **To**: Click in the field, then **Add dynamic content** → Select `to`
-   - **Subject**: Click in the field, then **Add dynamic content** → Select `subject`
-   - **Body**: Click in the field, then **Add dynamic content** → Select `body`
-7. Delete the existing **Response** action (we'll add it after the email)
-8. Click **+ New step** → Search for **Response**
-9. Configure the Response:
-   - **Status Code**: `200`
-   - **Body**: `{"status": "sent"}`
-10. Click **Save**
-
-### 9.3 Get Logic App Callback URL
+If you need to change the notification sender email:
 
 ```powershell
-# Get the Logic App HTTP trigger URL
-$LOGIC_APP_URL = az rest --method post `
-    --uri "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Logic/workflows/$LOGIC_APP_NAME/triggers/manual/listCallbackUrl?api-version=2016-10-01" `
-    --query "value" -o tsv
-
-Write-Host "Logic App URL: $LOGIC_APP_URL"
-```
-
-### 9.4 Configure Function App with Logic App URL
-
-```powershell
-# Store the Logic App URL in Function App settings
 az functionapp config appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --settings "LogicAppEmailUrl=$LOGIC_APP_URL"
-
-Write-Host "Function App configured to use Logic App for email notifications"
-```
-
-### 9.5 Test Email Notifications
-
-You can test the Logic App directly:
-
-```powershell
-# Test sending an email
-$testPayload = @{
-    to = "your-email@yourdomain.com"
-    subject = "Test - SAML Certificate Rotation"
-    body = "<html><body><h1>Test Email</h1><p>If you received this, email notifications are working!</p></body></html>"
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri $LOGIC_APP_URL -Method Post -Body $testPayload -ContentType "application/json"
+    --settings "NotificationSenderEmail=your-sender@yourdomain.com"
 ```
 
 ---
@@ -867,14 +759,12 @@ $MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
 az functionapp function list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --query "[].{Name:name}" `
     --output table
 
 # Check application settings
 az functionapp config appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --query "[].{Name:name, Value:value}" `
     --output table
 ```
 
@@ -905,88 +795,6 @@ Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats?code=$FUNCTION_KEY
 # View logs
 az functionapp log tail --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
 ```
-
----
-
-## Cleanup / Teardown
-
-To completely remove the SAML Certificate Rotation Tool, follow these steps.
-
-### Step 1: Delete the Resource Group
-
-This removes all Azure resources (Function App, Storage, Key Vault, Static Web App, etc.):
-
-```powershell
-# Delete the entire resource group and all resources within it
-az group delete --name $RESOURCE_GROUP --yes --no-wait
-
-Write-Host "Resource group deletion initiated (runs in background)"
-```
-
-### Step 2: Delete Entra ID Objects
-
-These objects exist at the tenant level and must be deleted separately:
-
-```powershell
-# Load saved configuration (if available)
-$configPath = "$HOME/SamlCertRotation/infrastructure/access-control-config.json"
-if (Test-Path $configPath) {
-    $config = Get-Content $configPath | ConvertFrom-Json
-    $CLIENT_ID = $config.clientId
-    $ADMIN_GROUP_ID = $config.adminGroupId
-}
-
-# Delete the App Registration (also deletes the Service Principal)
-if ($CLIENT_ID) {
-    az ad app delete --id $CLIENT_ID
-    Write-Host "Deleted App Registration: $CLIENT_ID"
-}
-
-# Delete the Security Group (optional - you may want to keep this)
-if ($ADMIN_GROUP_ID) {
-    az ad group delete --group $ADMIN_GROUP_ID
-    Write-Host "Deleted Security Group: $ADMIN_GROUP_ID"
-}
-```
-
-### Step 3: Delete Custom Security Attributes (Optional)
-
-Custom Security Attributes can only be deactivated, not deleted, via the portal:
-
-1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
-2. Navigate to **Protection** → **Custom security attributes**
-3. Select the `SamlCertRotation` attribute set
-4. Select the `AutoRotate` attribute → **Deactivate**
-
-> **Note**: Deactivating the attribute won't affect your SAML applications, but the attribute
-> values will no longer be readable until reactivated.
-
-### Step 4: Remove Graph API Role Assignments (Optional)
-
-If you want to clean up the managed identity's Graph permissions (the identity is deleted with
-the resource group, but the role assignments may persist briefly):
-
-```powershell
-# These are automatically cleaned up when the managed identity is deleted,
-# but you can manually verify by checking the Enterprise Applications in Entra ID
-```
-
-### What Gets Deleted
-
-| Resource | Location | Deleted By |
-|----------|----------|------------|
-| Function App | Resource Group | `az group delete` |
-| Storage Account | Resource Group | `az group delete` |
-| Key Vault | Resource Group | `az group delete` (soft-delete for 90 days) |
-| Static Web App | Resource Group | `az group delete` |
-| Logic App | Resource Group | `az group delete` |
-| Log Analytics Workspace | Resource Group | `az group delete` |
-| App Insights | Resource Group | `az group delete` |
-| Managed Identity | Resource Group | `az group delete` |
-| App Registration | Entra ID (Tenant) | `az ad app delete` |
-| Service Principal | Entra ID (Tenant) | Deleted with App Registration |
-| Security Group | Entra ID (Tenant) | `az ad group delete` |
-| Custom Security Attributes | Entra ID (Tenant) | Manual deactivation only |
 
 ---
 
