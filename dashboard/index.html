@@ -53,6 +53,66 @@
             font-size: 14px;
         }
 
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left h1, .header-left p {
+            margin: 0;
+        }
+
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: #f8f8f8;
+            border-radius: 6px;
+            align-items: center;
+        }
+
+        .filter-bar label {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .filter-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .filter-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .filter-checkbox input {
+            cursor: pointer;
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -306,8 +366,13 @@
 <body>
     <header>
         <div class="container">
-            <h1>🔐 SAML Certificate Rotation Dashboard</h1>
-            <p>Automated certificate lifecycle management for Microsoft Entra ID</p>
+            <div class="header-content">
+                <div class="header-left">
+                    <h1>SAML Certificate Rotation Dashboard</h1>
+                    <p>Automated certificate lifecycle management for Microsoft Entra ID</p>
+                </div>
+                <button class="logout-btn" onclick="logout()">Sign Out</button>
+            </div>
         </div>
     </header>
 
@@ -356,6 +421,31 @@
                         <button class="btn btn-secondary" onclick="loadData()">Refresh</button>
                     </div>
                 </div>
+                <div class="filter-bar">
+                    <label>Filter:</label>
+                    <div class="filter-group">
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="filter-on" checked onchange="applyFilters()">
+                            <span class="status-badge status-on">Auto-Rotate ON</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="filter-off" checked onchange="applyFilters()">
+                            <span class="status-badge status-off">Auto-Rotate OFF</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="filter-null" checked onchange="applyFilters()">
+                            <span class="status-badge status-null">Not Configured</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="filter-expiring" checked onchange="applyFilters()">
+                            <span class="expiry-badge expiry-warning">Expiring ≤30 Days</span>
+                        </label>
+                        <label class="filter-checkbox">
+                            <input type="checkbox" id="filter-expired" checked onchange="applyFilters()">
+                            <span class="expiry-badge expiry-expired">Expired</span>
+                        </label>
+                    </div>
+                </div>
                 <div id="apps-table-container">
                     <div class="loading">Loading applications...</div>
                 </div>
@@ -401,6 +491,14 @@
     <script>
         // Configuration - Update this with your Function App URL
         const API_BASE_URL = ''; // Leave empty for same-origin, or set to your Function App URL
+
+        // Store apps data for filtering
+        let allApps = [];
+
+        // Logout function
+        function logout() {
+            window.location.href = '/.auth/logout';
+        }
 
         // Tab navigation
         document.querySelectorAll('.tab').forEach(tab => {
@@ -462,45 +560,96 @@
                 document.getElementById('last-updated').textContent = 
                     `Last updated: ${new Date(stats.generatedAt).toLocaleString()}`;
 
-                // Build apps table
-                const tableHtml = `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Application</th>
-                                <th>Auto-Rotate</th>
-                                <th>Certificate Expiry</th>
-                                <th>Days Remaining</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${stats.apps.map(app => `
-                                <tr>
-                                    <td>${app.displayName}</td>
-                                    <td>
-                                        <span class="status-badge status-${(app.autoRotateStatus || 'null').toLowerCase()}">
-                                            ${app.autoRotateStatus || 'Not Set'}
-                                        </span>
-                                    </td>
-                                    <td>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
-                                    <td>${app.daysUntilExpiry ?? 'N/A'}</td>
-                                    <td>
-                                        <span class="expiry-badge expiry-${app.expiryCategory.toLowerCase()}">
-                                            ${app.expiryCategory}
-                                        </span>
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-                document.getElementById('apps-table-container').innerHTML = tableHtml;
+                // Store apps for filtering
+                allApps = stats.apps;
+                applyFilters();
 
             } catch (error) {
                 document.getElementById('apps-table-container').innerHTML = 
                     `<div class="error">Failed to load data: ${error.message}</div>`;
             }
+        }
+
+        // Apply filters and render apps table
+        function applyFilters() {
+            const showOn = document.getElementById('filter-on').checked;
+            const showOff = document.getElementById('filter-off').checked;
+            const showNull = document.getElementById('filter-null').checked;
+            const showExpiring = document.getElementById('filter-expiring').checked;
+            const showExpired = document.getElementById('filter-expired').checked;
+
+            const filteredApps = allApps.filter(app => {
+                const status = (app.autoRotateStatus || '').toLowerCase();
+                const expiry = app.expiryCategory.toLowerCase();
+                
+                // Check auto-rotate status filters
+                let statusMatch = false;
+                if (showOn && status === 'on') statusMatch = true;
+                if (showOff && status === 'off') statusMatch = true;
+                if (showNull && (!app.autoRotateStatus || status === '')) statusMatch = true;
+                
+                // If none of the status filters are checked, show all statuses
+                if (!showOn && !showOff && !showNull) statusMatch = true;
+                
+                // Check expiry filters (these are additive - show if matches OR other criteria)
+                let expiryMatch = true;
+                if (showExpiring || showExpired) {
+                    // If expiry filters are active, include items that match expiry OR status
+                    if (showExpiring && (expiry === 'warning' || app.daysUntilExpiry <= 30)) {
+                        return true; // Always show expiring items when filter is on
+                    }
+                    if (showExpired && expiry === 'expired') {
+                        return true; // Always show expired items when filter is on
+                    }
+                }
+                
+                return statusMatch;
+            });
+
+            renderApps(filteredApps);
+        }
+
+        // Render apps table
+        function renderApps(apps) {
+            if (apps.length === 0) {
+                document.getElementById('apps-table-container').innerHTML = 
+                    '<div style="text-align:center;padding:40px;color:#666;">No applications match the selected filters.</div>';
+                return;
+            }
+
+            const tableHtml = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Application</th>
+                            <th>Auto-Rotate</th>
+                            <th>Certificate Expiry</th>
+                            <th>Days Remaining</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${apps.map(app => `
+                            <tr>
+                                <td>${app.displayName}</td>
+                                <td>
+                                    <span class="status-badge status-${(app.autoRotateStatus || 'null').toLowerCase()}">
+                                        ${app.autoRotateStatus || 'Not Set'}
+                                    </span>
+                                </td>
+                                <td>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
+                                <td>${app.daysUntilExpiry ?? 'N/A'}</td>
+                                <td>
+                                    <span class="expiry-badge expiry-${app.expiryCategory.toLowerCase()}">
+                                        ${app.expiryCategory}
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            document.getElementById('apps-table-container').innerHTML = tableHtml;
         }
 
         // Load policy settings
