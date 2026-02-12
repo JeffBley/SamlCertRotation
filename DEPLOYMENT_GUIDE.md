@@ -1,267 +1,236 @@
-# SAML Certificate Rotation Tool - Deployment Guide
+# SAML Certificate Rotation Tool - Azure Cloud Shell Deployment Guide (PowerShell)
 
-This guide walks you through deploying the SAML Certificate Rotation Tool in your Azure environment.
+This guide walks you through deploying the SAML Certificate Rotation Tool using **Azure Cloud Shell** with **PowerShell**.
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Architecture Overview](#architecture-overview)
-3. [Step 1: Prepare Your Environment](#step-1-prepare-your-environment)
-4. [Step 2: Create Custom Security Attributes](#step-2-create-custom-security-attributes)
-5. [Step 3: Deploy Azure Infrastructure](#step-3-deploy-azure-infrastructure)
-6. [Step 4: Grant Microsoft Graph Permissions](#step-4-grant-microsoft-graph-permissions)
-7. [Step 5: Deploy the Function App Code](#step-5-deploy-the-function-app-code)
-8. [Step 6: Deploy the Dashboard](#step-6-deploy-the-dashboard)
-9. [Step 7: Configure Email Notifications](#step-7-configure-email-notifications)
-10. [Step 8: Tag Applications for Auto-Rotation](#step-8-tag-applications-for-auto-rotation)
-11. [Step 9: Verify the Deployment](#step-9-verify-the-deployment)
-12. [Troubleshooting](#troubleshooting)
-13. [Security Considerations](#security-considerations)
+2. [Step 1: Upload Project to Cloud Shell](#step-1-upload-project-to-cloud-shell)
+3. [Step 2: Prepare Your Environment](#step-2-prepare-your-environment)
+4. [Step 3: Create Custom Security Attributes](#step-3-create-custom-security-attributes)
+5. [Step 4: Deploy Azure Infrastructure](#step-4-deploy-azure-infrastructure)
+6. [Step 5: Grant Microsoft Graph Permissions](#step-5-grant-microsoft-graph-permissions)
+7. [Step 6: Deploy the Function App Code](#step-6-deploy-the-function-app-code)
+8. [Step 7: Deploy the Dashboard](#step-7-deploy-the-dashboard)
+9. [Step 8: Configure Dashboard Access Control](#step-8-configure-dashboard-access-control)
+10. [Step 9: Configure Email Notifications](#step-9-configure-email-notifications)
+11. [Step 10: Tag Applications for Auto-Rotation](#step-10-tag-applications-for-auto-rotation)
+12. [Step 11: Verify the Deployment](#step-11-verify-the-deployment)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Prerequisites
 
-Before you begin, ensure you have:
-
 - [ ] **Azure Subscription** with Owner or Contributor role
 - [ ] **Microsoft Entra ID** with one of:
   - Global Administrator role, OR
   - Application Administrator + Attribute Definition Administrator roles
-- [ ] **Azure CLI** v2.50+ installed ([Install Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli))
-- [ ] **.NET 8 SDK** installed ([Download .NET](https://dotnet.microsoft.com/download))
-- [ ] **Azure Functions Core Tools** v4.x ([Install](https://docs.microsoft.com/azure/azure-functions/functions-run-local))
-- [ ] **Node.js** 18+ (for dashboard) ([Download](https://nodejs.org/))
+- [ ] Access to **Azure Cloud Shell** (https://shell.azure.com) - **Select PowerShell mode**
+
+> **Note**: Azure Cloud Shell already has Azure CLI, .NET SDK, PowerShell, and Node.js pre-installed.
 
 ---
 
-## Architecture Overview
+## Step 1: Upload Project to Cloud Shell
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Azure Subscription                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────────┐     ┌──────────────────────────────────┐  │
-│  │  Azure Functions │     │      Microsoft Entra ID          │  │
-│  │  (Timer Trigger) │────▶│  - Enterprise Apps (SAML)        │  │
-│  │                  │     │  - Custom Security Attributes    │  │
-│  │  • Check certs   │     │  - Service Principals            │  │
-│  │  • Create new    │     └──────────────────────────────────┘  │
-│  │  • Activate cert │                                           │
-│  └────────┬─────────┘                                           │
-│           │                                                      │
-│           │ Managed Identity                                     │
-│           ▼                                                      │
-│  ┌──────────────────┐     ┌──────────────────────────────────┐  │
-│  │  Table Storage   │     │    Static Web App (Dashboard)    │  │
-│  │  - Policies      │     │    - View stats                  │  │
-│  │  - Audit Logs    │◀───▶│    - Configure policies          │  │
-│  └──────────────────┘     └──────────────────────────────────┘  │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Step 1: Prepare Your Environment
-
-### 1.1 Login to Azure
+### Option A: Clone from Git Repository (Recommended)
 
 ```powershell
-# Login to Azure
-az login
+# Clone the repository
+git clone https://github.com/JeffBley/SamlCertRotation.git
+Set-Location SamlCertRotation
+```
 
-# Set your subscription
-az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
+### Option B: Upload ZIP File
 
-# Verify you're in the correct subscription
+1. On your local machine, zip the entire project folder
+2. In Cloud Shell, click the **Upload/Download files** button (up/down arrow icon)
+3. Select **Upload** and choose your zip file
+4. Extract in Cloud Shell:
+
+```powershell
+# Create project directory
+New-Item -ItemType Directory -Path "$HOME/SamlCertRotation" -Force
+Set-Location "$HOME/SamlCertRotation"
+
+# Unzip (file will be in your home directory after upload)
+Expand-Archive -Path "$HOME/SamlCertRotation.zip" -DestinationPath . -Force
+```
+
+### Option C: Upload Individual Files via Cloud Shell Editor
+
+1. In Cloud Shell, click the **Editor** button (curly braces icon `{}`)
+2. Create the folder structure manually
+3. Copy/paste file contents from your local machine
+
+### Verify Files Are Present
+
+```powershell
+# Navigate to project root and verify structure
+Set-Location "$HOME/SamlCertRotation"
+Get-ChildItem
+
+# You should see:
+# - infrastructure/
+# - src/
+# - dashboard/
+# - DEPLOYMENT_GUIDE.md
+```
+
+---
+
+## Step 2: Prepare Your Environment
+
+### 2.1 Verify Azure CLI Login
+
+Cloud Shell is automatically authenticated. Verify your subscription:
+
+```powershell
+# Check current subscription
 az account show --query "{Name:name, SubscriptionId:id}" -o table
+
+# If you need to change subscription:
+az account list --output table
+az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
 ```
 
-### 1.2 Create a Resource Group
+### 2.2 Set Environment Variables
 
 ```powershell
-# Set variables
-$resourceGroupName = "rg-saml-cert-rotation"
-$location = "eastus"
+# Set variables (modify as needed)
+$RESOURCE_GROUP = "rg-saml-cert-rotation"
+$LOCATION = "eastus"
 
 # Create resource group
-az group create --name $resourceGroupName --location $location
+az group create --name $RESOURCE_GROUP --location $LOCATION
 ```
 
 ---
 
-## Step 2: Create Custom Security Attributes
+## Step 3: Create Custom Security Attributes
 
 Custom Security Attributes allow you to tag which SAML apps should be auto-rotated.
 
-### 2.1 Navigate to Custom Security Attributes
+### Via Microsoft Entra Admin Center (Recommended)
 
-1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
+1. Open a new browser tab and go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Protection** → **Custom security attributes**
-
-### 2.2 Create Attribute Set
-
-1. Click **+ Add attribute set**
-2. Enter:
+3. Click **+ Add attribute set**:
    - **Name**: `SamlCertRotation`
    - **Description**: `Attributes for SAML certificate rotation automation`
    - **Maximum number of attributes**: 10
-3. Click **Add**
-
-### 2.3 Create Attribute Definition
-
-1. Select the `SamlCertRotation` attribute set
-2. Click **+ Add attribute**
-3. Enter:
+4. Click **Add**
+5. Select the `SamlCertRotation` attribute set
+6. Click **+ Add attribute**:
    - **Attribute name**: `AutoRotate`
    - **Description**: `Enable automatic SAML certificate rotation`
    - **Data type**: String
    - **Allow only predefined values**: Yes
-   - **Predefined values**:
-     - `on` - Enable automatic rotation
-     - `off` - Disable automatic rotation
-4. Click **Save**
-
-### 2.4 Alternative: Create via PowerShell
-
-```powershell
-# Install Microsoft Graph PowerShell module if not already installed
-Install-Module Microsoft.Graph -Scope CurrentUser
-
-# Connect with required scopes
-Connect-MgGraph -Scopes "CustomSecAttributeDefinition.ReadWrite.All"
-
-# Create attribute set
-$attributeSet = @{
-    id = "SamlCertRotation"
-    description = "Attributes for SAML certificate rotation automation"
-    maxAttributesPerSet = 10
-}
-New-MgDirectoryAttributeSet -BodyParameter $attributeSet
-
-# Create attribute definition
-$attributeDefinition = @{
-    attributeSet = "SamlCertRotation"
-    name = "AutoRotate"
-    description = "Enable automatic SAML certificate rotation"
-    type = "String"
-    isSearchable = $true
-    isCollection = $false
-    usePreDefinedValuesOnly = $true
-    status = "Available"
-    allowedValues = @(
-        @{ id = "on"; isActive = $true }
-        @{ id = "off"; isActive = $true }
-    )
-}
-New-MgDirectoryCustomSecurityAttributeDefinition -BodyParameter $attributeDefinition
-```
+   - **Predefined values**: `on`, `off`
+7. Click **Save**
 
 ---
 
-## Step 3: Deploy Azure Infrastructure
+## Step 4: Deploy Azure Infrastructure
 
-### 3.1 Update Parameters File
+### 4.1 Update Parameters File
 
-Edit `infrastructure/main.parameters.json`:
-
-```json
-{
-  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
-  "contentVersion": "1.0.0.0",
-  "parameters": {
-    "baseName": {
-      "value": "samlcert"
-    },
-    "location": {
-      "value": "eastus"
-    },
-    "notificationSenderEmail": {
-      "value": "saml-noreply@yourdomain.com"
-    },
-    "adminNotificationEmails": {
-      "value": "admin1@yourdomain.com;admin2@yourdomain.com"
-    },
-    "customSecurityAttributeSet": {
-      "value": "SamlCertRotation"
-    },
-    "customSecurityAttributeName": {
-      "value": "AutoRotate"
-    },
-    "defaultCreateCertDays": {
-      "value": 60
-    },
-    "defaultActivateCertDays": {
-      "value": 30
-    }
-  }
-}
-```
-
-### 3.2 Deploy Infrastructure
+Edit the parameters file with your values:
 
 ```powershell
-# Navigate to infrastructure folder
-cd infrastructure
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 
-# Deploy with Bicep
+# Open in Cloud Shell editor
+code main.parameters.json
+```
+
+Update these values:
+- `notificationSenderEmail`: Your notification sender email
+- `adminNotificationEmails`: Admin emails (semicolon-separated)
+
+Save the file (Ctrl+S) and close the editor.
+
+### 4.2 Deploy Infrastructure with Bicep
+
+```powershell
+# Make sure you're in the infrastructure directory
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+
+# Deploy the infrastructure
 az deployment group create `
-    --resource-group $resourceGroupName `
+    --resource-group $RESOURCE_GROUP `
     --template-file main.bicep `
     --parameters main.parameters.json `
     --query "properties.outputs" `
-    -o json > deployment-outputs.json
+    -o json | Out-File -FilePath deployment-outputs.json -Encoding utf8
 
-# View outputs
+# View the outputs
 Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 ```
 
-### 3.3 Save Output Values
-
-After deployment, save these values for later steps:
+### 4.3 Save Output Values as Variables
 
 ```powershell
-# Parse outputs
+# Parse outputs and set as variables
 $outputs = Get-Content deployment-outputs.json | ConvertFrom-Json
 
-$managedIdentityPrincipalId = $outputs.managedIdentityPrincipalId.value
-$managedIdentityClientId = $outputs.managedIdentityClientId.value
-$functionAppName = $outputs.functionAppName.value
-$functionAppUrl = $outputs.functionAppUrl.value
-$staticWebAppName = $outputs.staticWebAppName.value
-$storageAccountName = $outputs.storageAccountName.value
+$MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
+$MANAGED_IDENTITY_CLIENT_ID = $outputs.managedIdentityClientId.value
+$MANAGED_IDENTITY_NAME = $outputs.managedIdentityName.value
+$FUNCTION_APP_NAME = $outputs.functionAppName.value
+$FUNCTION_APP_URL = $outputs.functionAppUrl.value
+$STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
+$STORAGE_ACCOUNT_NAME = $outputs.storageAccountName.value
 
-Write-Host "Managed Identity Principal ID: $managedIdentityPrincipalId"
-Write-Host "Function App: $functionAppName"
-Write-Host "Function App URL: $functionAppUrl"
-Write-Host "Static Web App: $staticWebAppName"
+# Verify variables are set
+Write-Host "Managed Identity Principal ID: $MANAGED_IDENTITY_PRINCIPAL_ID"
+Write-Host "Managed Identity Name: $MANAGED_IDENTITY_NAME"
+Write-Host "Function App: $FUNCTION_APP_NAME"
+Write-Host "Function App URL: $FUNCTION_APP_URL"
+Write-Host "Static Web App: $STATIC_WEB_APP_NAME"
 ```
+
+> **Important**: Save these values! If your Cloud Shell session times out, you'll need to re-run the variable assignment commands or retrieve values from the Azure Portal.
 
 ---
 
-## Step 4: Grant Microsoft Graph Permissions
+## Step 5: Grant Microsoft Graph Permissions
 
-The managed identity needs Microsoft Graph API permissions to manage SAML certificates.
+The managed identity needs Microsoft Graph API permissions.
 
-### 4.1 Grant Permissions via PowerShell
+### 5.1 Grant Permissions via Azure Portal (Easiest)
+
+1. Go to [Azure Portal](https://portal.azure.com)
+2. Search for **Enterprise applications**
+3. Change the **Application type** filter to **Managed Identities**
+4. Search for your managed identity name (the value from `$MANAGED_IDENTITY_NAME`)
+5. Click on the managed identity
+6. Go to **Permissions** in the left menu
+7. Click **Grant admin consent for [your tenant]** if available
+
+If permissions aren't listed, use PowerShell below:
+
+### 5.2 Grant Permissions via PowerShell
 
 ```powershell
-# Connect to Microsoft Graph
-Connect-MgGraph -Scopes "Application.Read.All", "AppRoleAssignment.ReadWrite.All"
+# Install Microsoft Graph module if needed
+Install-Module Microsoft.Graph -Scope CurrentUser -Force
+
+# Connect to Microsoft Graph (will open browser for auth)
+Connect-MgGraph -Scopes "Application.Read.All","AppRoleAssignment.ReadWrite.All"
 
 # Get the managed identity service principal
-$managedIdentitySP = Get-MgServicePrincipal -Filter "id eq '$managedIdentityPrincipalId'"
+$managedIdentitySP = Get-MgServicePrincipal -ServicePrincipalId $MANAGED_IDENTITY_PRINCIPAL_ID
 
 # Get Microsoft Graph service principal
 $graphSP = Get-MgServicePrincipal -Filter "displayName eq 'Microsoft Graph'" | Select-Object -First 1
 
 # Define required permissions
 $requiredPermissions = @(
-    "Application.ReadWrite.All",           # Read/write all applications
-    "CustomSecAttributeAssignment.Read.All", # Read custom security attributes
-    "Mail.Send"                            # Send email notifications
+    "Application.ReadWrite.All",
+    "CustomSecAttributeAssignment.Read.All",
+    "Mail.Send"
 )
 
 # Grant each permission
@@ -280,47 +249,33 @@ foreach ($permissionName in $requiredPermissions) {
             Write-Host "Granted: $permissionName" -ForegroundColor Green
         }
         catch {
-            Write-Host "Permission may already exist: $permissionName" -ForegroundColor Yellow
+            Write-Host "Permission may already exist or error: $permissionName" -ForegroundColor Yellow
         }
-    }
-    else {
-        Write-Host "Permission not found: $permissionName" -ForegroundColor Red
     }
 }
 ```
 
-### 4.2 Verify Permissions
-
-```powershell
-# View assigned permissions
-Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $managedIdentitySP.Id | 
-    Select-Object AppRoleId, ResourceDisplayName | 
-    Format-Table
-```
-
-### 4.3 Alternative: Grant via Azure Portal
+### 5.3 Verify Permissions in Portal
 
 1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Applications** → **Enterprise applications**
-3. Search for your managed identity name (e.g., `samlcert-identity`)
-4. Go to **Permissions** → **Grant admin consent**
-5. For each permission, use **Add a permission** → **Microsoft Graph** → **Application permissions**:
+3. Filter by **Managed Identities** and find your identity
+4. Go to **Permissions** and verify these are listed:
    - `Application.ReadWrite.All`
    - `CustomSecAttributeAssignment.Read.All`
    - `Mail.Send`
-6. Click **Grant admin consent for [tenant]**
 
 ---
 
-## Step 5: Deploy the Function App Code
+## Step 6: Deploy the Function App Code
 
-### 5.1 Build the Project
+### 6.1 Build the Project
 
 ```powershell
 # Navigate to project root
-cd ..
+Set-Location "$HOME/SamlCertRotation"
 
-# Restore packages and build
+# Restore and build
 dotnet restore src/SamlCertRotation/SamlCertRotation.csproj
 dotnet build src/SamlCertRotation/SamlCertRotation.csproj --configuration Release
 
@@ -330,7 +285,7 @@ dotnet publish src/SamlCertRotation/SamlCertRotation.csproj `
     --output ./publish
 ```
 
-### 5.2 Deploy to Azure
+### 6.2 Create Deployment Package
 
 ```powershell
 # IMPORTANT: Copy functions.metadata into .azurefunctions folder
@@ -343,74 +298,83 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
     "$PWD/publish",
     "$PWD/function-app.zip"
 )
+```
 
-# Deploy to Function App
+### 6.3 Deploy to Azure Function App
+
+```powershell
+# Deploy the zip package
 az functionapp deployment source config-zip `
-    --resource-group $resourceGroupName `
-    --name $functionAppName `
-    --src ./function-app.zip
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --src function-app.zip
 
-# Verify deployment
+# Verify deployment - list functions
 az functionapp function list `
-    --resource-group $resourceGroupName `
-    --name $functionAppName `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
     --output table
 ```
 
-### 5.3 Configure Function App Settings (if not set by Bicep)
-
-```powershell
-az functionapp config appsettings set `
-    --resource-group $resourceGroupName `
-    --name $functionAppName `
-    --settings `
-        "AZURE_CLIENT_ID=$managedIdentityClientId" `
-        "NotificationSenderEmail=saml-noreply@yourdomain.com" `
-        "AdminNotificationEmails=admin@yourdomain.com"
-```
+You should see `CertificateChecker` and several `Dashboard*` functions listed.
 
 ---
 
-## Step 6: Deploy the Dashboard
+## Step 7: Deploy the Dashboard
 
-### 6.1 Get Static Web App Deployment Token
+### 7.1 Get Static Web App Deployment Token
 
 ```powershell
 # Get deployment token
-$deploymentToken = az staticwebapp secrets list `
-    --resource-group $resourceGroupName `
-    --name $staticWebAppName `
+$SWA_TOKEN = az staticwebapp secrets list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
     --query "properties.apiKey" -o tsv
+
+Write-Host "Deployment token retrieved"
 ```
 
-### 6.2 Update Dashboard Configuration
+### 7.2 Update Dashboard Configuration
 
-Edit `dashboard/staticwebapp.config.json` and replace `<YOUR_TENANT_ID>` with your actual tenant ID.
+```powershell
+Set-Location "$HOME/SamlCertRotation/dashboard"
 
-Also update the API endpoint in `dashboard/index.html`:
-```javascript
-const API_BASE_URL = 'https://your-function-app.azurewebsites.net';
+# Get your tenant ID
+$TENANT_ID = az account show --query tenantId -o tsv
+
+# Update the staticwebapp.config.json with your tenant ID
+$configContent = Get-Content staticwebapp.config.json -Raw
+$configContent = $configContent -replace '<YOUR_TENANT_ID>', $TENANT_ID
+Set-Content -Path staticwebapp.config.json -Value $configContent
+
+# Update the API endpoint in index.html
+$htmlContent = Get-Content index.html -Raw
+$htmlContent = $htmlContent -replace "const API_BASE_URL = ''", "const API_BASE_URL = '$FUNCTION_APP_URL'"
+Set-Content -Path index.html -Value $htmlContent
 ```
 
-### 6.3 Deploy Dashboard
+### 7.3 Deploy Dashboard
 
 The simplest method is to deploy via the Azure Portal:
 
 #### Option A: Azure Portal (Recommended)
 
 1. Open [Azure Portal](https://portal.azure.com)
-2. Navigate to your Static Web App resource
-3. Go to **Deployment Center**
-4. Connect to your GitHub repository, or use manual deployment
+2. Navigate to your Static Web App: `$STATIC_WEB_APP_NAME`
+3. Go to **Overview** → Click the **URL** to open the app
+4. Go to **Settings** → **Configuration** to verify settings
+5. For manual upload, go to the **Deployment Center**
+
+**Note**: For Static Web Apps with a simple HTML file, you can also use GitHub Actions:
+- Push your dashboard folder to a GitHub repo
+- Connect the Static Web App to the repo via Deployment Center
 
 #### Option B: SWA CLI via npx
 
 If you prefer command-line deployment:
 
 ```powershell
-cd dashboard
-
-# Prepare dist folder
+# Prepare dashboard files
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item unauthorized.html dist/
@@ -418,19 +382,32 @@ Copy-Item staticwebapp.config.json dist/
 
 # Deploy using npx (will show dependency warnings - these are safe to ignore)
 npx -y @azure/static-web-apps-cli deploy ./dist `
-    --deployment-token $deploymentToken `
+    --deployment-token $SWA_TOKEN `
     --env production
 ```
 
 > **Note**: You may see npm warnings about deprecated packages. These come from the
 > SWA CLI's dependencies and are safe to ignore - they don't affect functionality.
 
-### 6.4 Configure Static Web App Authentication with App Registration
+### 7.4 Get Dashboard URL
 
-The dashboard uses Azure AD group-based access control. Only users in a specific security group
-can access the dashboard.
+```powershell
+# Get the Static Web App URL
+$dashboardUrl = az staticwebapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "defaultHostname" -o tsv
 
-#### Step A: Create an Azure AD Security Group
+Write-Host "Dashboard URL: https://$dashboardUrl"
+```
+
+---
+
+## Step 8: Configure Dashboard Access Control
+
+The dashboard uses Azure AD group-based access control. Only users in a specific security group can access the dashboard.
+
+### 8.1 Create an Azure AD Security Group
 
 1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Groups** → **All groups** → **New group**
@@ -439,54 +416,62 @@ can access the dashboard.
    - **Group name**: `SAML Certificate Rotation Admins`
    - **Description**: `Users who can access the SAML Certificate Rotation Dashboard`
    - **Members**: Add users who should have dashboard access
-4. Click **Create** and note the **Object ID** (this is your admin group ID)
-
-#### Step B: Create an App Registration
+4. Click **Create**
 
 ```powershell
-# Create app registration for SWA authentication
-$appName = "SAML Certificate Rotation Dashboard"
-$swaHostname = (az staticwebapp show --resource-group $resourceGroupName --name $staticWebAppName --query "defaultHostname" -o tsv)
-
-$app = az ad app create `
-    --display-name $appName `
-    --sign-in-audience AzureADMyOrg `
-    --web-redirect-uris "https://$swaHostname/.auth/login/aad/callback" `
-    --enable-id-token-issuance true `
-    --query "{appId:appId, id:id}" -o json | ConvertFrom-Json
-
-$clientId = $app.appId
-$appObjectId = $app.id
-
-Write-Host "Client ID: $clientId"
-Write-Host "App Object ID: $appObjectId"
+# Get the group Object ID
+$ADMIN_GROUP_ID = az ad group show --group "SAML Certificate Rotation Admins" --query "id" -o tsv
+Write-Host "Admin Group ID: $ADMIN_GROUP_ID"
 ```
 
-#### Step C: Create Client Secret
+### 8.2 Create an App Registration
+
+```powershell
+# Get Static Web App hostname
+$SWA_HOSTNAME = az staticwebapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "defaultHostname" -o tsv
+
+# Create app registration for SWA authentication
+$APP_NAME = "SAML Certificate Rotation Dashboard"
+
+$APP_JSON = az ad app create `
+    --display-name $APP_NAME `
+    --sign-in-audience AzureADMyOrg `
+    --web-redirect-uris "https://$SWA_HOSTNAME/.auth/login/aad/callback" `
+    --enable-id-token-issuance true `
+    --query "{appId:appId, id:id}" -o json
+
+$APP = $APP_JSON | ConvertFrom-Json
+$CLIENT_ID = $APP.appId
+$APP_OBJECT_ID = $APP.id
+
+Write-Host "Client ID: $CLIENT_ID"
+Write-Host "App Object ID: $APP_OBJECT_ID"
+```
+
+### 8.3 Create Client Secret
 
 ```powershell
 # Create client secret (valid for 2 years)
-$secret = az ad app credential reset `
-    --id $clientId `
+$CLIENT_SECRET = az ad app credential reset `
+    --id $CLIENT_ID `
     --display-name "SWA Auth Secret" `
     --years 2 `
     --query "password" -o tsv
 
-Write-Host "Client Secret: $secret"
+Write-Host "Client Secret: $CLIENT_SECRET"
 Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!"
 ```
 
-#### Step D: Configure Group Claims
+### 8.4 Configure Group Claims
 
 ```powershell
 # Configure the app to emit group claims in tokens
-# This requires updating the app manifest
+az ad app update --id $CLIENT_ID --set groupMembershipClaims="SecurityGroup"
 
-# Get current manifest
-az ad app show --id $clientId --query "groupMembershipClaims" -o tsv
-
-# Update to include security groups
-az ad app update --id $clientId --set groupMembershipClaims="SecurityGroup"
+Write-Host "Group claims configured"
 ```
 
 Alternatively, configure via Azure Portal:
@@ -496,114 +481,116 @@ Alternatively, configure via Azure Portal:
 4. Under **ID** and **Access** tokens, check **Group ID**
 5. Click **Add**
 
-#### Step E: Create Service Principal (Enterprise App)
+### 8.5 Create Service Principal (Enterprise App)
 
 ```powershell
 # Create service principal for the app
-az ad sp create --id $clientId
+az ad sp create --id $CLIENT_ID
+
+Write-Host "Service principal created"
 ```
 
-#### Step F: Configure Static Web App Settings
+### 8.6 Configure Static Web App and Function App Settings
 
 ```powershell
 # Get your tenant ID
-$tenantId = az account show --query "tenantId" -o tsv
-
-# Get your admin group ID (replace with your group name)
-$adminGroupId = az ad group show --group "SAML Certificate Rotation Admins" --query "id" -o tsv
+$TENANT_ID = az account show --query "tenantId" -o tsv
 
 # Configure SWA with the app registration credentials
 az staticwebapp appsettings set `
-    --resource-group $resourceGroupName `
-    --name $staticWebAppName `
-    --setting-names "AAD_CLIENT_ID=$clientId" "AAD_CLIENT_SECRET=$secret"
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=$CLIENT_SECRET"
 
 # Configure the Function App with the admin group ID
 az functionapp config appsettings set `
-    --resource-group $resourceGroupName `
-    --name $functionAppName `
-    --settings "SWA_ADMIN_GROUP_ID=$adminGroupId"
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --settings "SWA_ADMIN_GROUP_ID=$ADMIN_GROUP_ID"
+
+Write-Host "App settings configured"
 ```
 
-#### Step G: Update staticwebapp.config.json
+### 8.7 Link Function App to Static Web App
 
-Update `dashboard/staticwebapp.config.json` with your tenant ID:
-
-```powershell
-# Replace placeholder with actual tenant ID
-$configPath = "dashboard/staticwebapp.config.json"
-$config = Get-Content $configPath -Raw
-$config = $config -replace "<YOUR_TENANT_ID>", $tenantId
-Set-Content $configPath $config
-```
-
-#### Step H: Link Function App to Static Web App (for roles API)
+The Function App provides the `/api/GetRoles` endpoint that assigns roles based on group membership.
 
 ```powershell
 # Get the Function App resource ID
-$functionAppId = az functionapp show `
-    --resource-group $resourceGroupName `
-    --name $functionAppName `
+$FUNCTION_APP_ID = az functionapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
     --query "id" -o tsv
+
+# Get the location
+$LOCATION = az staticwebapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "location" -o tsv
 
 # Link the Function App as the API backend
 az staticwebapp backends link `
-    --resource-group $resourceGroupName `
-    --name $staticWebAppName `
-    --backend-resource-id $functionAppId `
-    --backend-region $location
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --backend-resource-id $FUNCTION_APP_ID `
+    --backend-region $LOCATION
+
+Write-Host "Function App linked as SWA backend"
 ```
 
-#### Summary of IDs Needed
+### 8.8 Save Access Control Configuration
 
-| Setting | Where to Configure | Value |
-|---------|-------------------|-------|
+```powershell
+# Save configuration for reference
+$accessControlConfig = @{
+    clientId = $CLIENT_ID
+    adminGroupId = $ADMIN_GROUP_ID
+    tenantId = $TENANT_ID
+    swaHostname = $SWA_HOSTNAME
+} | ConvertTo-Json
+
+Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.json" -Value $accessControlConfig
+
+Write-Host "Access control configuration saved to access-control-config.json"
+```
+
+### Summary of Access Control Settings
+
+| Setting | Location | Value |
+|---------|----------|-------|
 | `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
 | `AAD_CLIENT_SECRET` | SWA App Settings | App Registration Secret |
 | `SWA_ADMIN_GROUP_ID` | Function App Settings | Security Group Object ID |
 | Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
 
+> **Note**: Only users who are members of the "SAML Certificate Rotation Admins" security group will be able to access the dashboard. Other authenticated users will see an "Access Denied" page.
+
 ---
 
-## Step 7: Configure Email Notifications
+## Step 9: Configure Email Notifications
 
-### 7.1 Option A: Use a Shared Mailbox
+### Option A: Use a Shared Mailbox (Recommended)
 
-1. Create a shared mailbox in Microsoft 365 Admin Center (e.g., `saml-rotation@yourdomain.com`)
-2. Grant the managed identity **Send As** permission:
+1. Go to [Microsoft 365 Admin Center](https://admin.microsoft.com)
+2. Create a shared mailbox (e.g., `saml-rotation@yourdomain.com`)
+3. The `Mail.Send` permission allows the managed identity to send as this mailbox
 
-```powershell
-# Connect to Exchange Online
-Connect-ExchangeOnline
+### Option B: Update Function App Settings
 
-# Grant Send As permission to the managed identity
-Add-RecipientPermission "saml-rotation@yourdomain.com" `
-    -Trustee $managedIdentityClientId `
-    -AccessRights SendAs
-```
-
-### 7.2 Option B: Use Application Mail.Send
-
-The `Mail.Send` application permission allows sending mail as any user. For production:
-
-1. Consider using a dedicated service account
-2. Implement mail filtering policies
-3. Monitor sent emails
-
-### 7.3 Update Function App Setting
+If you need to change the notification sender email:
 
 ```powershell
 az functionapp config appsettings set `
-    --resource-group $resourceGroupName `
-    --name $functionAppName `
-    --settings "NotificationSenderEmail=saml-rotation@yourdomain.com"
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --settings "NotificationSenderEmail=your-sender@yourdomain.com"
 ```
 
 ---
 
-## Step 8: Tag Applications for Auto-Rotation
+## Step 10: Tag Applications for Auto-Rotation
 
-### 8.1 Tag via Entra Admin Center
+### Via Entra Admin Center
 
 1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Applications** → **Enterprise applications**
@@ -616,14 +603,16 @@ az functionapp config appsettings set `
    - Assigned values: `on`
 7. Click **Save**
 
-### 8.2 Tag via PowerShell
+### Via PowerShell
 
 ```powershell
-# Get the service principal
+# Connect to Graph (if not already connected)
+Connect-MgGraph -Scopes "Application.ReadWrite.All", "CustomSecAttributeAssignment.ReadWrite.All"
+
+# Set attribute on a specific app (replace with your app display name)
 $appDisplayName = "Your SAML App Name"
 $sp = Get-MgServicePrincipal -Filter "displayName eq '$appDisplayName'"
 
-# Set custom security attribute
 $customAttributes = @{
     customSecurityAttributes = @{
         SamlCertRotation = @{
@@ -634,238 +623,166 @@ $customAttributes = @{
 }
 
 Update-MgServicePrincipal -ServicePrincipalId $sp.Id -BodyParameter $customAttributes
-```
-
-### 8.3 Bulk Tag Multiple Applications
-
-```powershell
-# Tag multiple apps
-$appsToTag = @(
-    "Salesforce",
-    "ServiceNow",
-    "Workday"
-)
-
-foreach ($appName in $appsToTag) {
-    $sp = Get-MgServicePrincipal -Filter "displayName eq '$appName' and preferredSingleSignOnMode eq 'saml'"
-    
-    if ($sp) {
-        $customAttributes = @{
-            customSecurityAttributes = @{
-                SamlCertRotation = @{
-                    "@odata.type" = "#Microsoft.DirectoryServices.CustomSecurityAttributeValue"
-                    AutoRotate = "on"
-                }
-            }
-        }
-        Update-MgServicePrincipal -ServicePrincipalId $sp.Id -BodyParameter $customAttributes
-        Write-Host "Tagged: $appName" -ForegroundColor Green
-    }
-    else {
-        Write-Host "Not found: $appName" -ForegroundColor Yellow
-    }
-}
+Write-Host "Tagged: $appDisplayName"
 ```
 
 ---
 
-## Step 9: Verify the Deployment
+## Step 11: Verify the Deployment
 
-### 9.1 Test the Function App
+### 11.1 Test the Function App API
 
 ```powershell
 # Get Function App key
-$functionKey = az functionapp keys list `
-    --resource-group $resourceGroupName `
-    --name $functionAppName `
+$FUNCTION_KEY = az functionapp keys list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
     --query "functionKeys.default" -o tsv
 
 # Test dashboard stats endpoint
-$response = Invoke-RestMethod `
-    -Uri "$functionAppUrl/api/dashboard/stats?code=$functionKey" `
-    -Method GET
+$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats?code=$FUNCTION_KEY" -Method Get
 $response | ConvertTo-Json -Depth 5
 ```
 
-### 9.2 Manually Trigger Rotation
+### 11.2 Manually Trigger Rotation
 
 ```powershell
 # Trigger manual rotation
-Invoke-RestMethod `
-    -Uri "$functionAppUrl/api/admin/trigger-rotation?code=$functionKey" `
-    -Method POST | ConvertTo-Json -Depth 5
+$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/admin/trigger-rotation?code=$FUNCTION_KEY" -Method Post
+$response | ConvertTo-Json -Depth 5
 ```
 
-### 9.3 Check Function Logs
+### 11.3 View Function Logs
 
 ```powershell
-# View function logs (last 30 minutes)
-az functionapp logs tail `
-    --resource-group $resourceGroupName `
-    --name $functionAppName
+# Stream logs (Ctrl+C to stop)
+az functionapp log tail `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME
 ```
 
-### 9.4 Access the Dashboard
+### 11.4 Access the Dashboard
 
-Navigate to your Static Web App URL:
+Open your browser and navigate to:
 ```
-https://<staticwebappname>.azurestaticapps.net
+https://<your-static-web-app-name>.azurestaticapps.net
 ```
 
 ---
 
 ## Troubleshooting
 
-### Issue: npm permission errors (EACCES) when deploying dashboard
+### Git merge conflicts when pulling updates
 
-**Cause**: Insufficient permissions for global npm installs
+If you've modified files locally and need to pull updates:
 
-**Solution**: Use `npx` with the `-y` flag instead of global installs:
 ```powershell
-npx -y @azure/static-web-apps-cli deploy ./dist --deployment-token $deploymentToken --env production
+# Discard local changes and pull latest
+git checkout -- .
+git pull
+
+# Or if you want to keep your changes, stash them first
+git stash
+git pull
+git stash pop
 ```
-Or deploy via Azure Portal (see Step 6.3 Option A).
 
-### Issue: SWA CLI "folder not found" error
+### npm permission errors (EACCES)
 
-**Cause**: The dist folder wasn't created before deployment
+If you see "permission denied" when running npm commands:
 
-**Solution**:
 ```powershell
+# Don't use global installs in Cloud Shell. Instead use npx with -y flag:
+npx -y @azure/static-web-apps-cli deploy ./dist --deployment-token $SWA_TOKEN --env production
+
+# Or deploy via Azure Portal instead (see Step 7.3 Option A)
+```
+
+### SWA CLI "folder not found" error
+
+Make sure to create the dist folder before deploying:
+
+```powershell
+Set-Location "$HOME/SamlCertRotation/dashboard"
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item staticwebapp.config.json dist/
 ```
 
-### Issue: npm warnings about deprecated packages
+### npm warnings about deprecated packages
 
-**Cause**: These come from the SWA CLI's own dependencies
+Warnings like "inflight@1.0.6 deprecated" come from the SWA CLI's dependencies.
+These are safe to ignore - they don't affect functionality.
 
-**Solution**: Safe to ignore - they don't affect functionality.
+### "Permission denied" or "Insufficient privileges"
 
-### Issue: "Insufficient privileges" errors
+- Verify Graph API permissions were granted to the managed identity
+- Check that admin consent was provided
+- Wait 5-10 minutes for permissions to propagate
 
-**Cause**: Managed identity missing Graph API permissions
+### Variables lost after session timeout
 
-**Solution**:
-1. Verify permissions in Entra admin center
-2. Re-run the permission grant script
-3. Wait 5-10 minutes for propagation
+Cloud Shell sessions timeout after ~20 minutes of inactivity. Re-run:
 
-### Issue: Certificates not being created
-
-**Cause**: Custom security attribute not set correctly
-
-**Solution**:
 ```powershell
-# Verify CSA on an app
-$sp = Get-MgServicePrincipal -ServicePrincipalId "<app-object-id>" -Property "customSecurityAttributes"
-$sp.CustomSecurityAttributes | ConvertTo-Json -Depth 5
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+$RESOURCE_GROUP = "rg-saml-cert-rotation"
+$outputs = Get-Content deployment-outputs.json | ConvertFrom-Json
+$FUNCTION_APP_NAME = $outputs.functionAppName.value
+$FUNCTION_APP_URL = $outputs.functionAppUrl.value
+$STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
+$MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
 ```
 
-### Issue: Emails not being sent
-
-**Cause**: Mail.Send permission or sender configuration issue
-
-**Solution**:
-1. Verify `Mail.Send` permission granted
-2. Check sender email exists and is valid
-3. Review Function App logs for error details
-
-### Issue: Function timer not triggering
-
-**Cause**: Function not deployed or scaled to zero
-
-**Solution**:
-1. Verify function is listed: `az functionapp function list --name $functionAppName --resource-group $resourceGroupName`
-2. Check Application Insights for invocations
-3. Manually trigger to test
-
-### Issue: Dashboard not loading data
-
-**Cause**: CORS or authentication configuration
-
-**Solution**:
-1. Verify Function App CORS settings include Static Web App URL
-2. Check browser console for errors
-3. Verify API key in dashboard configuration
-
----
-
-## Security Considerations
-
-### Principle of Least Privilege
-
-The solution requires significant Entra ID permissions. Consider:
-
-1. **Limit scope**: If possible, use `Application.ReadWrite.OwnedBy` instead of `Application.ReadWrite.All`
-2. **Conditional Access**: Require compliant device for admin access
-3. **Monitoring**: Enable Azure AD audit logs for all Graph API operations
-
-### Network Security
-
-1. Enable **Private Endpoints** for Storage Account (Premium tier required)
-2. Configure **Function App access restrictions** to limit inbound traffic
-3. Use **API Management** as a gateway for additional security
-
-### Credential Management
-
-1. **Never store secrets in code** - All secrets use MSI or Key Vault
-2. **Rotate Function keys** periodically
-3. **Review audit logs** regularly
-
-### Compliance
-
-1. **Audit trail**: All operations logged to Table Storage
-2. **Email notifications**: Document recipients and retention
-3. **Change management**: Document all CSA assignments
-
----
-
-## Maintenance
-
-### Regular Tasks
-
-| Task | Frequency | Description |
-|------|-----------|-------------|
-| Review audit logs | Weekly | Check for failures or anomalies |
-| Verify upcoming expirations | Monthly | Dashboard review |
-| Test notifications | Quarterly | Send test email |
-| Review permissions | Quarterly | Remove unused assignments |
-| Update dependencies | As needed | Security patches |
-
-### Updating the Solution
+### Function not triggering
 
 ```powershell
-# Pull latest changes
-git pull
+# Check if functions are deployed
+az functionapp function list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --output table
 
-# Rebuild and deploy
-dotnet publish src/SamlCertRotation/SamlCertRotation.csproj -c Release -o ./publish
-Copy-Item "publish/functions.metadata" "publish/.azurefunctions/" -ErrorAction SilentlyContinue
-Remove-Item function-app.zip -Force -ErrorAction SilentlyContinue
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory("$PWD/publish", "$PWD/function-app.zip")
-az functionapp deployment source config-zip --resource-group $resourceGroupName --name $functionAppName --src ./function-app.zip
+# Check application settings
+az functionapp config appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --output table
+```
+
+### Dashboard shows no data
+
+1. Verify CORS is configured on the Function App to allow your Static Web App URL
+2. Check browser console (F12) for errors
+3. Verify the API_BASE_URL in index.html is correct
+
+---
+
+## Quick Reference: Key Commands
+
+```powershell
+# Re-set variables after session timeout
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+$RESOURCE_GROUP = "rg-saml-cert-rotation"
+$outputs = Get-Content deployment-outputs.json | ConvertFrom-Json
+$FUNCTION_APP_NAME = $outputs.functionAppName.value
+$FUNCTION_APP_URL = $outputs.functionAppUrl.value
+$STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
+$MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
+
+# Test API
+$FUNCTION_KEY = az functionapp keys list --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME --query "functionKeys.default" -o tsv
+Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats?code=$FUNCTION_KEY" | ConvertTo-Json
+
+# View logs
+az functionapp log tail --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
 ```
 
 ---
 
-## Support
+## Next Steps
 
-For issues or questions:
-1. Check the [Troubleshooting](#troubleshooting) section
-2. Review Function App logs in Application Insights
-3. Check Microsoft Graph API documentation for permission changes
-
----
-
-## Appendix: Default Policy Settings
-
-| Setting | Default Value | Description |
-|---------|---------------|-------------|
-| `CreateCertDaysBeforeExpiry` | 60 | Days before expiry to generate new cert |
-| `ActivateCertDaysBeforeExpiry` | 30 | Days before expiry to make new cert active |
-| Timer Schedule | 6:00 AM UTC daily | When the checker runs |
-
-These can be modified via the dashboard or by updating Table Storage directly.
+1. Monitor the dashboard for certificate expiration status
+2. Review audit logs periodically
+3. Adjust rotation policies as needed via the dashboard
+4. Tag additional SAML applications with `AutoRotate=on` as desired
