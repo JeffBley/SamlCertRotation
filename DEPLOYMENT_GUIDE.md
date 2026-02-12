@@ -17,6 +17,7 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 11. [Step 10: Tag Applications for Auto-Rotation](#step-10-tag-applications-for-auto-rotation)
 12. [Step 11: Verify the Deployment](#step-11-verify-the-deployment)
 13. [Troubleshooting](#troubleshooting)
+14. [Cleanup / Teardown](#cleanup--teardown)
 
 ---
 
@@ -811,6 +812,86 @@ Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats?code=$FUNCTION_KEY
 # View logs
 az functionapp log tail --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
 ```
+
+---
+
+## Cleanup / Teardown
+
+To completely remove the SAML Certificate Rotation Tool, follow these steps.
+
+### Step 1: Delete the Resource Group
+
+This removes all Azure resources (Function App, Storage, Key Vault, Static Web App, etc.):
+
+```powershell
+# Delete the entire resource group and all resources within it
+az group delete --name $RESOURCE_GROUP --yes --no-wait
+
+Write-Host "Resource group deletion initiated (runs in background)"
+```
+
+### Step 2: Delete Entra ID Objects
+
+These objects exist at the tenant level and must be deleted separately:
+
+```powershell
+# Load saved configuration (if available)
+$configPath = "$HOME/SamlCertRotation/infrastructure/access-control-config.json"
+if (Test-Path $configPath) {
+    $config = Get-Content $configPath | ConvertFrom-Json
+    $CLIENT_ID = $config.clientId
+    $ADMIN_GROUP_ID = $config.adminGroupId
+}
+
+# Delete the App Registration (also deletes the Service Principal)
+if ($CLIENT_ID) {
+    az ad app delete --id $CLIENT_ID
+    Write-Host "Deleted App Registration: $CLIENT_ID"
+}
+
+# Delete the Security Group (optional - you may want to keep this)
+if ($ADMIN_GROUP_ID) {
+    az ad group delete --group $ADMIN_GROUP_ID
+    Write-Host "Deleted Security Group: $ADMIN_GROUP_ID"
+}
+```
+
+### Step 3: Delete Custom Security Attributes (Optional)
+
+Custom Security Attributes can only be deactivated, not deleted, via the portal:
+
+1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
+2. Navigate to **Protection** → **Custom security attributes**
+3. Select the `SamlCertRotation` attribute set
+4. Select the `AutoRotate` attribute → **Deactivate**
+
+> **Note**: Deactivating the attribute won't affect your SAML applications, but the attribute
+> values will no longer be readable until reactivated.
+
+### Step 4: Remove Graph API Role Assignments (Optional)
+
+If you want to clean up the managed identity's Graph permissions (the identity is deleted with
+the resource group, but the role assignments may persist briefly):
+
+```powershell
+# These are automatically cleaned up when the managed identity is deleted,
+# but you can manually verify by checking the Enterprise Applications in Entra ID
+```
+
+### What Gets Deleted
+
+| Resource | Location | Deleted By |
+|----------|----------|------------|
+| Function App | Resource Group | `az group delete` |
+| Storage Account | Resource Group | `az group delete` |
+| Key Vault | Resource Group | `az group delete` (soft-delete for 90 days) |
+| Static Web App | Resource Group | `az group delete` |
+| App Insights | Resource Group | `az group delete` |
+| Managed Identity | Resource Group | `az group delete` |
+| App Registration | Entra ID (Tenant) | `az ad app delete` |
+| Service Principal | Entra ID (Tenant) | Deleted with App Registration |
+| Security Group | Entra ID (Tenant) | `az ad group delete` |
+| Custom Security Attributes | Entra ID (Tenant) | Manual deactivation only |
 
 ---
 
