@@ -38,8 +38,8 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 If you have the project in a Git repository:
 
 ```bash
-# Clone your repository
-git clone https://github.com/YOUR_ORG/saml-cert-rotation.git
+# Clone the repository
+git clone https://github.com/JeffBley/SamlCertRotation.git
 cd SamlCertRotation
 ```
 
@@ -52,8 +52,8 @@ cd SamlCertRotation
 
 ```bash
 # Create project directory
-mkdir -p ~/saml-cert-rotation
-cd ~/saml-cert-rotation
+mkdir -p ~/SamlCertRotation
+cd ~/SamlCertRotation
 
 # Unzip (file will be in your home directory after upload)
 unzip ~/SamlCertRotation.zip -d .
@@ -72,7 +72,7 @@ unzip ~/SamlCertRotation.zip -d .
 
 ```bash
 # Navigate to project root and verify structure
-cd ~/saml-cert-rotation
+cd ~/SamlCertRotation
 ls -la
 
 # You should see:
@@ -143,7 +143,7 @@ Custom Security Attributes allow you to tag which SAML apps should be auto-rotat
 Edit the parameters file with your values:
 
 ```bash
-cd ~/saml-cert-rotation/infrastructure
+cd ~/SamlCertRotation/infrastructure
 
 # Open in Cloud Shell editor
 code main.parameters.json
@@ -159,7 +159,7 @@ Save the file (Ctrl+S) and close the editor.
 
 ```bash
 # Make sure you're in the infrastructure directory
-cd ~/saml-cert-rotation/infrastructure
+cd ~/SamlCertRotation/infrastructure
 
 # Deploy the infrastructure
 az deployment group create \
@@ -289,7 +289,7 @@ exit
 ```bash
 # Return to bash if still in PowerShell
 # Navigate to project root
-cd ~/saml-cert-rotation
+cd ~/SamlCertRotation
 
 # Restore and build
 dotnet restore src/SamlCertRotation/SamlCertRotation.csproj
@@ -305,9 +305,9 @@ dotnet publish src/SamlCertRotation/SamlCertRotation.csproj \
 
 ```bash
 # Create zip file for deployment
-cd ~/saml-cert-rotation/publish
+cd ~/SamlCertRotation/publish
 zip -r ../function-app.zip .
-cd ~/saml-cert-rotation
+cd ~/SamlCertRotation
 ```
 
 ### 6.3 Deploy to Azure Function App
@@ -347,7 +347,7 @@ echo "Deployment token retrieved"
 ### 7.2 Update Dashboard Configuration
 
 ```bash
-cd ~/saml-cert-rotation/dashboard
+cd ~/SamlCertRotation/dashboard
 
 # Get your tenant ID
 export TENANT_ID=$(az account show --query tenantId -o tsv)
@@ -508,7 +508,7 @@ https://<your-static-web-app-name>.azurestaticapps.net
 Cloud Shell sessions timeout after ~20 minutes of inactivity. Re-run:
 
 ```bash
-cd ~/saml-cert-rotation/infrastructure
+cd ~/SamlCertRotation/infrastructure
 export RESOURCE_GROUP="rg-saml-cert-rotation"
 export FUNCTION_APP_NAME=$(cat deployment-outputs.json | jq -r '.functionAppName.value')
 export FUNCTION_APP_URL=$(cat deployment-outputs.json | jq -r '.functionAppUrl.value')
@@ -543,7 +543,7 @@ az functionapp config appsettings list \
 
 ```bash
 # Re-export variables after session timeout
-cd ~/saml-cert-rotation/infrastructure
+cd ~/SamlCertRotation/infrastructure
 export RESOURCE_GROUP="rg-saml-cert-rotation"
 export FUNCTION_APP_NAME=$(cat deployment-outputs.json | jq -r '.functionAppName.value')
 export FUNCTION_APP_URL=$(cat deployment-outputs.json | jq -r '.functionAppUrl.value')
