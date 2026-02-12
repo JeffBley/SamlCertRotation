@@ -346,22 +346,38 @@ Set-Content -Path index.html -Value $htmlContent
 
 ### 7.3 Deploy Dashboard
 
+The simplest method is to deploy via the Azure Portal:
+
+#### Option A: Azure Portal (Recommended)
+
+1. Open [Azure Portal](https://portal.azure.com)
+2. Navigate to your Static Web App: `$STATIC_WEB_APP_NAME`
+3. Go to **Overview** → Click the **URL** to open the app
+4. Go to **Settings** → **Configuration** to verify settings
+5. For manual upload, go to the **Deployment Center**
+
+**Note**: For Static Web Apps with a simple HTML file, you can also use GitHub Actions:
+- Push your dashboard folder to a GitHub repo
+- Connect the Static Web App to the repo via Deployment Center
+
+#### Option B: SWA CLI via npx
+
+If you prefer command-line deployment:
+
 ```powershell
 # Prepare dashboard files
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item staticwebapp.config.json dist/
 
-# Deploy using npx (no global install required)
-npx @azure/static-web-apps-cli deploy ./dist `
+# Deploy using npx (will show dependency warnings - these are safe to ignore)
+npx -y @azure/static-web-apps-cli deploy ./dist `
     --deployment-token $SWA_TOKEN `
     --env production
-
-# Alternative: If npx fails, you can deploy via the Azure Portal
-# 1. Go to your Static Web App in Azure Portal
-# 2. Click "Deployment Center"
-# 3. Upload the files manually
 ```
+
+> **Note**: You may see npm warnings about deprecated packages. These come from the
+> SWA CLI's dependencies and are safe to ignore - they don't affect functionality.
 
 ### 7.4 Get Dashboard URL
 
@@ -481,6 +497,48 @@ https://<your-static-web-app-name>.azurestaticapps.net
 ---
 
 ## Troubleshooting
+
+### Git merge conflicts when pulling updates
+
+If you've modified files locally and need to pull updates:
+
+```powershell
+# Discard local changes and pull latest
+git checkout -- .
+git pull
+
+# Or if you want to keep your changes, stash them first
+git stash
+git pull
+git stash pop
+```
+
+### npm permission errors (EACCES)
+
+If you see "permission denied" when running npm commands:
+
+```powershell
+# Don't use global installs in Cloud Shell. Instead use npx with -y flag:
+npx -y @azure/static-web-apps-cli deploy ./dist --deployment-token $SWA_TOKEN --env production
+
+# Or deploy via Azure Portal instead (see Step 7.3 Option A)
+```
+
+### SWA CLI "folder not found" error
+
+Make sure to create the dist folder before deploying:
+
+```powershell
+Set-Location "$HOME/SamlCertRotation/dashboard"
+New-Item -ItemType Directory -Path dist -Force
+Copy-Item index.html dist/
+Copy-Item staticwebapp.config.json dist/
+```
+
+### npm warnings about deprecated packages
+
+Warnings like "inflight@1.0.6 deprecated" come from the SWA CLI's dependencies.
+These are safe to ignore - they don't affect functionality.
 
 ### "Permission denied" or "Insufficient privileges"
 

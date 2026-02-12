@@ -386,6 +386,19 @@ const API_BASE_URL = 'https://your-function-app.azurewebsites.net';
 
 ### 6.3 Deploy Dashboard
 
+The simplest method is to deploy via the Azure Portal:
+
+#### Option A: Azure Portal (Recommended)
+
+1. Open [Azure Portal](https://portal.azure.com)
+2. Navigate to your Static Web App resource
+3. Go to **Deployment Center**
+4. Connect to your GitHub repository, or use manual deployment
+
+#### Option B: SWA CLI via npx
+
+If you prefer command-line deployment:
+
 ```powershell
 cd dashboard
 
@@ -394,19 +407,25 @@ New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item staticwebapp.config.json dist/
 
-# Deploy using npx (no global install required)
-npx @azure/static-web-apps-cli deploy ./dist `
+# Deploy using npx (will show dependency warnings - these are safe to ignore)
+npx -y @azure/static-web-apps-cli deploy ./dist `
     --deployment-token $deploymentToken `
     --env production
 ```
 
-### 6.5 Configure Static Web App Authentication (Optional)
+> **Note**: You may see npm warnings about deprecated packages. These come from the
+> SWA CLI's dependencies and are safe to ignore - they don't affect functionality.
 
-For secure access, configure Entra ID authentication:
+### 6.4 Configure Static Web App Authentication
+
+Authentication is already configured via `staticwebapp.config.json`. The dashboard requires
+users to authenticate with Azure AD before accessing any content.
+
+To customize authentication:
 
 1. Go to Azure Portal → Your Static Web App → **Authentication**
-2. Add **Microsoft** identity provider
-3. Configure callback URLs
+2. Add or modify the **Microsoft** identity provider
+3. Configure callback URLs as needed
 
 ---
 
@@ -560,6 +579,33 @@ https://<staticwebappname>.azurestaticapps.net
 ---
 
 ## Troubleshooting
+
+### Issue: npm permission errors (EACCES) when deploying dashboard
+
+**Cause**: Insufficient permissions for global npm installs
+
+**Solution**: Use `npx` with the `-y` flag instead of global installs:
+```powershell
+npx -y @azure/static-web-apps-cli deploy ./dist --deployment-token $deploymentToken --env production
+```
+Or deploy via Azure Portal (see Step 6.3 Option A).
+
+### Issue: SWA CLI "folder not found" error
+
+**Cause**: The dist folder wasn't created before deployment
+
+**Solution**:
+```powershell
+New-Item -ItemType Directory -Path dist -Force
+Copy-Item index.html dist/
+Copy-Item staticwebapp.config.json dist/
+```
+
+### Issue: npm warnings about deprecated packages
+
+**Cause**: These come from the SWA CLI's own dependencies
+
+**Solution**: Safe to ignore - they don't affect functionality.
 
 ### Issue: "Insufficient privileges" errors
 
