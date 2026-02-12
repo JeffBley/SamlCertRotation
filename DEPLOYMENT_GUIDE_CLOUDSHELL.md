@@ -587,21 +587,75 @@ Write-Host "Access control configuration saved to access-control-config.json"
 
 ## Step 9: Configure Email Notifications
 
-### Option A: Use a Shared Mailbox (Recommended)
+Email notifications are sent via a Logic App with Office 365 Outlook connector. This approach requires no Mail.Send Graph permission on the managed identity.
 
-1. Go to [Microsoft 365 Admin Center](https://admin.microsoft.com)
-2. Create a shared mailbox (e.g., `saml-rotation@yourdomain.com`)
-3. The `Mail.Send` permission allows the managed identity to send as this mailbox
-
-### Option B: Update Function App Settings
-
-If you need to change the notification sender email:
+### 9.1 Get Logic App Name
 
 ```powershell
+# Get the Logic App name from deployment outputs
+$LOGIC_APP_NAME = $outputs.logicAppName.value
+Write-Host "Logic App: $LOGIC_APP_NAME"
+```
+
+### 9.2 Configure Logic App with Office 365 Connector
+
+1. Go to [Azure Portal](https://portal.azure.com)
+2. Navigate to your resource group: `$RESOURCE_GROUP`
+3. Find and open the Logic App (named like `samlcert-email-*`)
+4. Click **Logic app designer**
+
+### 9.3 Add Office 365 Send Email Action
+
+1. In the designer, you'll see the **When a HTTP request is received** trigger
+2. Click **+ New step**
+3. Search for **Office 365 Outlook**
+4. Select **Send an email (V2)**
+5. Sign in with a user account that will send the emails (e.g., a shared mailbox delegate or service account)
+6. Configure the action:
+   - **To**: Click in the field → **Add dynamic content** → Select `to`
+   - **Subject**: Click in the field → **Add dynamic content** → Select `subject`
+   - **Body**: Click in the field → **Add dynamic content** → Select `body`
+7. Delete the existing **Response** action (we'll add it after the email)
+8. Click **+ New step** → Search for **Response**
+9. Configure the Response:
+   - **Status Code**: `200`
+   - **Body**: `{"status": "sent"}`
+10. Click **Save**
+
+### 9.4 Get Logic App Callback URL
+
+```powershell
+# Get the Logic App HTTP trigger URL
+$LOGIC_APP_URL = az rest --method post `
+    --uri "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Logic/workflows/$LOGIC_APP_NAME/triggers/manual/listCallbackUrl?api-version=2016-10-01" `
+    --query "value" -o tsv
+
+Write-Host "Logic App URL retrieved (contains SAS token - keep secure)"
+```
+
+### 9.5 Configure Function App with Logic App URL
+
+```powershell
+# Store the Logic App URL in Function App settings
 az functionapp config appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --settings "NotificationSenderEmail=your-sender@yourdomain.com"
+    --settings "LogicAppEmailUrl=$LOGIC_APP_URL"
+
+Write-Host "Function App configured to use Logic App for email notifications"
+```
+
+### 9.6 Test Email Notifications (Optional)
+
+```powershell
+# Test sending an email
+$testPayload = @{
+    to = "your-email@yourdomain.com"
+    subject = "Test - SAML Certificate Rotation"
+    body = "<html><body><h1>Test Email</h1><p>If you received this, email notifications are working!</p></body></html>"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri $LOGIC_APP_URL -Method Post -Body $testPayload -ContentType "application/json"
 ```
 
 ---
