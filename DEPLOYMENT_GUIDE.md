@@ -226,11 +226,10 @@ $managedIdentitySP = Get-MgServicePrincipal -ServicePrincipalId $MANAGED_IDENTIT
 # Get Microsoft Graph service principal
 $graphSP = Get-MgServicePrincipal -Filter "displayName eq 'Microsoft Graph'" | Select-Object -First 1
 
-# Define required permissions
+# Define required permissions (Mail.Send not needed - we use Logic App for email)
 $requiredPermissions = @(
     "Application.ReadWrite.All",
-    "CustomSecAttributeAssignment.Read.All",
-    "Mail.Send"
+    "CustomSecAttributeAssignment.Read.All"
 )
 
 # Grant each permission
@@ -263,7 +262,8 @@ foreach ($permissionName in $requiredPermissions) {
 4. Go to **Permissions** and verify these are listed:
    - `Application.ReadWrite.All`
    - `CustomSecAttributeAssignment.Read.All`
-   - `Mail.Send`
+
+> **Note**: `Mail.Send` is NOT required. Email notifications are sent via Logic App with Office 365 connector.
 
 ---
 
@@ -347,10 +347,7 @@ $configContent = Get-Content staticwebapp.config.json -Raw
 $configContent = $configContent -replace '<YOUR_TENANT_ID>', $TENANT_ID
 Set-Content -Path staticwebapp.config.json -Value $configContent
 
-# Update the API endpoint in index.html
-$htmlContent = Get-Content index.html -Raw
-$htmlContent = $htmlContent -replace "const API_BASE_URL = ''", "const API_BASE_URL = '$FUNCTION_APP_URL'"
-Set-Content -Path index.html -Value $htmlContent
+# NOTE: API_BASE_URL should remain empty - the SWA backend link handles API routing
 ```
 
 ### 7.3 Deploy Dashboard
@@ -539,10 +536,10 @@ $FUNCTION_APP_ID = az functionapp show `
     --name $FUNCTION_APP_NAME `
     --query "id" -o tsv
 
-# Get the Static Web App location
-$SWA_LOCATION = az staticwebapp show `
+# Get the Function App region (must match for backend linking)
+$FUNC_LOCATION = az functionapp show `
     --resource-group $RESOURCE_GROUP `
-    --name $STATIC_WEB_APP_NAME `
+    --name $FUNCTION_APP_NAME `
     --query "location" -o tsv
 
 # Link the Function App as the API backend
@@ -550,7 +547,7 @@ az staticwebapp backends link `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
     --backend-resource-id $FUNCTION_APP_ID `
-    --backend-region $SWA_LOCATION
+    --backend-region $FUNC_LOCATION
 
 Write-Host "Function App linked as SWA backend"
 ```
@@ -587,51 +584,27 @@ Write-Host "Access control configuration saved to access-control-config.json"
 
 ## Step 9: Configure Email Notifications
 
-Email notifications are sent via a Logic App with Office 365 Outlook connector.
+Email notifications are sent via a Logic App with Office 365 Outlook connector. The infrastructure deployment already created the Logic App and API connection - you just need to authorize it.
 
-### 9.1 Get Logic App Name and Set Variables
+### 9.1 Get Resource Names
 
 ```powershell
-# Get the Logic App name from deployment outputs
+# Get the Logic App and API Connection names from deployment outputs
 $LOGIC_APP_NAME = $outputs.logicAppName.value
-$CONNECTION_NAME = "samlcert-office365"
-$LOCATION = az group show --name $RESOURCE_GROUP --query location -o tsv
-$SUBSCRIPTION_ID = az account show --query id -o tsv
 
-Write-Host "Logic App: $LOGIC_APP_NAME"
+# List API connections in the resource group
+az resource list --resource-group $RESOURCE_GROUP --resource-type "Microsoft.Web/connections" --query "[].name" -o tsv
+
+# The API connection is named like: samlcert-office365
 ```
 
-### 9.2 Create Office 365 API Connection
+### 9.2 Authorize the Office 365 Connection
 
-Create the API connection that the Logic App will use to send emails:
-
-```powershell
-# Create properties file for the API connection
-$connectionProps = @{
-    displayName = "Office 365 Outlook - SAML Cert Rotation"
-    api = @{
-        id = "/subscriptions/$SUBSCRIPTION_ID/providers/Microsoft.Web/locations/$LOCATION/managedApis/office365"
-    }
-} | ConvertTo-Json -Depth 5
-
-Set-Content -Path "/tmp/connection-props.json" -Value $connectionProps
-
-# Create the API Connection
-az resource create `
-    --resource-group $RESOURCE_GROUP `
-    --resource-type "Microsoft.Web/connections" `
-    --name $CONNECTION_NAME `
-    --location $LOCATION `
-    --properties "@/tmp/connection-props.json"
-
-Write-Host "API Connection created: $CONNECTION_NAME"
-```
-
-### 9.3 Authorize the Office 365 Connection
+The API connection was created by the Bicep deployment. You need to authorize it with an email account:
 
 1. Go to [Azure Portal](https://portal.azure.com)
 2. Navigate to your resource group
-3. Find the **API Connection** resource named `samlcert-office365`
+3. Find the **API Connection** resource (named like `samlcert-office365`)
 4. Click on it and go to **Edit API connection**
 5. Click **Authorize**
 6. Sign in with the account that will send emails (e.g., a shared mailbox or service account)
@@ -639,115 +612,31 @@ Write-Host "API Connection created: $CONNECTION_NAME"
 
 > **Note**: The account you authorize will be the sender of all notification emails. Consider using a shared mailbox like `saml-notifications@yourdomain.com`.
 
-### 9.4 Update Logic App Workflow
+### 9.3 Verify Logic App Configuration
 
-Update the Logic App to use the Send Email action with the authorized connection:
-
-```powershell
-# Create workflow properties file
-$workflowProps = @{
-    state = "Enabled"
-    definition = @{
-        '$schema' = "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#"
-        contentVersion = "1.0.0.0"
-        parameters = @{
-            '$connections' = @{
-                defaultValue = @{}
-                type = "Object"
-            }
-        }
-        triggers = @{
-            manual = @{
-                type = "Request"
-                kind = "Http"
-                inputs = @{
-                    schema = @{
-                        type = "object"
-                        properties = @{
-                            to = @{ type = "string"; description = "Recipient email addresses" }
-                            subject = @{ type = "string"; description = "Email subject" }
-                            body = @{ type = "string"; description = "Email body (HTML)" }
-                        }
-                        required = @("to", "subject", "body")
-                    }
-                }
-            }
-        }
-        actions = @{
-            Send_an_email_V2 = @{
-                type = "ApiConnection"
-                runAfter = @{}
-                inputs = @{
-                    host = @{
-                        connection = @{
-                            name = "@parameters('`$connections')['office365']['connectionId']"
-                        }
-                    }
-                    method = "post"
-                    path = "/v2/Mail"
-                    body = @{
-                        To = "@triggerBody()?['to']"
-                        Subject = "@triggerBody()?['subject']"
-                        Body = "<p>@{triggerBody()?['body']}</p>"
-                    }
-                }
-            }
-            Response = @{
-                type = "Response"
-                kind = "Http"
-                runAfter = @{ Send_an_email_V2 = @("Succeeded") }
-                inputs = @{
-                    statusCode = 200
-                    body = @{ status = "sent" }
-                }
-            }
-        }
-    }
-    parameters = @{
-        '$connections' = @{
-            value = @{
-                office365 = @{
-                    connectionId = "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/connections/$CONNECTION_NAME"
-                    connectionName = $CONNECTION_NAME
-                    id = "/subscriptions/$SUBSCRIPTION_ID/providers/Microsoft.Web/locations/$LOCATION/managedApis/office365"
-                }
-            }
-        }
-    }
-} | ConvertTo-Json -Depth 20
-
-Set-Content -Path "/tmp/workflow-props.json" -Value $workflowProps
-
-# Update the Logic App
-az logic workflow update `
-    --resource-group $RESOURCE_GROUP `
-    --name $LOGIC_APP_NAME `
-    --definition "/tmp/workflow-props.json"
-
-Write-Host "Logic App workflow updated"
-```
-
-**Alternative**: If the CLI command doesn't work, update via Portal:
-1. Open the Logic App in Azure Portal
+1. Go to the Logic App in Azure Portal
 2. Click **Logic app designer**
-3. Add **Office 365 Outlook - Send an email (V2)** action after the trigger
-4. Configure it to use dynamic content: `to`, `subject`, `body` from the trigger
-5. Add a **Response** action after the email action
-6. Save
+3. Verify you see:
+   - **When a HTTP request is received** trigger
+   - **Send an email (V2)** action
+   - **Response** action
+4. If the Send email step shows an error icon, click on it and re-select your authorized connection
+5. Click **Save** if you made changes
 
-### 9.5 Get Logic App Callback URL
+### 9.4 Get Logic App Callback URL
 
 ```powershell
-# Get the Logic App HTTP trigger URL (use single line to avoid escaping issues)
-$LOGIC_APP_URL = az logic workflow show --resource-group $RESOURCE_GROUP --name $LOGIC_APP_NAME --query "accessEndpoint" -o tsv
+# Get the Logic App HTTP trigger URL
+# Method 1: Via Portal (recommended)
+# Logic App → Overview → Click on the trigger → Copy the HTTP POST URL
 
-# If the above doesn't work, get it from the Portal:
-# Logic App → Overview → Workflow URL (or Trigger History → manual → Callback URL)
+# Method 2: Via CLI
+$LOGIC_APP_URL = az rest --method POST --uri "https://management.azure.com$(az logic workflow show --resource-group $RESOURCE_GROUP --name $LOGIC_APP_NAME --query id -o tsv)/triggers/manual/listCallbackUrl?api-version=2016-10-01" --query value -o tsv
 
-Write-Host "Logic App URL: $LOGIC_APP_URL"
+Write-Host "Logic App URL retrieved"
 ```
 
-### 9.6 Configure Function App with Logic App URL
+### 9.5 Configure Function App with Logic App URL
 
 ```powershell
 # Store the Logic App URL in Function App settings
@@ -759,7 +648,7 @@ az functionapp config appsettings set `
 Write-Host "Function App configured to use Logic App for email notifications"
 ```
 
-### 9.7 Test Email Notifications (Optional)
+### 9.6 Test Email Notifications (Optional)
 
 ```powershell
 # Test sending an email
@@ -938,9 +827,33 @@ az functionapp config appsettings list `
 
 ### Dashboard shows no data
 
-1. Verify CORS is configured on the Function App to allow your Static Web App URL
+1. Verify the Function App is linked as a backend to the Static Web App
 2. Check browser console (F12) for errors
-3. Verify the API_BASE_URL in index.html is correct
+3. Verify Easy Auth is disabled on the Function App
+4. Test the API directly with a function key (see Quick Reference)
+
+### Dashboard shows "Unexpected token '<'" error
+
+This means the API is returning HTML instead of JSON. Common causes:
+
+1. **SWA backend not linked**: Verify with:
+   ```powershell
+   az staticwebapp backends show --name $STATIC_WEB_APP_NAME --resource-group $RESOURCE_GROUP
+   ```
+
+2. **Easy Auth enabled on Function App**: Disable it:
+   ```powershell
+   az rest --method PUT --uri "https://management.azure.com$(az functionapp show --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME --query id -o tsv)/config/authsettingsV2?api-version=2022-03-01" --body '{"properties":{"platform":{"enabled":false}}}'
+   ```
+
+3. **SWA config not deployed**: Redeploy the dashboard with the latest staticwebapp.config.json
+
+### Dashboard shows "Access Denied"
+
+The user is not assigned to the Enterprise Application:
+1. Go to Entra ID → Enterprise applications → Find your app
+2. Go to Users and groups
+3. Add assignment for your user or group
 
 ---
 

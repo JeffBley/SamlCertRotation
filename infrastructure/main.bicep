@@ -450,6 +450,7 @@ output logAnalyticsWorkspaceName string = logAnalyticsWorkspace.name
 output keyVaultName string = keyVault.name
 output keyVaultUri string = keyVault.properties.vaultUri
 output logicAppName string = logicApp.name
+output apiConnectionName string = office365Connection.name
 
 // Output instructions
 output nextSteps string = '''
@@ -458,9 +459,10 @@ NEXT STEPS
 ========================================
 1. Grant Microsoft Graph API permissions to the Managed Identity
 2. Create Custom Security Attributes in Entra ID
-3. Configure Logic App with Office 365 connector
+3. Authorize the Office 365 API Connection (Portal: Edit API connection → Authorize)
 4. Deploy the Function App code
 5. Deploy the Dashboard to Static Web App
+6. Configure Dashboard Access Control
 
 See DEPLOYMENT_GUIDE.md for detailed instructions.
 '''
