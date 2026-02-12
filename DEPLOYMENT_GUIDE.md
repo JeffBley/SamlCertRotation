@@ -183,13 +183,21 @@ $FUNCTION_APP_NAME = $outputs.functionAppName.value
 $FUNCTION_APP_URL = $outputs.functionAppUrl.value
 $STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
 $STORAGE_ACCOUNT_NAME = $outputs.storageAccountName.value
+$KEY_VAULT_NAME = $outputs.keyVaultName.value
+$KEY_VAULT_URI = $outputs.keyVaultUri.value
+$LOG_ANALYTICS_NAME = $outputs.logAnalyticsWorkspaceName.value
 
 # Verify variables are set
 Write-Host "Managed Identity Principal ID: $MANAGED_IDENTITY_PRINCIPAL_ID"
+Write-Host "Managed Identity Client ID: $MANAGED_IDENTITY_CLIENT_ID"
 Write-Host "Managed Identity Name: $MANAGED_IDENTITY_NAME"
 Write-Host "Function App: $FUNCTION_APP_NAME"
 Write-Host "Function App URL: $FUNCTION_APP_URL"
 Write-Host "Static Web App: $STATIC_WEB_APP_NAME"
+Write-Host "Storage Account: $STORAGE_ACCOUNT_NAME"
+Write-Host "Key Vault: $KEY_VAULT_NAME"
+Write-Host "Key Vault URI: $KEY_VAULT_URI"
+Write-Host "Log Analytics Workspace: $LOG_ANALYTICS_NAME"
 ```
 
 > **Important**: Save these values! If your Cloud Shell session times out, you'll need to re-run the variable assignment commands or retrieve values from the Azure Portal.
