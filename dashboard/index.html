@@ -581,6 +581,8 @@
             const filteredApps = allApps.filter(app => {
                 const status = (app.autoRotateStatus || '').toLowerCase();
                 const expiry = app.expiryCategory.toLowerCase();
+                const isExpiringSoon = expiry === 'warning' || (app.daysUntilExpiry !== null && app.daysUntilExpiry <= 30);
+                const isExpired = expiry === 'expired';
                 
                 // Check auto-rotate status filters
                 let statusMatch = false;
@@ -588,22 +590,22 @@
                 if (showOff && status === 'off') statusMatch = true;
                 if (showNull && (!app.autoRotateStatus || status === '')) statusMatch = true;
                 
-                // If none of the status filters are checked, show all statuses
-                if (!showOn && !showOff && !showNull) statusMatch = true;
+                // If none of the status filters are checked, ignore status filtering
+                const anyStatusFilterChecked = showOn || showOff || showNull;
+                if (!anyStatusFilterChecked) statusMatch = true;
                 
-                // Check expiry filters (these are additive - show if matches OR other criteria)
-                let expiryMatch = true;
-                if (showExpiring || showExpired) {
-                    // If expiry filters are active, include items that match expiry OR status
-                    if (showExpiring && (expiry === 'warning' || app.daysUntilExpiry <= 30)) {
-                        return true; // Always show expiring items when filter is on
-                    }
-                    if (showExpired && expiry === 'expired') {
-                        return true; // Always show expired items when filter is on
-                    }
-                }
+                // Check expiry filters
+                let expiryMatch = false;
+                if (showExpiring && isExpiringSoon) expiryMatch = true;
+                if (showExpired && isExpired) expiryMatch = true;
                 
-                return statusMatch;
+                // If no expiry filters are checked, ignore expiry filtering
+                const anyExpiryFilterChecked = showExpiring || showExpired;
+                if (!anyExpiryFilterChecked) expiryMatch = true;
+                
+                // Show app if it matches both active filter categories
+                // (If a category has no filters checked, it's considered a match)
+                return statusMatch && expiryMatch;
             });
 
             renderApps(filteredApps);
