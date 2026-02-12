@@ -587,19 +587,47 @@ Write-Host "Access control configuration saved to access-control-config.json"
 
 ## Step 9: Configure Email Notifications
 
-Email notifications are sent via a Logic App with Office 365 Outlook connector. The workflow is pre-configured - you just need to authorize the Office 365 connection.
+Email notifications are sent via a Logic App with Office 365 Outlook connector.
 
-### 9.1 Get Logic App Name
+### 9.1 Get Logic App Name and Set Variables
 
 ```powershell
 # Get the Logic App name from deployment outputs
 $LOGIC_APP_NAME = $outputs.logicAppName.value
+$CONNECTION_NAME = "samlcert-office365"
+$LOCATION = az group show --name $RESOURCE_GROUP --query location -o tsv
+$SUBSCRIPTION_ID = az account show --query id -o tsv
+
 Write-Host "Logic App: $LOGIC_APP_NAME"
 ```
 
-### 9.2 Authorize the Office 365 Connection
+### 9.2 Create Office 365 API Connection
 
-The Logic App workflow is already configured with the Send Email action. You just need to authorize the API connection:
+Create the API connection that the Logic App will use to send emails:
+
+```powershell
+# Create properties file for the API connection
+$connectionProps = @{
+    displayName = "Office 365 Outlook - SAML Cert Rotation"
+    api = @{
+        id = "/subscriptions/$SUBSCRIPTION_ID/providers/Microsoft.Web/locations/$LOCATION/managedApis/office365"
+    }
+} | ConvertTo-Json -Depth 5
+
+Set-Content -Path "/tmp/connection-props.json" -Value $connectionProps
+
+# Create the API Connection
+az resource create `
+    --resource-group $RESOURCE_GROUP `
+    --resource-type "Microsoft.Web/connections" `
+    --name $CONNECTION_NAME `
+    --location $LOCATION `
+    --properties "@/tmp/connection-props.json"
+
+Write-Host "API Connection created: $CONNECTION_NAME"
+```
+
+### 9.3 Authorize the Office 365 Connection
 
 1. Go to [Azure Portal](https://portal.azure.com)
 2. Navigate to your resource group
@@ -611,28 +639,115 @@ The Logic App workflow is already configured with the Send Email action. You jus
 
 > **Note**: The account you authorize will be the sender of all notification emails. Consider using a shared mailbox like `saml-notifications@yourdomain.com`.
 
-### 9.3 Verify Logic App Configuration
+### 9.4 Update Logic App Workflow
 
-1. Go to the Logic App (named like `samlcert-email-*`)
-2. Click **Logic app designer**
-3. Verify you see:
-   - **When a HTTP request is received** trigger
-   - **Send an email (V2)** action (should show green checkmark after authorization)
-   - **Response** action
-4. If the Send email step shows an error, click on it and re-select the authorized connection
-
-### 9.4 Get Logic App Callback URL
+Update the Logic App to use the Send Email action with the authorized connection:
 
 ```powershell
-# Get the Logic App HTTP trigger URL
-$LOGIC_APP_URL = az rest --method post `
-    --uri "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Logic/workflows/$LOGIC_APP_NAME/triggers/manual/listCallbackUrl?api-version=2016-10-01" `
-    --query "value" -o tsv
+# Create workflow properties file
+$workflowProps = @{
+    state = "Enabled"
+    definition = @{
+        '$schema' = "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#"
+        contentVersion = "1.0.0.0"
+        parameters = @{
+            '$connections' = @{
+                defaultValue = @{}
+                type = "Object"
+            }
+        }
+        triggers = @{
+            manual = @{
+                type = "Request"
+                kind = "Http"
+                inputs = @{
+                    schema = @{
+                        type = "object"
+                        properties = @{
+                            to = @{ type = "string"; description = "Recipient email addresses" }
+                            subject = @{ type = "string"; description = "Email subject" }
+                            body = @{ type = "string"; description = "Email body (HTML)" }
+                        }
+                        required = @("to", "subject", "body")
+                    }
+                }
+            }
+        }
+        actions = @{
+            Send_an_email_V2 = @{
+                type = "ApiConnection"
+                runAfter = @{}
+                inputs = @{
+                    host = @{
+                        connection = @{
+                            name = "@parameters('`$connections')['office365']['connectionId']"
+                        }
+                    }
+                    method = "post"
+                    path = "/v2/Mail"
+                    body = @{
+                        To = "@triggerBody()?['to']"
+                        Subject = "@triggerBody()?['subject']"
+                        Body = "<p>@{triggerBody()?['body']}</p>"
+                    }
+                }
+            }
+            Response = @{
+                type = "Response"
+                kind = "Http"
+                runAfter = @{ Send_an_email_V2 = @("Succeeded") }
+                inputs = @{
+                    statusCode = 200
+                    body = @{ status = "sent" }
+                }
+            }
+        }
+    }
+    parameters = @{
+        '$connections' = @{
+            value = @{
+                office365 = @{
+                    connectionId = "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/connections/$CONNECTION_NAME"
+                    connectionName = $CONNECTION_NAME
+                    id = "/subscriptions/$SUBSCRIPTION_ID/providers/Microsoft.Web/locations/$LOCATION/managedApis/office365"
+                }
+            }
+        }
+    }
+} | ConvertTo-Json -Depth 20
 
-Write-Host "Logic App URL retrieved (contains SAS token - keep secure)"
+Set-Content -Path "/tmp/workflow-props.json" -Value $workflowProps
+
+# Update the Logic App
+az logic workflow update `
+    --resource-group $RESOURCE_GROUP `
+    --name $LOGIC_APP_NAME `
+    --definition "/tmp/workflow-props.json"
+
+Write-Host "Logic App workflow updated"
 ```
 
-### 9.5 Configure Function App with Logic App URL
+**Alternative**: If the CLI command doesn't work, update via Portal:
+1. Open the Logic App in Azure Portal
+2. Click **Logic app designer**
+3. Add **Office 365 Outlook - Send an email (V2)** action after the trigger
+4. Configure it to use dynamic content: `to`, `subject`, `body` from the trigger
+5. Add a **Response** action after the email action
+6. Save
+
+### 9.5 Get Logic App Callback URL
+
+```powershell
+# Get the Logic App HTTP trigger URL (use single line to avoid escaping issues)
+$LOGIC_APP_URL = az logic workflow show --resource-group $RESOURCE_GROUP --name $LOGIC_APP_NAME --query "accessEndpoint" -o tsv
+
+# If the above doesn't work, get it from the Portal:
+# Logic App → Overview → Workflow URL (or Trigger History → manual → Callback URL)
+
+Write-Host "Logic App URL: $LOGIC_APP_URL"
+```
+
+### 9.6 Configure Function App with Logic App URL
 
 ```powershell
 # Store the Logic App URL in Function App settings
@@ -644,14 +759,14 @@ az functionapp config appsettings set `
 Write-Host "Function App configured to use Logic App for email notifications"
 ```
 
-### 9.6 Test Email Notifications (Optional)
+### 9.7 Test Email Notifications (Optional)
 
 ```powershell
 # Test sending an email
 $testPayload = @{
     to = "your-email@yourdomain.com"
     subject = "Test - SAML Certificate Rotation"
-    body = "<html><body><h1>Test Email</h1><p>If you received this, email notifications are working!</p></body></html>"
+    body = "<h1>Test Email</h1><p>If you received this, email notifications are working!</p>"
 } | ConvertTo-Json
 
 Invoke-RestMethod -Uri $LOGIC_APP_URL -Method Post -Body $testPayload -ContentType "application/json"
