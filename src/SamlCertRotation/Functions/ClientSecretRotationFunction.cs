@@ -185,7 +185,7 @@ public class ClientSecretRotationFunction
             }
         };
 
-        await _secretClient.SetSecretAsync(secret);
+        await _secretClient!.SetSecretAsync(secret);
         _logger.LogInformation("Secret stored in Key Vault as '{SecretName}'", SwaClientSecretName);
 
         // Update the SWA app settings to use the new Key Vault reference
