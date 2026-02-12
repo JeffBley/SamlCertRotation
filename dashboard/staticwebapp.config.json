@@ -5,13 +5,17 @@
   "routes": [
     {
       "route": "/*",
-      "allowedRoles": ["authenticated"]
+      "allowedRoles": ["admin"]
     }
   ],
   "responseOverrides": {
     "401": {
       "redirect": "/.auth/login/aad",
       "statusCode": 302
+    },
+    "403": {
+      "rewrite": "/unauthorized.html",
+      "statusCode": 403
     }
   },
   "auth": {
@@ -21,8 +25,13 @@
           "openIdIssuer": "https://login.microsoftonline.com/<YOUR_TENANT_ID>/v2.0",
           "clientIdSettingName": "AAD_CLIENT_ID",
           "clientSecretSettingName": "AAD_CLIENT_SECRET"
+        },
+        "userDetailsClaim": "http://schemas.microsoft.com/identity/claims/objectidentifier",
+        "login": {
+          "loginParameters": ["scope=openid profile email"]
         }
       }
-    }
+    },
+    "rolesSource": "/api/GetRoles"
   }
 }

@@ -413,6 +413,7 @@ cd dashboard
 # Prepare dist folder
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
+Copy-Item unauthorized.html dist/
 Copy-Item staticwebapp.config.json dist/
 
 # Deploy using npx (will show dependency warnings - these are safe to ignore)
@@ -424,16 +425,143 @@ npx -y @azure/static-web-apps-cli deploy ./dist `
 > **Note**: You may see npm warnings about deprecated packages. These come from the
 > SWA CLI's dependencies and are safe to ignore - they don't affect functionality.
 
-### 6.4 Configure Static Web App Authentication
+### 6.4 Configure Static Web App Authentication with App Registration
 
-Authentication is already configured via `staticwebapp.config.json`. The dashboard requires
-users to authenticate with Azure AD before accessing any content.
+The dashboard uses Azure AD group-based access control. Only users in a specific security group
+can access the dashboard.
 
-To customize authentication:
+#### Step A: Create an Azure AD Security Group
 
-1. Go to Azure Portal → Your Static Web App → **Authentication**
-2. Add or modify the **Microsoft** identity provider
-3. Configure callback URLs as needed
+1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
+2. Navigate to **Groups** → **All groups** → **New group**
+3. Configure the group:
+   - **Group type**: Security
+   - **Group name**: `SAML Certificate Rotation Admins`
+   - **Description**: `Users who can access the SAML Certificate Rotation Dashboard`
+   - **Members**: Add users who should have dashboard access
+4. Click **Create** and note the **Object ID** (this is your admin group ID)
+
+#### Step B: Create an App Registration
+
+```powershell
+# Create app registration for SWA authentication
+$appName = "SAML Certificate Rotation Dashboard"
+$swaHostname = (az staticwebapp show --resource-group $resourceGroupName --name $staticWebAppName --query "defaultHostname" -o tsv)
+
+$app = az ad app create `
+    --display-name $appName `
+    --sign-in-audience AzureADMyOrg `
+    --web-redirect-uris "https://$swaHostname/.auth/login/aad/callback" `
+    --enable-id-token-issuance true `
+    --query "{appId:appId, id:id}" -o json | ConvertFrom-Json
+
+$clientId = $app.appId
+$appObjectId = $app.id
+
+Write-Host "Client ID: $clientId"
+Write-Host "App Object ID: $appObjectId"
+```
+
+#### Step C: Create Client Secret
+
+```powershell
+# Create client secret (valid for 2 years)
+$secret = az ad app credential reset `
+    --id $clientId `
+    --display-name "SWA Auth Secret" `
+    --years 2 `
+    --query "password" -o tsv
+
+Write-Host "Client Secret: $secret"
+Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!"
+```
+
+#### Step D: Configure Group Claims
+
+```powershell
+# Configure the app to emit group claims in tokens
+# This requires updating the app manifest
+
+# Get current manifest
+az ad app show --id $clientId --query "groupMembershipClaims" -o tsv
+
+# Update to include security groups
+az ad app update --id $clientId --set groupMembershipClaims="SecurityGroup"
+```
+
+Alternatively, configure via Azure Portal:
+1. Go to **Azure Portal** → **App registrations** → Select your app
+2. Go to **Token configuration** → **Add groups claim**
+3. Select **Security groups**
+4. Under **ID** and **Access** tokens, check **Group ID**
+5. Click **Add**
+
+#### Step E: Create Service Principal (Enterprise App)
+
+```powershell
+# Create service principal for the app
+az ad sp create --id $clientId
+```
+
+#### Step F: Configure Static Web App Settings
+
+```powershell
+# Get your tenant ID
+$tenantId = az account show --query "tenantId" -o tsv
+
+# Get your admin group ID (replace with your group name)
+$adminGroupId = az ad group show --group "SAML Certificate Rotation Admins" --query "id" -o tsv
+
+# Configure SWA with the app registration credentials
+az staticwebapp appsettings set `
+    --resource-group $resourceGroupName `
+    --name $staticWebAppName `
+    --setting-names "AAD_CLIENT_ID=$clientId" "AAD_CLIENT_SECRET=$secret"
+
+# Configure the Function App with the admin group ID
+az functionapp config appsettings set `
+    --resource-group $resourceGroupName `
+    --name $functionAppName `
+    --settings "SWA_ADMIN_GROUP_ID=$adminGroupId"
+```
+
+#### Step G: Update staticwebapp.config.json
+
+Update `dashboard/staticwebapp.config.json` with your tenant ID:
+
+```powershell
+# Replace placeholder with actual tenant ID
+$configPath = "dashboard/staticwebapp.config.json"
+$config = Get-Content $configPath -Raw
+$config = $config -replace "<YOUR_TENANT_ID>", $tenantId
+Set-Content $configPath $config
+```
+
+#### Step H: Link Function App to Static Web App (for roles API)
+
+```powershell
+# Get the Function App resource ID
+$functionAppId = az functionapp show `
+    --resource-group $resourceGroupName `
+    --name $functionAppName `
+    --query "id" -o tsv
+
+# Link the Function App as the API backend
+az staticwebapp backends link `
+    --resource-group $resourceGroupName `
+    --name $staticWebAppName `
+    --backend-resource-id $functionAppId `
+    --backend-region $location
+```
+
+#### Summary of IDs Needed
+
+| Setting | Where to Configure | Value |
+|---------|-------------------|-------|
+| `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
+| `AAD_CLIENT_SECRET` | SWA App Settings | App Registration Secret |
+| `SWA_ADMIN_GROUP_ID` | Function App Settings | Security Group Object ID |
+| Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
 
 ---
 
