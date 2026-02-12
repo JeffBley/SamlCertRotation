@@ -5,22 +5,14 @@
   },
   "routes": [
     {
-      "route": "/api/*",
-      "allowedRoles": ["authenticated"]
-    },
-    {
       "route": "/*",
-      "allowedRoles": ["admin"]
+      "allowedRoles": ["authenticated"]
     }
   ],
   "responseOverrides": {
     "401": {
       "redirect": "/.auth/login/aad",
       "statusCode": 302
-    },
-    "403": {
-      "rewrite": "/unauthorized.html",
-      "statusCode": 403
     }
   },
   "auth": {
@@ -31,12 +23,10 @@
           "clientIdSettingName": "AAD_CLIENT_ID",
           "clientSecretSettingName": "AAD_CLIENT_SECRET"
         },
-        "userDetailsClaim": "http://schemas.microsoft.com/identity/claims/objectidentifier",
         "login": {
           "loginParameters": ["scope=openid profile email"]
         }
       }
-    },
-    "rolesSource": "/api/GetRoles"
+    }
   }
 }
