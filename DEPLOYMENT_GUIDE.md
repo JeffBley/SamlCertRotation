@@ -11,8 +11,8 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 5. [Step 4: Deploy Azure Infrastructure](#step-4-deploy-azure-infrastructure)
 6. [Step 5: Grant Microsoft Graph Permissions](#step-5-grant-microsoft-graph-permissions)
 7. [Step 6: Deploy the Function App Code](#step-6-deploy-the-function-app-code)
-8. [Step 7: Deploy the Dashboard](#step-7-deploy-the-dashboard)
-9. [Step 8: Configure Dashboard Access Control](#step-8-configure-dashboard-access-control)
+8. [Step 7: Configure Dashboard Access Control](#step-7-configure-dashboard-access-control)
+9. [Step 8: Deploy the Dashboard](#step-8-deploy-the-dashboard)
 10. [Step 9: Configure Email Notifications](#step-9-configure-email-notifications)
 11. [Step 10: Tag Applications for Auto-Rotation](#step-10-tag-applications-for-auto-rotation)
 12. [Step 11: Verify the Deployment](#step-11-verify-the-deployment)
@@ -320,9 +320,173 @@ You should see `CertificateChecker` and several `Dashboard*` functions listed.
 
 ---
 
-## Step 7: Deploy the Dashboard
+## Step 7: Configure Dashboard Access Control
 
-### 7.1 Get Static Web App Deployment Token
+The dashboard uses Azure AD group-based access control. Only users in a specific security group can access the dashboard.
+
+### 7.1 Create an Azure AD Security Group
+
+1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
+2. Navigate to **Groups** → **All groups** → **New group**
+3. Configure the group:
+   - **Group type**: Security
+   - **Group name**: `SAML Certificate Rotation Admins`
+   - **Description**: `Users who can access the SAML Certificate Rotation Dashboard`
+   - **Members**: Add users who should have dashboard access
+4. Click **Create**
+
+```powershell
+# Get the group Object ID
+$ADMIN_GROUP_ID = az ad group show --group "SAML Certificate Rotation Admins" --query "id" -o tsv
+Write-Host "Admin Group ID: $ADMIN_GROUP_ID"
+```
+
+### 7.2 Create an App Registration
+
+```powershell
+# Get Static Web App hostname
+$SWA_HOSTNAME = az staticwebapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "defaultHostname" -o tsv
+
+# Create app registration for SWA authentication
+$APP_NAME = "SAML Certificate Rotation Dashboard"
+
+$APP_JSON = az ad app create `
+    --display-name $APP_NAME `
+    --sign-in-audience AzureADMyOrg `
+    --web-redirect-uris "https://$SWA_HOSTNAME/.auth/login/aad/callback" `
+    --enable-id-token-issuance true `
+    --query "{appId:appId, id:id}" -o json
+
+$APP = $APP_JSON | ConvertFrom-Json
+$CLIENT_ID = $APP.appId
+$APP_OBJECT_ID = $APP.id
+
+Write-Host "Client ID: $CLIENT_ID"
+Write-Host "App Object ID: $APP_OBJECT_ID"
+```
+
+### 7.3 Create Client Secret
+
+```powershell
+# Create client secret (valid for 2 years)
+$CLIENT_SECRET = az ad app credential reset `
+    --id $CLIENT_ID `
+    --display-name "SWA Auth Secret" `
+    --years 2 `
+    --query "password" -o tsv
+
+Write-Host "Client Secret: $CLIENT_SECRET"
+Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!"
+```
+
+### 7.4 Configure Group Claims
+
+```powershell
+# Configure the app to emit group claims in tokens
+az ad app update --id $CLIENT_ID --set groupMembershipClaims="SecurityGroup"
+
+Write-Host "Group claims configured"
+```
+
+Alternatively, configure via Azure Portal:
+1. Go to **Azure Portal** → **App registrations** → Select your app
+2. Go to **Token configuration** → **Add groups claim**
+3. Select **Security groups**
+4. Under **ID** and **Access** tokens, check **Group ID**
+5. Click **Add**
+
+### 7.5 Create Service Principal (Enterprise App)
+
+```powershell
+# Create service principal for the app
+az ad sp create --id $CLIENT_ID
+
+Write-Host "Service principal created"
+```
+
+### 7.6 Configure Static Web App and Function App Settings
+
+```powershell
+# Get your tenant ID
+$TENANT_ID = az account show --query "tenantId" -o tsv
+
+# Configure SWA with the app registration credentials
+az staticwebapp appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=$CLIENT_SECRET"
+
+# Configure the Function App with the admin group ID
+az functionapp config appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --settings "SWA_ADMIN_GROUP_ID=$ADMIN_GROUP_ID"
+
+Write-Host "App settings configured"
+```
+
+### 7.7 Link Function App to Static Web App
+
+The Function App provides the `/api/GetRoles` endpoint that assigns roles based on group membership.
+
+```powershell
+# Get the Function App resource ID
+$FUNCTION_APP_ID = az functionapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "id" -o tsv
+
+# Get the location
+$LOCATION = az staticwebapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "location" -o tsv
+
+# Link the Function App as the API backend
+az staticwebapp backends link `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --backend-resource-id $FUNCTION_APP_ID `
+    --backend-region $LOCATION
+
+Write-Host "Function App linked as SWA backend"
+```
+
+### 7.8 Save Access Control Configuration
+
+```powershell
+# Save configuration for reference
+$accessControlConfig = @{
+    clientId = $CLIENT_ID
+    adminGroupId = $ADMIN_GROUP_ID
+    tenantId = $TENANT_ID
+    swaHostname = $SWA_HOSTNAME
+} | ConvertTo-Json
+
+Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.json" -Value $accessControlConfig
+
+Write-Host "Access control configuration saved to access-control-config.json"
+```
+
+### Summary of Access Control Settings
+
+| Setting | Location | Value |
+|---------|----------|-------|
+| `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
+| `AAD_CLIENT_SECRET` | SWA App Settings | App Registration Secret |
+| `SWA_ADMIN_GROUP_ID` | Function App Settings | Security Group Object ID |
+| Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
+
+> **Note**: Only users who are members of the "SAML Certificate Rotation Admins" security group will be able to access the dashboard. Other authenticated users will see an "Access Denied" page.
+
+---
+
+## Step 8: Deploy the Dashboard
+
+### 8.1 Get Static Web App Deployment Token
 
 ```powershell
 # Get deployment token
@@ -334,15 +498,12 @@ $SWA_TOKEN = az staticwebapp secrets list `
 Write-Host "Deployment token retrieved"
 ```
 
-### 7.2 Update Dashboard Configuration
+### 8.2 Update Dashboard Configuration
 
 ```powershell
 Set-Location "$HOME/SamlCertRotation/dashboard"
 
-# Get your tenant ID
-$TENANT_ID = az account show --query tenantId -o tsv
-
-# Update the staticwebapp.config.json with your tenant ID
+# Update the staticwebapp.config.json with your tenant ID (if not done in Step 7)
 $configContent = Get-Content staticwebapp.config.json -Raw
 $configContent = $configContent -replace '<YOUR_TENANT_ID>', $TENANT_ID
 Set-Content -Path staticwebapp.config.json -Value $configContent
@@ -353,7 +514,7 @@ $htmlContent = $htmlContent -replace "const API_BASE_URL = ''", "const API_BASE_
 Set-Content -Path index.html -Value $htmlContent
 ```
 
-### 7.3 Deploy Dashboard
+### 8.3 Deploy Dashboard
 
 The simplest method is to deploy via the Azure Portal:
 
@@ -389,7 +550,7 @@ npx -y @azure/static-web-apps-cli deploy ./dist `
 > **Note**: You may see npm warnings about deprecated packages. These come from the
 > SWA CLI's dependencies and are safe to ignore - they don't affect functionality.
 
-### 7.4 Get Dashboard URL
+### 8.4 Get Dashboard URL
 
 ```powershell
 # Get the Static Web App URL
@@ -400,170 +561,6 @@ $dashboardUrl = az staticwebapp show `
 
 Write-Host "Dashboard URL: https://$dashboardUrl"
 ```
-
----
-
-## Step 8: Configure Dashboard Access Control
-
-The dashboard uses Azure AD group-based access control. Only users in a specific security group can access the dashboard.
-
-### 8.1 Create an Azure AD Security Group
-
-1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
-2. Navigate to **Groups** → **All groups** → **New group**
-3. Configure the group:
-   - **Group type**: Security
-   - **Group name**: `SAML Certificate Rotation Admins`
-   - **Description**: `Users who can access the SAML Certificate Rotation Dashboard`
-   - **Members**: Add users who should have dashboard access
-4. Click **Create**
-
-```powershell
-# Get the group Object ID
-$ADMIN_GROUP_ID = az ad group show --group "SAML Certificate Rotation Admins" --query "id" -o tsv
-Write-Host "Admin Group ID: $ADMIN_GROUP_ID"
-```
-
-### 8.2 Create an App Registration
-
-```powershell
-# Get Static Web App hostname
-$SWA_HOSTNAME = az staticwebapp show `
-    --resource-group $RESOURCE_GROUP `
-    --name $STATIC_WEB_APP_NAME `
-    --query "defaultHostname" -o tsv
-
-# Create app registration for SWA authentication
-$APP_NAME = "SAML Certificate Rotation Dashboard"
-
-$APP_JSON = az ad app create `
-    --display-name $APP_NAME `
-    --sign-in-audience AzureADMyOrg `
-    --web-redirect-uris "https://$SWA_HOSTNAME/.auth/login/aad/callback" `
-    --enable-id-token-issuance true `
-    --query "{appId:appId, id:id}" -o json
-
-$APP = $APP_JSON | ConvertFrom-Json
-$CLIENT_ID = $APP.appId
-$APP_OBJECT_ID = $APP.id
-
-Write-Host "Client ID: $CLIENT_ID"
-Write-Host "App Object ID: $APP_OBJECT_ID"
-```
-
-### 8.3 Create Client Secret
-
-```powershell
-# Create client secret (valid for 2 years)
-$CLIENT_SECRET = az ad app credential reset `
-    --id $CLIENT_ID `
-    --display-name "SWA Auth Secret" `
-    --years 2 `
-    --query "password" -o tsv
-
-Write-Host "Client Secret: $CLIENT_SECRET"
-Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!"
-```
-
-### 8.4 Configure Group Claims
-
-```powershell
-# Configure the app to emit group claims in tokens
-az ad app update --id $CLIENT_ID --set groupMembershipClaims="SecurityGroup"
-
-Write-Host "Group claims configured"
-```
-
-Alternatively, configure via Azure Portal:
-1. Go to **Azure Portal** → **App registrations** → Select your app
-2. Go to **Token configuration** → **Add groups claim**
-3. Select **Security groups**
-4. Under **ID** and **Access** tokens, check **Group ID**
-5. Click **Add**
-
-### 8.5 Create Service Principal (Enterprise App)
-
-```powershell
-# Create service principal for the app
-az ad sp create --id $CLIENT_ID
-
-Write-Host "Service principal created"
-```
-
-### 8.6 Configure Static Web App and Function App Settings
-
-```powershell
-# Get your tenant ID
-$TENANT_ID = az account show --query "tenantId" -o tsv
-
-# Configure SWA with the app registration credentials
-az staticwebapp appsettings set `
-    --resource-group $RESOURCE_GROUP `
-    --name $STATIC_WEB_APP_NAME `
-    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=$CLIENT_SECRET"
-
-# Configure the Function App with the admin group ID
-az functionapp config appsettings set `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --settings "SWA_ADMIN_GROUP_ID=$ADMIN_GROUP_ID"
-
-Write-Host "App settings configured"
-```
-
-### 8.7 Link Function App to Static Web App
-
-The Function App provides the `/api/GetRoles` endpoint that assigns roles based on group membership.
-
-```powershell
-# Get the Function App resource ID
-$FUNCTION_APP_ID = az functionapp show `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --query "id" -o tsv
-
-# Get the location
-$LOCATION = az staticwebapp show `
-    --resource-group $RESOURCE_GROUP `
-    --name $STATIC_WEB_APP_NAME `
-    --query "location" -o tsv
-
-# Link the Function App as the API backend
-az staticwebapp backends link `
-    --resource-group $RESOURCE_GROUP `
-    --name $STATIC_WEB_APP_NAME `
-    --backend-resource-id $FUNCTION_APP_ID `
-    --backend-region $LOCATION
-
-Write-Host "Function App linked as SWA backend"
-```
-
-### 8.8 Save Access Control Configuration
-
-```powershell
-# Save configuration for reference
-$accessControlConfig = @{
-    clientId = $CLIENT_ID
-    adminGroupId = $ADMIN_GROUP_ID
-    tenantId = $TENANT_ID
-    swaHostname = $SWA_HOSTNAME
-} | ConvertTo-Json
-
-Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.json" -Value $accessControlConfig
-
-Write-Host "Access control configuration saved to access-control-config.json"
-```
-
-### Summary of Access Control Settings
-
-| Setting | Location | Value |
-|---------|----------|-------|
-| `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
-| `AAD_CLIENT_SECRET` | SWA App Settings | App Registration Secret |
-| `SWA_ADMIN_GROUP_ID` | Function App Settings | Security Group Object ID |
-| Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
-
-> **Note**: Only users who are members of the "SAML Certificate Rotation Admins" security group will be able to access the dashboard. Other authenticated users will see an "Access Denied" page.
 
 ---
 
