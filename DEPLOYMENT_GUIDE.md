@@ -669,23 +669,17 @@ This approach requires no Mail.Send Graph permission on the managed identity.
 3. Find and open the Logic App: `$LOGIC_APP_NAME`
 4. Click **Logic app designer**
 
-### 9.2 Add Office 365 Send Email Action
+### 9.2 Configure the Logic App Email Connection
 
-1. In the designer, you'll see the **When a HTTP request is received** trigger
-2. Click **+ New step**
-3. Search for **Office 365 Outlook**
-4. Select **Send an email (V2)**
-5. Sign in with a user account that will send the emails (e.g., a shared mailbox delegate or service account)
-6. Configure the action:
-   - **To**: Click in the field, then **Add dynamic content** → Select `to`
-   - **Subject**: Click in the field, then **Add dynamic content** → Select `subject`
-   - **Body**: Click in the field, then **Add dynamic content** → Select `body`
-7. Delete the existing **Response** action (we'll add it after the email)
-8. Click **+ New step** → Search for **Response**
-9. Configure the Response:
-   - **Status Code**: `200`
-   - **Body**: `{"status": "sent"}`
-10. Click **Save**
+The Logic App was deployed with a **Send an email (V2)** action pre-configured. You need to authorize the email connection:
+
+1. In the designer, click on the **Send an email (V2)** tile
+2. Under **Parameters**, click **Change connection**
+3. Click **Add new**
+4. Sign in with the account whose email address will send the notifications (e.g., a shared mailbox or service account)
+5. Click **Save** at the top of the designer
+
+> **Note**: The account you sign in with will be the "From" address for all notification emails. Consider using a shared mailbox like `saml-notifications@yourdomain.com`.
 
 ### 9.3 Get Logic App Callback URL
 
