@@ -478,7 +478,7 @@ public class DashboardFunctions
                 });
             }
 
-            var success = await _graphService.ActivateCertificateAsync(id, newestCert.KeyId);
+            var success = await _graphService.ActivateCertificateAsync(id, newestCert.Thumbprint);
             if (!success)
             {
                 return await CreateErrorResponse(req, "Failed to activate certificate");
@@ -488,7 +488,7 @@ public class DashboardFunctions
                 id,
                 app.DisplayName,
                 "Certificate Activated",
-                $"Certificate activated via dashboard. KeyId: {newestCert.KeyId}");
+                $"Certificate activated via dashboard. KeyId: {newestCert.KeyId}, Thumbprint: {newestCert.Thumbprint}");
 
             return await CreateJsonResponse(req, new
             {

@@ -147,36 +147,18 @@ public class GraphService : IGraphService
     }
 
     /// <inheritdoc />
-    public async Task<bool> ActivateCertificateAsync(string servicePrincipalId, string keyId)
+    public async Task<bool> ActivateCertificateAsync(string servicePrincipalId, string thumbprint)
     {
         try
         {
-            _logger.LogInformation("Activating certificate {KeyId} for service principal {Id}", 
-                keyId, servicePrincipalId);
-
-            // Get the current service principal to get the thumbprint
-            var sp = await _graphClient.ServicePrincipals[servicePrincipalId]
-                .GetAsync(config =>
-                {
-                    config.QueryParameters.Select = new[] { "keyCredentials" };
-                });
-
-            var keyCredential = sp?.KeyCredentials?.FirstOrDefault(k => k.KeyId?.ToString() == keyId);
-            if (keyCredential == null)
-            {
-                _logger.LogError("Certificate with KeyId {KeyId} not found", keyId);
-                return false;
-            }
-
-            if (keyCredential.CustomKeyIdentifier == null || keyCredential.CustomKeyIdentifier.Length == 0)
-            {
-                _logger.LogError("Certificate {KeyId} has no CustomKeyIdentifier (thumbprint)", keyId);
-                return false;
-            }
-
-            var thumbprint = Convert.ToBase64String(keyCredential.CustomKeyIdentifier);
-            _logger.LogInformation("Setting preferredTokenSigningKeyThumbprint to {Thumbprint} for {Id}", 
+            _logger.LogInformation("Activating certificate with thumbprint {Thumbprint} for service principal {Id}", 
                 thumbprint, servicePrincipalId);
+
+            if (string.IsNullOrEmpty(thumbprint))
+            {
+                _logger.LogError("Thumbprint is null or empty");
+                return false;
+            }
 
             // Update the preferredTokenSigningKeyThumbprint to activate the certificate
             var updateBody = new ServicePrincipal
@@ -186,20 +168,20 @@ public class GraphService : IGraphService
 
             await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(updateBody);
 
-            _logger.LogInformation("Successfully activated certificate {KeyId}", keyId);
+            _logger.LogInformation("Successfully activated certificate with thumbprint {Thumbprint}", thumbprint);
             return true;
         }
         catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
         {
             var errorMessage = odataEx.Error?.Message ?? odataEx.Message;
             var errorCode = odataEx.Error?.Code ?? "Unknown";
-            _logger.LogError(odataEx, "Graph API error activating certificate {KeyId}: {Code} - {Message}", 
-                keyId, errorCode, errorMessage);
+            _logger.LogError(odataEx, "Graph API error activating certificate: {Code} - {Message}", 
+                errorCode, errorMessage);
             throw new InvalidOperationException($"Graph API error ({errorCode}): {errorMessage}", odataEx);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error activating certificate {KeyId} for {Id}", keyId, servicePrincipalId);
+            _logger.LogError(ex, "Error activating certificate for {Id}", servicePrincipalId);
             return false;
         }
     }

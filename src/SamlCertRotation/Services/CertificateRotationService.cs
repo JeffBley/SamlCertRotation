@@ -167,7 +167,7 @@ public class CertificateRotationService : ICertificateRotationService
                     {
                         _logger.LogInformation("Activating certificate for {AppName}", app.DisplayName);
                         
-                        var activated = await _graphService.ActivateCertificateAsync(app.Id, newerInactiveCert.KeyId);
+                        var activated = await _graphService.ActivateCertificateAsync(app.Id, newerInactiveCert.Thumbprint);
                         
                         if (activated)
                         {
@@ -207,7 +207,7 @@ public class CertificateRotationService : ICertificateRotationService
                 {
                     _logger.LogInformation("Activating pending certificate for {AppName}", app.DisplayName);
                     
-                    var activated = await _graphService.ActivateCertificateAsync(app.Id, pendingCert.KeyId);
+                    var activated = await _graphService.ActivateCertificateAsync(app.Id, pendingCert.Thumbprint);
                     
                     if (activated)
                     {

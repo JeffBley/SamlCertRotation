@@ -25,7 +25,7 @@ public interface IGraphService
     /// <summary>
     /// Set a certificate as the active SAML signing certificate
     /// </summary>
-    Task<bool> ActivateCertificateAsync(string servicePrincipalId, string keyId);
+    Task<bool> ActivateCertificateAsync(string servicePrincipalId, string thumbprint);
 
     /// <summary>
     /// Get the custom security attribute value for an application
