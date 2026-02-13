@@ -903,6 +903,9 @@
             document.getElementById('error-container').innerHTML = `
                 <div class="error">${message}</div>
             `;
+            setTimeout(() => {
+                document.getElementById('error-container').innerHTML = '';
+            }, 5000);
         }
 
         // Load dashboard data
