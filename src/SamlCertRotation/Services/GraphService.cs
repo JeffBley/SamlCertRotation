@@ -368,4 +368,114 @@ public class GraphService : IGraphService
 
         return samlApp;
     }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteInactiveCertificatesAsync(string servicePrincipalId, List<string> keyIds)
+    {
+        _logger.LogInformation("Deleting {Count} inactive certificates for {Id}", keyIds.Count, servicePrincipalId);
+        var deletedCount = 0;
+
+        try
+        {
+            // Get current service principal
+            var sp = await _graphClient.ServicePrincipals[servicePrincipalId]
+                .GetAsync(config =>
+                {
+                    config.QueryParameters.Select = new[] { "id", "keyCredentials", "passwordCredentials" };
+                });
+
+            if (sp?.KeyCredentials == null)
+            {
+                _logger.LogWarning("No key credentials found for {Id}", servicePrincipalId);
+                return 0;
+            }
+
+            // Filter out the certificates to delete
+            var keysToKeep = sp.KeyCredentials
+                .Where(k => !keyIds.Contains(k.KeyId?.ToString() ?? string.Empty))
+                .ToList();
+
+            deletedCount = sp.KeyCredentials.Count - keysToKeep.Count;
+
+            if (deletedCount == 0)
+            {
+                _logger.LogInformation("No certificates matched for deletion");
+                return 0;
+            }
+
+            // Update the service principal with remaining certificates
+            var updateSp = new ServicePrincipal
+            {
+                KeyCredentials = keysToKeep
+            };
+
+            await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(updateSp);
+            _logger.LogInformation("Successfully deleted {Count} inactive certificates", deletedCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting inactive certificates for {Id}", servicePrincipalId);
+            throw;
+        }
+
+        return deletedCount;
+    }
+
+    /// <inheritdoc />
+    public async Task<ClientSecretInfo?> RotateAppClientSecretAsync(string clientId)
+    {
+        _logger.LogInformation("Rotating client secret for application {ClientId}", clientId);
+
+        try
+        {
+            // First, find the application by clientId (appId)
+            var apps = await _graphClient.Applications
+                .GetAsync(config =>
+                {
+                    config.QueryParameters.Filter = $"appId eq '{clientId}'";
+                    config.QueryParameters.Select = new[] { "id", "appId", "displayName", "passwordCredentials" };
+                });
+
+            var app = apps?.Value?.FirstOrDefault();
+            if (app == null)
+            {
+                _logger.LogWarning("Application not found with clientId {ClientId}", clientId);
+                return null;
+            }
+
+            // Add a new password credential
+            var passwordCredential = new PasswordCredential
+            {
+                DisplayName = $"Dashboard Secret - {DateTime.UtcNow:yyyy-MM-dd}",
+                EndDateTime = DateTimeOffset.UtcNow.AddYears(2)
+            };
+
+            var newSecret = await _graphClient.Applications[app.Id]
+                .AddPassword
+                .PostAsync(new Microsoft.Graph.Applications.Item.AddPassword.AddPasswordPostRequestBody
+                {
+                    PasswordCredential = passwordCredential
+                });
+
+            if (newSecret == null)
+            {
+                _logger.LogError("Failed to create new secret for {ClientId}", clientId);
+                return null;
+            }
+
+            _logger.LogInformation("Successfully created new client secret for {ClientId}", clientId);
+
+            return new ClientSecretInfo
+            {
+                Hint = newSecret.Hint ?? newSecret.SecretText?.Substring(0, Math.Min(4, newSecret.SecretText?.Length ?? 0)) ?? "",
+                EndDateTime = newSecret.EndDateTime?.UtcDateTime ?? DateTime.UtcNow.AddYears(2),
+                SecretValue = newSecret.SecretText
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rotating client secret for {ClientId}", clientId);
+            throw;
+        }
+    }
 }

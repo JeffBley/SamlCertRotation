@@ -361,6 +361,188 @@
             color: var(--text-secondary);
             font-size: 12px;
         }
+
+        /* Actions dropdown menu */
+        .actions-cell {
+            position: relative;
+        }
+
+        .actions-btn {
+            background: none;
+            border: 1px solid #d2d0ce;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+
+        .actions-btn:hover {
+            background: #f4f4f4;
+            border-color: var(--primary);
+        }
+
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: white;
+            border: 1px solid #d2d0ce;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            min-width: 200px;
+            overflow: hidden;
+        }
+
+        .dropdown-menu.show {
+            display: block;
+        }
+
+        .dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 10px 16px;
+            border: none;
+            background: none;
+            text-align: left;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text);
+            transition: background 0.15s;
+        }
+
+        .dropdown-item:hover {
+            background: #f4f4f4;
+        }
+
+        .dropdown-item.danger {
+            color: var(--danger);
+        }
+
+        .dropdown-item.danger:hover {
+            background: #fde7e9;
+        }
+
+        /* Confirmation modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+
+        .modal h3 {
+            margin-bottom: 12px;
+            color: var(--danger);
+        }
+
+        .modal p {
+            margin-bottom: 20px;
+            color: var(--text-secondary);
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .modal-buttons button {
+            padding: 8px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-cancel {
+            background: #f4f4f4;
+            border: 1px solid #d2d0ce;
+            color: var(--text);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            border: none;
+            color: white;
+        }
+
+        /* Sign in page styles */
+        .signin-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+            text-align: center;
+        }
+
+        .signin-container h2 {
+            margin-bottom: 16px;
+        }
+
+        .signin-container p {
+            margin-bottom: 24px;
+            color: var(--text-secondary);
+        }
+
+        .signin-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .signin-btn:hover {
+            background: #005a9e;
+        }
+
+        /* Rotate button in settings */
+        .btn-secondary {
+            background: #f4f4f4;
+            border: 1px solid #d2d0ce;
+            color: var(--text);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: #e8e8e8;
+            border-color: #b8b8b8;
+        }
+
+        .btn-secondary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -371,7 +553,7 @@
                     <h1>SAML Certificate Rotation Dashboard</h1>
                     <p>Automated certificate lifecycle management for Microsoft Entra ID</p>
                 </div>
-                <button class="logout-btn" onclick="logout()">Sign Out</button>
+                <button class="logout-btn" onclick="signOut()">Sign Out</button>
             </div>
         </div>
     </header>
@@ -503,6 +685,34 @@
                     <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
                 </div>
             </div>
+
+            <div class="section" style="margin-top: 24px;">
+                <div class="section-header">
+                    <h2>Dashboard Security</h2>
+                </div>
+                <div class="policy-form">
+                    <div class="form-group">
+                        <label>Dashboard Client Secret</label>
+                        <p style="font-size:12px;color:#666;margin-bottom:12px;">Rotate the client secret used for dashboard authentication. The new secret will be stored in Key Vault and the SWA app settings will be updated automatically.</p>
+                        <button class="btn btn-secondary" id="rotateSecretBtn" onclick="rotateDashboardSecret()">
+                            Rotate Dashboard Client Secret
+                        </button>
+                        <p id="rotateSecretStatus" style="font-size:12px;margin-top:8px;display:none;"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="modal-overlay">
+        <div class="modal">
+            <h3 id="modalTitle">Confirm Action</h3>
+            <p id="modalMessage">Are you sure you want to proceed?</p>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+                <button class="btn-danger" id="modalConfirmBtn" onclick="confirmModalAction()">Delete</button>
+            </div>
         </div>
     </div>
 
@@ -516,10 +726,132 @@
 
         // Store apps data for filtering
         let allApps = [];
+        
+        // Current action for confirmation modal
+        let pendingAction = null;
 
-        // Logout function
-        function logout() {
-            window.location.href = '/.auth/logout';
+        // Sign Out function - kills app session only (not global SSO logout)
+        function signOut() {
+            window.location.href = '/.auth/logout?post_logout_redirect_uri=/';
+        }
+
+        // Close all dropdown menus
+        function closeAllDropdowns() {
+            document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
+                menu.classList.remove('show');
+            });
+        }
+
+        // Toggle actions menu for an app
+        function toggleActionsMenu(event, appId) {
+            event.stopPropagation();
+            const menu = document.getElementById(`actions-menu-${appId}`);
+            const wasOpen = menu.classList.contains('show');
+            closeAllDropdowns();
+            if (!wasOpen) {
+                menu.classList.add('show');
+            }
+        }
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', closeAllDropdowns);
+
+        // Create new SAML certificate for an app
+        async function createNewCert(appId, appName) {
+            closeAllDropdowns();
+            try {
+                showLoading('Creating new certificate...');
+                await apiCall(`applications/${appId}/certificate`, { method: 'POST' });
+                showSuccess(`New certificate created for ${appName}`);
+                await loadApplications();
+            } catch (error) {
+                showError(`Failed to create certificate: ${error.message}`);
+            }
+        }
+
+        // Activate the newest certificate for an app
+        async function activateNewestCert(appId, appName) {
+            closeAllDropdowns();
+            try {
+                showLoading('Activating newest certificate...');
+                await apiCall(`applications/${appId}/certificate/activate`, { method: 'POST' });
+                showSuccess(`Newest certificate activated for ${appName}`);
+                await loadApplications();
+            } catch (error) {
+                showError(`Failed to activate certificate: ${error.message}`);
+            }
+        }
+
+        // Show confirmation modal for deleting inactive certificates
+        function confirmDeleteInactiveCerts(appId, appName) {
+            closeAllDropdowns();
+            pendingAction = { type: 'deleteInactive', appId, appName };
+            document.getElementById('confirmModalMessage').textContent = 
+                `Are you sure you want to delete all inactive certificates for "${appName}"? This action cannot be undone.`;
+            document.getElementById('confirmModal').classList.add('show');
+        }
+
+        // Close the confirmation modal
+        function closeModal() {
+            document.getElementById('confirmModal').classList.remove('show');
+            pendingAction = null;
+        }
+
+        // Execute the pending action from the confirmation modal
+        async function confirmModalAction() {
+            if (!pendingAction) return;
+            
+            closeModal();
+            
+            if (pendingAction.type === 'deleteInactive') {
+                try {
+                    showLoading('Deleting inactive certificates...');
+                    await apiCall(`applications/${pendingAction.appId}/certificate/inactive`, { method: 'DELETE' });
+                    showSuccess(`Inactive certificates deleted for ${pendingAction.appName}`);
+                    await loadApplications();
+                } catch (error) {
+                    showError(`Failed to delete certificates: ${error.message}`);
+                }
+            } else if (pendingAction.type === 'rotateDashboardSecret') {
+                try {
+                    showLoading('Rotating dashboard client secret...');
+                    await apiCall('settings/rotate-secret', { method: 'POST' });
+                    showSuccess('Dashboard client secret rotated successfully. You may need to sign in again shortly.');
+                } catch (error) {
+                    showError(`Failed to rotate secret: ${error.message}`);
+                }
+            }
+            
+            pendingAction = null;
+        }
+
+        // Rotate the dashboard application's client secret
+        function rotateDashboardSecret() {
+            pendingAction = { type: 'rotateDashboardSecret' };
+            document.getElementById('confirmModalMessage').textContent = 
+                'Are you sure you want to rotate the dashboard client secret? You will need to update the SWA configuration with the new secret value.';
+            document.getElementById('confirmModal').classList.add('show');
+        }
+
+        // Show loading message
+        function showLoading(message) {
+            document.getElementById('error-container').innerHTML = `
+                <div style="padding: 15px; background: #e3f2fd; border-radius: 6px; color: #1565c0;">
+                    ${message}
+                </div>
+            `;
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            document.getElementById('error-container').innerHTML = `
+                <div style="padding: 15px; background: #e8f5e9; border-radius: 6px; color: #2e7d32;">
+                    ${message}
+                </div>
+            `;
+            setTimeout(() => {
+                document.getElementById('error-container').innerHTML = '';
+            }, 5000);
         }
 
         // Tab navigation
@@ -652,6 +984,7 @@
                             <th>Certificate Expiry</th>
                             <th>Days Remaining</th>
                             <th>Status</th>
+                            <th style="width:60px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -669,6 +1002,20 @@
                                     <span class="expiry-badge expiry-${app.expiryCategory.toLowerCase()}">
                                         ${app.expiryCategory}
                                     </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="actions-btn" onclick="toggleActionsMenu(event, '${app.id}')">⋮</button>
+                                    <div id="actions-menu-${app.id}" class="dropdown-menu">
+                                        <button class="dropdown-item" onclick="createNewCert('${app.id}', '${app.displayName}')">
+                                            Create new SAML certificate
+                                        </button>
+                                        <button class="dropdown-item" onclick="activateNewestCert('${app.id}', '${app.displayName}')">
+                                            Make newest cert active
+                                        </button>
+                                        <button class="dropdown-item danger" onclick="confirmDeleteInactiveCerts('${app.id}', '${app.displayName}')">
+                                            Delete inactive certificates
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         `).join('')}

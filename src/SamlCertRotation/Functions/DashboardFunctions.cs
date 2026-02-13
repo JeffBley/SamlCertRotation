@@ -398,6 +398,206 @@ public class DashboardFunctions
         }
     }
 
+    /// <summary>
+    /// Create a new SAML certificate for an application
+    /// </summary>
+    [Function("CreateCertificate")]
+    public async Task<HttpResponseData> CreateCertificate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "applications/{id}/certificate")] HttpRequestData req,
+        string id)
+    {
+        _logger.LogInformation("Creating new certificate for application {Id}", id);
+
+        try
+        {
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            var cert = await _graphService.CreateSamlCertificateAsync(id);
+            if (cert == null)
+            {
+                return await CreateErrorResponse(req, "Failed to create certificate");
+            }
+
+            await _auditService.LogSuccessAsync(
+                id,
+                app.DisplayName,
+                "Certificate Created",
+                $"New certificate created via dashboard. KeyId: {cert.KeyId}");
+
+            return await CreateJsonResponse(req, new
+            {
+                message = "Certificate created successfully",
+                certificate = cert
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating certificate for application {Id}", id);
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Activate the newest certificate for an application
+    /// </summary>
+    [Function("ActivateNewestCertificate")]
+    public async Task<HttpResponseData> ActivateNewestCertificate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "applications/{id}/certificate/activate")] HttpRequestData req,
+        string id)
+    {
+        _logger.LogInformation("Activating newest certificate for application {Id}", id);
+
+        try
+        {
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            if (app.Certificates == null || !app.Certificates.Any())
+            {
+                return await CreateErrorResponse(req, "No certificates found for this application", HttpStatusCode.BadRequest);
+            }
+
+            // Find the newest non-active certificate
+            var newestCert = app.Certificates
+                .Where(c => !c.IsActive)
+                .OrderByDescending(c => c.EndDateTime)
+                .FirstOrDefault();
+
+            if (newestCert == null)
+            {
+                // If all are inactive, just get the newest one
+                newestCert = app.Certificates.OrderByDescending(c => c.EndDateTime).First();
+            }
+
+            var success = await _graphService.ActivateCertificateAsync(id, newestCert.KeyId);
+            if (!success)
+            {
+                return await CreateErrorResponse(req, "Failed to activate certificate");
+            }
+
+            await _auditService.LogSuccessAsync(
+                id,
+                app.DisplayName,
+                "Certificate Activated",
+                $"Certificate activated via dashboard. KeyId: {newestCert.KeyId}");
+
+            return await CreateJsonResponse(req, new
+            {
+                message = "Certificate activated successfully",
+                activatedKeyId = newestCert.KeyId
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error activating certificate for application {Id}", id);
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Delete all inactive certificates for an application
+    /// </summary>
+    [Function("DeleteInactiveCertificates")]
+    public async Task<HttpResponseData> DeleteInactiveCertificates(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "applications/{id}/certificate/inactive")] HttpRequestData req,
+        string id)
+    {
+        _logger.LogInformation("Deleting inactive certificates for application {Id}", id);
+
+        try
+        {
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            if (app.Certificates == null || !app.Certificates.Any())
+            {
+                return await CreateErrorResponse(req, "No certificates found for this application", HttpStatusCode.BadRequest);
+            }
+
+            var inactiveCerts = app.Certificates.Where(c => !c.IsActive).ToList();
+            if (!inactiveCerts.Any())
+            {
+                return await CreateJsonResponse(req, new
+                {
+                    message = "No inactive certificates to delete",
+                    deletedCount = 0
+                });
+            }
+
+            var deletedCount = await _graphService.DeleteInactiveCertificatesAsync(id, inactiveCerts.Select(c => c.KeyId).ToList());
+
+            await _auditService.LogSuccessAsync(
+                id,
+                app.DisplayName,
+                "Certificates Deleted",
+                $"Deleted {deletedCount} inactive certificates via dashboard");
+
+            return await CreateJsonResponse(req, new
+            {
+                message = $"Deleted {deletedCount} inactive certificates",
+                deletedCount = deletedCount
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting inactive certificates for application {Id}", id);
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Rotate the dashboard application client secret
+    /// </summary>
+    [Function("RotateDashboardSecret")]
+    public async Task<HttpResponseData> RotateDashboardSecret(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "settings/rotate-secret")] HttpRequestData req)
+    {
+        _logger.LogInformation("Rotating dashboard client secret");
+
+        try
+        {
+            var clientId = _configuration["AAD_CLIENT_ID"];
+            if (string.IsNullOrEmpty(clientId))
+            {
+                return await CreateErrorResponse(req, "Dashboard client ID not configured", HttpStatusCode.BadRequest);
+            }
+
+            var result = await _graphService.RotateAppClientSecretAsync(clientId);
+            if (result == null)
+            {
+                return await CreateErrorResponse(req, "Failed to rotate client secret");
+            }
+
+            await _auditService.LogSuccessAsync(
+                clientId,
+                "Dashboard Application",
+                "Client Secret Rotated",
+                "Dashboard client secret was rotated. SWA configuration update required.");
+
+            return await CreateJsonResponse(req, new
+            {
+                message = "Client secret rotated successfully. Update the AAD_CLIENT_SECRET in your Static Web App settings.",
+                secretHint = result.Hint,
+                expiresAt = result.EndDateTime
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rotating dashboard client secret");
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
     private async Task<HttpResponseData> CreateJsonResponse<T>(HttpRequestData req, T data, HttpStatusCode statusCode = HttpStatusCode.OK)
     {
         var response = req.CreateResponse(statusCode);
