@@ -299,15 +299,12 @@ Write-Host "Attribute Assignment Reader role assigned"
 #### Via Portal (Alternative):
 
 1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
-2. Navigate to **Protection** → **Custom security attributes**
-3. Click on your attribute set (e.g., `SamlCertRotation` or `Applications`)
-4. Click **Role assignments** in the left menu
-5. Click **+ Add assignments**
-6. Select role: **Attribute Assignment Reader**
-7. Click **Next**
-8. Click **+ Select members** → search for your managed identity name
-9. Select it and click **Select**
-10. Click **Next** → **Assign**
+2. Navigate to **Entra ID** → **Roles % admins**
+3. Select role: **Attribute Assignment Reader**
+4. Click **Add assignments**
+5. Under **Select member(s)** click **No member selected**
+6. Search for and select the managed identity then click **Select**
+7. Click **Next** → **Assign**
 
 ### 5.5 Verify Role Assignment
 
