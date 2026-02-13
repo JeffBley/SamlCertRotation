@@ -753,7 +753,7 @@
                     <div class="form-group">
                         <label style="display:flex;align-items:center;gap:6px;">
                             Rotation Check Schedule
-                            <span class="info-icon" title="To change the schedule, update the 'RotationSchedule' app setting in Azure Portal → Function App → Configuration → Application settings. Use CRON format (e.g., '0 0 6 * * *' for 6 AM UTC daily). The Function App must be restarted for changes to take effect.">ℹ️</span>
+                            <span class="info-icon" title="To change the schedule, navigate to the Function App (e.g., 'samlcert-func-...') → Settings → Environment variables → RotationSchedule. Use CRON format (e.g., '0 0 6 * * *' for 6 AM UTC daily). The Function App must be restarted for changes to take effect.">ℹ️</span>
                         </label>
                         <input type="text" id="rotationSchedule" readonly style="background:#f4f4f4;" value="Loading...">
                         <p style="font-size:11px;color:#888;margin-top:4px;">Automatic certificate rotation runs on this schedule. Currently set to run daily at 6:00 AM UTC.</p>
