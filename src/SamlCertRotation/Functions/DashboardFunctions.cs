@@ -464,16 +464,18 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "No certificates found for this application", HttpStatusCode.BadRequest);
             }
 
-            // Find the newest non-active certificate
+            // Find the most recently created certificate (by StartDateTime)
             var newestCert = app.Certificates
-                .Where(c => !c.IsActive)
-                .OrderByDescending(c => c.EndDateTime)
-                .FirstOrDefault();
+                .OrderByDescending(c => c.StartDateTime)
+                .First();
 
-            if (newestCert == null)
+            if (newestCert.IsActive)
             {
-                // If all are inactive, just get the newest one
-                newestCert = app.Certificates.OrderByDescending(c => c.EndDateTime).First();
+                return await CreateJsonResponse(req, new
+                {
+                    message = "The newest certificate is already active",
+                    activatedKeyId = newestCert.KeyId
+                });
             }
 
             var success = await _graphService.ActivateCertificateAsync(id, newestCert.KeyId);

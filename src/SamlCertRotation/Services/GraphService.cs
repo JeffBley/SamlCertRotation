@@ -168,16 +168,34 @@ public class GraphService : IGraphService
                 return false;
             }
 
+            if (keyCredential.CustomKeyIdentifier == null || keyCredential.CustomKeyIdentifier.Length == 0)
+            {
+                _logger.LogError("Certificate {KeyId} has no CustomKeyIdentifier (thumbprint)", keyId);
+                return false;
+            }
+
+            var thumbprint = Convert.ToBase64String(keyCredential.CustomKeyIdentifier);
+            _logger.LogInformation("Setting preferredTokenSigningKeyThumbprint to {Thumbprint} for {Id}", 
+                thumbprint, servicePrincipalId);
+
             // Update the preferredTokenSigningKeyThumbprint to activate the certificate
             var updateBody = new ServicePrincipal
             {
-                PreferredTokenSigningKeyThumbprint = Convert.ToBase64String(keyCredential.CustomKeyIdentifier ?? Array.Empty<byte>())
+                PreferredTokenSigningKeyThumbprint = thumbprint
             };
 
             await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(updateBody);
 
             _logger.LogInformation("Successfully activated certificate {KeyId}", keyId);
             return true;
+        }
+        catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
+        {
+            var errorMessage = odataEx.Error?.Message ?? odataEx.Message;
+            var errorCode = odataEx.Error?.Code ?? "Unknown";
+            _logger.LogError(odataEx, "Graph API error activating certificate {KeyId}: {Code} - {Message}", 
+                keyId, errorCode, errorMessage);
+            throw new InvalidOperationException($"Graph API error ({errorCode}): {errorMessage}", odataEx);
         }
         catch (Exception ex)
         {
