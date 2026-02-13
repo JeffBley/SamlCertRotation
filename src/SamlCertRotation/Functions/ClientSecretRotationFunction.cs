@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
+using SamlCertRotation.Services;
 
 namespace SamlCertRotation.Functions;
 
@@ -18,6 +19,7 @@ public class ClientSecretRotationFunction
     private readonly IConfiguration _configuration;
     private readonly GraphServiceClient _graphClient;
     private readonly SecretClient? _secretClient;
+    private readonly ISwaSettingsService _swaSettingsService;
 
     // Key Vault secret name for storing the SWA client secret
     private const string SwaClientSecretName = "SwaClientSecret";
@@ -26,10 +28,12 @@ public class ClientSecretRotationFunction
 
     public ClientSecretRotationFunction(
         ILogger<ClientSecretRotationFunction> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ISwaSettingsService swaSettingsService)
     {
         _logger = logger;
         _configuration = configuration;
+        _swaSettingsService = swaSettingsService;
 
         // Initialize Graph client with managed identity
         var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
@@ -188,9 +192,16 @@ public class ClientSecretRotationFunction
         await _secretClient!.SetSecretAsync(secret);
         _logger.LogInformation("Secret stored in Key Vault as '{SecretName}'", SwaClientSecretName);
 
-        // Update the SWA app settings to use the new Key Vault reference
-        // Note: SWA reads from Key Vault reference automatically, so we just need to ensure
-        // the secret is in Key Vault with the correct name
+        // Update the SWA app settings with the new secret
+        var swaUpdated = await _swaSettingsService.UpdateClientSecretAsync(result.SecretText);
+        if (swaUpdated)
+        {
+            _logger.LogInformation("SWA app settings updated with new client secret");
+        }
+        else
+        {
+            _logger.LogWarning("Failed to update SWA app settings - manual update may be required");
+        }
 
         return result.KeyId ?? Guid.Empty;
     }

@@ -284,6 +284,18 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           name: 'KeyVaultUri'
           value: keyVault.properties.vaultUri
         }
+        {
+          name: 'SubscriptionId'
+          value: subscription().subscriptionId
+        }
+        {
+          name: 'SwaResourceGroup'
+          value: resourceGroup().name
+        }
+        {
+          name: 'SwaName'
+          value: staticWebAppName
+        }
       ]
     }
   }
@@ -310,6 +322,17 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-01-01' = {
   tags: {
     purpose: 'SAML Certificate Rotation Tool'
     component: 'Dashboard'
+  }
+}
+
+// Contributor role for managed identity on SWA (allows updating app settings)
+resource swaContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(staticWebApp.id, managedIdentity.id, 'b24988ac-6180-42a0-ab88-20f7382dd24c')
+  scope: staticWebApp
+  properties: {
+    principalId: managedIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c') // Contributor
   }
 }
 

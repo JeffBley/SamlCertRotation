@@ -20,6 +20,7 @@ public class DashboardFunctions
     private readonly IGraphService _graphService;
     private readonly IPolicyService _policyService;
     private readonly IAuditService _auditService;
+    private readonly ISwaSettingsService _swaSettingsService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<DashboardFunctions> _logger;
     private readonly SecretClient? _secretClient;
@@ -37,6 +38,7 @@ public class DashboardFunctions
         IGraphService graphService,
         IPolicyService policyService,
         IAuditService auditService,
+        ISwaSettingsService swaSettingsService,
         IConfiguration configuration,
         ILogger<DashboardFunctions> logger)
     {
@@ -44,6 +46,7 @@ public class DashboardFunctions
         _graphService = graphService;
         _policyService = policyService;
         _auditService = auditService;
+        _swaSettingsService = swaSettingsService;
         _configuration = configuration;
         _logger = logger;
 
@@ -602,18 +605,28 @@ public class DashboardFunctions
             await _secretClient.SetSecretAsync(secret);
             _logger.LogInformation("New client secret stored in Key Vault as '{SecretName}'", SwaClientSecretName);
 
+            // Update the SWA app settings with the new secret
+            var swaUpdated = await _swaSettingsService.UpdateClientSecretAsync(result.SecretValue);
+            if (!swaUpdated)
+            {
+                _logger.LogWarning("Failed to update SWA app settings - manual update may be required");
+            }
+
             await _auditService.LogSuccessAsync(
                 clientId,
                 "Dashboard Application",
                 "Client Secret Rotated",
-                $"Dashboard client secret was rotated and stored in Key Vault. Expires: {result.EndDateTime:yyyy-MM-dd}");
+                $"Dashboard client secret was rotated and stored in Key Vault. SWA updated: {swaUpdated}. Expires: {result.EndDateTime:yyyy-MM-dd}");
 
             return await CreateJsonResponse(req, new
             {
-                message = "Client secret rotated and stored in Key Vault successfully.",
+                message = swaUpdated 
+                    ? "Client secret rotated, stored in Key Vault, and SWA updated successfully." 
+                    : "Client secret rotated and stored in Key Vault. SWA update failed - manual configuration may be required.",
                 secretHint = result.Hint,
                 expiresAt = result.EndDateTime,
-                keyVaultSecretName = SwaClientSecretName
+                keyVaultSecretName = SwaClientSecretName,
+                swaUpdated = swaUpdated
             });
         }
         catch (Exception ex)

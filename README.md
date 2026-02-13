@@ -21,7 +21,7 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 
 ### Security & Integration
 - **Managed Identity Authentication**: Function App uses managed identity for Microsoft Graph API access
-- **Key Vault Integration**: Dashboard client secrets stored securely and auto-rotated
+- **Key Vault Integration**: Dashboard client secrets stored in Key Vault and auto-synced to SWA settings
 - **Entra ID SSO**: Dashboard protected with Microsoft Entra ID authentication
 - **Role-Based Access**: Control dashboard access via Entra ID app assignment
 - **Email Notifications**: Logic App integration for certificate operation alerts
@@ -138,6 +138,9 @@ Create in Microsoft Entra Admin Center:
 | `KeyVaultUri` | Yes | Key Vault URI for secrets |
 | `SWA_CLIENT_ID` | Yes | Dashboard app registration client ID |
 | `RotationSchedule` | No | CRON expression (default: `0 0 6 * * *`) |
+| `SubscriptionId` | Yes | Azure Subscription ID (for SWA updates) |
+| `SwaResourceGroup` | Yes | Resource group containing SWA |
+| `SwaName` | Yes | Static Web App resource name |
 | `AZURE_CLIENT_ID` | Auto | Managed identity client ID |
 
 ### Policy Settings

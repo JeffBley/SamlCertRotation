@@ -890,9 +890,14 @@
             
             if (action.type === 'rotateDashboardSecret') {
                 try {
-                    showLoading('Rotating dashboard client secret and storing in Key Vault...');
+                    showLoading('Rotating dashboard client secret...');
                     const result = await apiCall('settings/rotate-secret', { method: 'POST' });
-                    showSuccess(`Dashboard client secret rotated and stored in Key Vault. Expires: ${new Date(result.expiresAt).toLocaleDateString()}`);
+                    const expiryDate = new Date(result.expiresAt).toLocaleDateString();
+                    if (result.swaUpdated) {
+                        showSuccess(`Client secret rotated successfully. SWA updated. Expires: ${expiryDate}`);
+                    } else {
+                        showSuccess(`Client secret rotated and stored in Key Vault. SWA update failed - manual configuration may be required. Expires: ${expiryDate}`);
+                    }
                 } catch (error) {
                     showError(`Failed to rotate secret: ${error.message}`);
                 }

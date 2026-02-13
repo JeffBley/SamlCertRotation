@@ -624,11 +624,14 @@ Write-Host "Access control configuration saved to access-control-config.json"
 | Setting | Location | Value |
 |---------|----------|-------|
 | `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
-| `AAD_CLIENT_SECRET` | SWA App Settings | The actual client secret value |
-| `SwaClientSecret` | Key Vault | Backup copy of the client secret |
+| `AAD_CLIENT_SECRET` | SWA App Settings | Client secret (auto-synced from Key Vault) |
+| `SwaClientSecret` | Key Vault | Primary storage for the client secret |
 | `SWA_CLIENT_ID` | Function App Settings | App Registration Client ID (for auto-rotation) |
 | `KeyVaultUri` | Function App Settings | Key Vault URI (set by Bicep) |
 | `RotationSchedule` | Function App Settings | CRON expression for rotation checks (default: `0 0 6 * * *` = 6 AM UTC daily) |
+| `SubscriptionId` | Function App Settings | Azure Subscription ID (set by Bicep) |
+| `SwaResourceGroup` | Function App Settings | Resource Group containing SWA (set by Bicep) |
+| `SwaName` | Function App Settings | Static Web App name (set by Bicep) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
 | Easy Auth | Function App | Disabled (Step 7.8) |
 | Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
@@ -640,8 +643,12 @@ Write-Host "Access control configuration saved to access-control-config.json"
 > - `0 0 */12 * * *` - Every 12 hours
 > - `0 0 6 * * 1` - Every Monday at 6:00 AM UTC
 
-> **Auto-Rotation**: The `RotateSwaClientSecret` function runs daily and will automatically create a new
-> client secret and store it in Key Vault when the current secret is within 30 days of expiration.
+> **Auto-Rotation**: The `RotateSwaClientSecret` function runs daily and will automatically:
+> 1. Create a new client secret when the current one is within 30 days of expiration
+> 2. Store the new secret in Key Vault (`SwaClientSecret`)
+> 3. Update the SWA's `AAD_CLIENT_SECRET` app setting automatically
+> 
+> This ensures seamless authentication without manual intervention.
 
 ---
 
