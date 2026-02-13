@@ -708,8 +708,10 @@ Write-Host "Function App configured to use Logic App for email notifications"
 
 You can test the Logic App directly:
 
+> **Note**: Update the `to` field below with your actual email address to receive the test email.
+
 ```powershell
-# Test sending an email
+# Test sending an email (update the "to" address!)
 $testPayload = @{
     to = "your-email@yourdomain.com"
     subject = "Test - SAML Certificate Rotation"
