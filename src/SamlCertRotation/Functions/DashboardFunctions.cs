@@ -111,6 +111,11 @@ public class DashboardFunctions
     {
         _logger.LogInformation("Getting application {Id}", id);
 
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
+
         try
         {
             var app = await _graphService.GetSamlApplicationAsync(id);
@@ -199,6 +204,11 @@ public class DashboardFunctions
     {
         _logger.LogInformation("Getting app policy for {Id}", id);
 
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
+
         try
         {
             var policy = await _policyService.GetAppPolicyAsync(id);
@@ -234,6 +244,11 @@ public class DashboardFunctions
         string id)
     {
         _logger.LogInformation("Updating app policy for {Id}", id);
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
 
         try
         {
@@ -304,6 +319,11 @@ public class DashboardFunctions
         string id)
     {
         _logger.LogInformation("Getting audit logs for app {Id}", id);
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
 
         try
         {
@@ -425,6 +445,11 @@ public class DashboardFunctions
     {
         _logger.LogInformation("Creating new certificate for application {Id}", id);
 
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
+
         try
         {
             var app = await _graphService.GetSamlApplicationAsync(id);
@@ -467,6 +492,11 @@ public class DashboardFunctions
         string id)
     {
         _logger.LogInformation("Activating newest certificate for application {Id}", id);
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
 
         try
         {
@@ -603,9 +633,37 @@ public class DashboardFunctions
 
     private async Task<HttpResponseData> CreateErrorResponse(HttpRequestData req, string message, HttpStatusCode statusCode = HttpStatusCode.InternalServerError)
     {
+        // Sanitize error messages to avoid exposing internal details
+        var sanitizedMessage = SanitizeErrorMessage(message);
         var response = req.CreateResponse(statusCode);
         response.Headers.Add("Content-Type", "application/json");
-        await response.WriteStringAsync(JsonSerializer.Serialize(new { error = message }, JsonOptions));
+        await response.WriteStringAsync(JsonSerializer.Serialize(new { error = sanitizedMessage }, JsonOptions));
         return response;
+    }
+
+    private static string SanitizeErrorMessage(string message)
+    {
+        // Remove potentially sensitive information from error messages
+        // Keep it generic for security but specific enough to be useful
+        if (string.IsNullOrEmpty(message)) return "An error occurred";
+        
+        // List of patterns that might leak implementation details
+        var sensitivePatterns = new[] { "stack trace", "at System.", "at Microsoft.", "connection string", "password", "secret" };
+        var lowerMessage = message.ToLowerInvariant();
+        
+        foreach (var pattern in sensitivePatterns)
+        {
+            if (lowerMessage.Contains(pattern))
+            {
+                return "An internal error occurred. Please check logs for details.";
+            }
+        }
+        
+        return message;
+    }
+
+    private static bool IsValidGuid(string value)
+    {
+        return !string.IsNullOrEmpty(value) && Guid.TryParse(value, out _);
     }
 }

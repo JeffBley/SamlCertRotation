@@ -805,6 +805,14 @@
         // Current action for confirmation modal
         let pendingAction = null;
 
+        // HTML escape function to prevent XSS
+        function escapeHtml(text) {
+            if (text == null) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         // Sign Out function - kills app session only (not global SSO logout)
         function signOut() {
             window.location.href = '/.auth/logout?post_logout_redirect_uri=/';
@@ -1063,26 +1071,26 @@
                     <tbody>
                         ${apps.map(app => `
                             <tr>
-                                <td>${app.displayName}</td>
+                                <td>${escapeHtml(app.displayName)}</td>
                                 <td>
                                     <span class="status-badge status-${(app.autoRotateStatus || 'null').toLowerCase()}">
-                                        ${app.autoRotateStatus || 'Not Set'}
+                                        ${escapeHtml(app.autoRotateStatus) || 'Not Set'}
                                     </span>
                                 </td>
                                 <td>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
                                 <td>${app.daysUntilExpiry ?? 'N/A'}</td>
                                 <td>
                                     <span class="expiry-badge expiry-${app.expiryCategory.toLowerCase()}">
-                                        ${app.expiryCategory}
+                                        ${escapeHtml(app.expiryCategory)}
                                     </span>
                                 </td>
                                 <td class="actions-cell">
-                                    <button class="actions-btn" onclick="toggleActionsMenu(event, '${app.id}')">⋮</button>
-                                    <div id="actions-menu-${app.id}" class="dropdown-menu">
-                                        <button class="dropdown-item" onclick="createNewCert('${app.id}', '${app.displayName}')">
+                                    <button class="actions-btn" onclick="toggleActionsMenu(event, '${escapeHtml(app.id)}')">⋮</button>
+                                    <div id="actions-menu-${escapeHtml(app.id)}" class="dropdown-menu">
+                                        <button class="dropdown-item" onclick="createNewCert('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}')">
                                             Create new SAML certificate
                                         </button>
-                                        <button class="dropdown-item" onclick="activateNewestCert('${app.id}', '${app.displayName}')">
+                                        <button class="dropdown-item" onclick="activateNewestCert('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}')">
                                             Make newest cert active
                                         </button>
                                     </div>
@@ -1276,8 +1284,8 @@
                     <tbody>
                         ${apps.map(app => `
                             <tr>
-                                <td>${app.displayName}</td>
-                                <td style="font-family:monospace;font-size:12px;">${app.appId}</td>
+                                <td>${escapeHtml(app.displayName)}</td>
+                                <td style="font-family:monospace;font-size:12px;">${escapeHtml(app.appId)}</td>
                                 <td>${app.expiredInactiveCertCount}</td>
                             </tr>
                         `).join('')}
