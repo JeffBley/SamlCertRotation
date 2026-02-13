@@ -590,6 +590,7 @@
 
         <div class="tabs">
             <button class="tab active" data-tab="applications">Applications</button>
+            <button class="tab" data-tab="cleanup">Certificate Clean-up</button>
             <button class="tab" data-tab="policy">Policy Settings</button>
             <button class="tab" data-tab="settings">Settings</button>
             <button class="tab" data-tab="audit">Audit Log</button>
@@ -601,6 +602,7 @@
                     <h2>SAML Applications</h2>
                     <div>
                         <span class="last-updated" id="last-updated"></span>
+                        <button class="btn btn-secondary" onclick="exportApplications()">Export</button>
                         <button class="btn btn-secondary" onclick="loadData()">Refresh</button>
                     </div>
                 </div>
@@ -631,6 +633,25 @@
                 </div>
                 <div id="apps-table-container">
                     <div class="loading">Loading applications...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-cleanup" class="tab-content">
+            <div class="section">
+                <div class="section-header">
+                    <h2>Certificate Clean-up</h2>
+                    <div>
+                        <button class="btn btn-secondary" onclick="exportCleanupList()">Export</button>
+                        <button class="btn btn-secondary" onclick="loadCleanupData()">Refresh</button>
+                    </div>
+                </div>
+                <p style="margin-bottom:16px;color:#666;">
+                    Applications listed below have inactive certificates that are expired and should be removed. 
+                    Certificate deletion must be done manually in the Azure Portal as it requires the original signing key.
+                </p>
+                <div id="cleanup-table-container">
+                    <div class="loading">Loading cleanup data...</div>
                 </div>
             </div>
         </div>
@@ -851,6 +872,8 @@
                     loadPolicy();
                 } else if (tab.dataset.tab === 'settings') {
                     loadSettings();
+                } else if (tab.dataset.tab === 'cleanup') {
+                    loadCleanupData();
                 }
             });
         });
@@ -1100,6 +1123,183 @@
                 document.getElementById('audit-table-container').innerHTML = 
                     `<div class="error">Failed to load audit log: ${error.message}</div>`;
             }
+        }
+
+        // Store cleanup data for export
+        let cleanupApps = [];
+
+        // Load certificate cleanup data
+        async function loadCleanupData() {
+            try {
+                // Get detailed app data including all certificates
+                const apps = await apiCall('applications');
+                
+                // Find apps with inactive AND expired certificates
+                cleanupApps = [];
+                const now = new Date();
+                
+                for (const app of apps) {
+                    if (app.certificates && app.certificates.length > 0) {
+                        const expiredInactiveCerts = app.certificates.filter(cert => {
+                            const endDate = new Date(cert.endDateTime);
+                            return !cert.isActive && endDate < now;
+                        });
+                        
+                        if (expiredInactiveCerts.length > 0) {
+                            cleanupApps.push({
+                                displayName: app.displayName,
+                                id: app.id,
+                                appId: app.appId,
+                                expiredInactiveCertCount: expiredInactiveCerts.length,
+                                certificates: expiredInactiveCerts.map(c => ({
+                                    keyId: c.keyId,
+                                    thumbprint: c.thumbprint,
+                                    endDateTime: c.endDateTime
+                                }))
+                            });
+                        }
+                    }
+                }
+                
+                renderCleanupTable(cleanupApps);
+                
+            } catch (error) {
+                document.getElementById('cleanup-table-container').innerHTML = 
+                    `<div class="error">Failed to load cleanup data: ${error.message}</div>`;
+            }
+        }
+
+        // Render cleanup table
+        function renderCleanupTable(apps) {
+            if (apps.length === 0) {
+                document.getElementById('cleanup-table-container').innerHTML = 
+                    '<div style="text-align:center;padding:40px;color:#666;">No applications have inactive expired certificates. Your tenant is clean!</div>';
+                return;
+            }
+
+            const tableHtml = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Application Name</th>
+                            <th>App ID</th>
+                            <th>Expired Inactive Certs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${apps.map(app => `
+                            <tr>
+                                <td>${app.displayName}</td>
+                                <td style="font-family:monospace;font-size:12px;">${app.appId}</td>
+                                <td>${app.expiredInactiveCertCount}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <p style="margin-top:16px;color:#666;font-size:13px;">
+                    Total: ${apps.length} application(s) with ${apps.reduce((sum, a) => sum + a.expiredInactiveCertCount, 0)} expired inactive certificate(s)
+                </p>
+            `;
+            document.getElementById('cleanup-table-container').innerHTML = tableHtml;
+        }
+
+        // Export cleanup list to JSON
+        function exportCleanupList() {
+            if (cleanupApps.length === 0) {
+                showError('No cleanup data to export');
+                return;
+            }
+            
+            const exportData = {
+                exportDate: new Date().toISOString(),
+                exportType: 'certificate-cleanup',
+                totalApps: cleanupApps.length,
+                totalExpiredCerts: cleanupApps.reduce((sum, a) => sum + a.expiredInactiveCertCount, 0),
+                applications: cleanupApps
+            };
+            
+            downloadJson(exportData, `certificate-cleanup-${formatDateForFilename()}.json`);
+        }
+
+        // Export currently visible applications to JSON
+        function exportApplications() {
+            // Get current filter state to export only visible apps
+            const showOn = document.getElementById('filter-on').checked;
+            const showOff = document.getElementById('filter-off').checked;
+            const showNull = document.getElementById('filter-null').checked;
+            const showExpiring = document.getElementById('filter-expiring').checked;
+            const showExpired = document.getElementById('filter-expired').checked;
+
+            const filteredApps = allApps.filter(app => {
+                const status = (app.autoRotateStatus || '').toLowerCase();
+                const expiry = app.expiryCategory.toLowerCase();
+                const isExpiringSoon = expiry === 'warning' || (app.daysUntilExpiry !== null && app.daysUntilExpiry <= 30);
+                const isExpired = expiry === 'expired';
+                
+                let statusMatch = false;
+                if (showOn && status === 'on') statusMatch = true;
+                if (showOff && status === 'off') statusMatch = true;
+                if (showNull && (!app.autoRotateStatus || status === '')) statusMatch = true;
+                
+                const anyStatusFilterChecked = showOn || showOff || showNull;
+                if (!anyStatusFilterChecked) statusMatch = true;
+                
+                let expiryMatch = false;
+                if (showExpiring && isExpiringSoon) expiryMatch = true;
+                if (showExpired && isExpired) expiryMatch = true;
+                
+                const anyExpiryFilterChecked = showExpiring || showExpired;
+                if (!anyExpiryFilterChecked) expiryMatch = true;
+                
+                return statusMatch && expiryMatch;
+            });
+
+            if (filteredApps.length === 0) {
+                showError('No applications to export');
+                return;
+            }
+            
+            const exportData = {
+                exportDate: new Date().toISOString(),
+                exportType: 'saml-applications',
+                filters: {
+                    autoRotateOn: showOn,
+                    autoRotateOff: showOff,
+                    notConfigured: showNull,
+                    expiringSoon: showExpiring,
+                    expired: showExpired
+                },
+                totalApps: filteredApps.length,
+                applications: filteredApps.map(app => ({
+                    displayName: app.displayName,
+                    id: app.id,
+                    autoRotateStatus: app.autoRotateStatus,
+                    certExpiryDate: app.certExpiryDate,
+                    daysUntilExpiry: app.daysUntilExpiry,
+                    expiryCategory: app.expiryCategory
+                }))
+            };
+            
+            downloadJson(exportData, `saml-applications-${formatDateForFilename()}.json`);
+        }
+
+        // Download JSON file helper
+        function downloadJson(data, filename) {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Format date for filename
+        function formatDateForFilename() {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         }
 
         // Initial load
