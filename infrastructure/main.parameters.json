@@ -9,16 +9,16 @@
       "value": "eastus"
     },
     "notificationSenderEmail": {
-      "value": "saml-rotation@entrasme.com"
+      "value": "saml-rotation@domain.com"
     },
     "adminNotificationEmails": {
-      "value": "mscott@entrasme.com;jhalpert@entrasme.com"
+      "value": "mscott@domain.com;jhalpert@domain.com"
     },
     "customSecurityAttributeSet": {
-      "value": "Applications"
+      "value": "<insert custom security attribute set name here>"
     },
     "customSecurityAttributeName": {
-      "value": "SamlCertRotation"
+      "value": "<insert custom security attribute name here>"
     },
     "defaultCreateCertDays": {
       "value": 30
