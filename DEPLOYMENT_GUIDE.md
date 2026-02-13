@@ -274,6 +274,54 @@ foreach ($permissionName in $requiredPermissions) {
    - `Application.ReadWrite.All`
    - `CustomSecAttributeAssignment.Read.All`
 
+### 5.4 Assign Attribute Assignment Reader Role
+
+The managed identity needs the **Attribute Assignment Reader** role to read custom security attribute values. This is a separate role from the Graph API permission.
+
+> **Why both?** Microsoft requires two layers of authorization for custom security attributes:
+> 1. Graph API permission (`CustomSecAttributeAssignment.Read.All`) - allows calling the API
+> 2. Directory role (Attribute Assignment Reader) - allows reading the actual values
+
+#### Via Azure CLI:
+
+```powershell
+# Assign the Attribute Assignment Reader role to the managed identity
+# This grants read access to custom security attributes on all objects
+
+az rest --method POST `
+    --uri "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments" `
+    --headers "Content-Type=application/json" `
+    --body "{`"principalId`":`"$MANAGED_IDENTITY_PRINCIPAL_ID`",`"roleDefinitionId`":`"ffd52fa5-98dc-465c-991d-fc073eb59f8f`",`"directoryScopeId`":`"/`"}"
+
+Write-Host "Attribute Assignment Reader role assigned"
+```
+
+#### Via Portal (Alternative):
+
+1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
+2. Navigate to **Protection** → **Custom security attributes**
+3. Click on your attribute set (e.g., `SamlCertRotation` or `Applications`)
+4. Click **Role assignments** in the left menu
+5. Click **+ Add assignments**
+6. Select role: **Attribute Assignment Reader**
+7. Click **Next**
+8. Click **+ Select members** → search for your managed identity name
+9. Select it and click **Select**
+10. Click **Next** → **Assign**
+
+### 5.5 Verify Role Assignment
+
+```powershell
+# Verify the role was assigned
+az rest --method GET `
+    --uri "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?`$filter=principalId eq '$MANAGED_IDENTITY_PRINCIPAL_ID'&`$expand=roleDefinition" `
+    --query "value[].{role:roleDefinition.displayName, scope:directoryScopeId}" -o table
+```
+
+You should see `Attribute Assignment Reader` in the output.
+
+> **Note**: Role assignments can take up to 1 hour to fully propagate. If custom attributes aren't showing immediately, wait and try again.
+
 ---
 
 ## Step 6: Deploy the Function App Code
@@ -987,6 +1035,32 @@ This typically means the API is returning HTML instead of JSON. Common causes:
 1. **Enterprise App assignment not configured** - Run Step 7.3 through 7.4
 2. **User not assigned to the Enterprise App** - Add user/group via Azure Portal
 3. **SWA app settings not configured** - Run Step 7.6
+
+### Auto-rotate status shows as "Not Set" (null) for all apps
+
+This means the managed identity can't read custom security attributes. You need BOTH:
+1. Graph API permission (`CustomSecAttributeAssignment.Read.All`) - Step 5.2
+2. Attribute Assignment Reader role - Step 5.4
+
+```powershell
+# Check if the role is assigned
+az rest --method GET `
+    --uri "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?`$filter=principalId eq '$MANAGED_IDENTITY_PRINCIPAL_ID'&`$expand=roleDefinition" `
+    --query "value[].{role:roleDefinition.displayName, scope:directoryScopeId}" -o table
+
+# If "Attribute Assignment Reader" is not listed, assign it:
+az rest --method POST `
+    --uri "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments" `
+    --headers "Content-Type=application/json" `
+    --body "{`"principalId`":`"$MANAGED_IDENTITY_PRINCIPAL_ID`",`"roleDefinitionId`":`"ffd52fa5-98dc-465c-991d-fc073eb59f8f`",`"directoryScopeId`":`"/`"}"
+
+# Restart the Function App to refresh tokens
+az functionapp stop --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+Start-Sleep -Seconds 30
+az functionapp start --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+```
+
+> **Note**: Entra ID role assignments can take up to 1 hour to propagate. If you just assigned the role, wait and try again.
 
 ---
 
