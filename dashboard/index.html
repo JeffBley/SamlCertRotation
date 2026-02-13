@@ -801,18 +801,21 @@
         async function confirmModalAction() {
             if (!pendingAction) return;
             
-            closeModal();
+            // Save action before closing modal (which clears pendingAction)
+            const action = pendingAction;
+            document.getElementById('confirmModal').classList.remove('show');
+            pendingAction = null;
             
-            if (pendingAction.type === 'deleteInactive') {
+            if (action.type === 'deleteInactive') {
                 try {
                     showLoading('Deleting inactive certificates...');
-                    await apiCall(`applications/${pendingAction.appId}/certificate/inactive`, { method: 'DELETE' });
-                    showSuccess(`Inactive certificates deleted for ${pendingAction.appName}`);
+                    await apiCall(`applications/${action.appId}/certificate/inactive`, { method: 'DELETE' });
+                    showSuccess(`Inactive certificates deleted for ${action.appName}`);
                     await loadData();
                 } catch (error) {
                     showError(`Failed to delete certificates: ${error.message}`);
                 }
-            } else if (pendingAction.type === 'rotateDashboardSecret') {
+            } else if (action.type === 'rotateDashboardSecret') {
                 try {
                     showLoading('Rotating dashboard client secret...');
                     await apiCall('settings/rotate-secret', { method: 'POST' });
@@ -821,8 +824,6 @@
                     showError(`Failed to rotate secret: ${error.message}`);
                 }
             }
-            
-            pendingAction = null;
         }
 
         // Rotate the dashboard application's client secret
