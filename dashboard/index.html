@@ -874,9 +874,9 @@
             
             if (action.type === 'rotateDashboardSecret') {
                 try {
-                    showLoading('Rotating dashboard client secret...');
-                    await apiCall('settings/rotate-secret', { method: 'POST' });
-                    showSuccess('Dashboard client secret rotated successfully. You may need to sign in again shortly.');
+                    showLoading('Rotating dashboard client secret and storing in Key Vault...');
+                    const result = await apiCall('settings/rotate-secret', { method: 'POST' });
+                    showSuccess(`Dashboard client secret rotated and stored in Key Vault. Expires: ${new Date(result.expiresAt).toLocaleDateString()}`);
                 } catch (error) {
                     showError(`Failed to rotate secret: ${error.message}`);
                 }
@@ -887,7 +887,7 @@
         function rotateDashboardSecret() {
             pendingAction = { type: 'rotateDashboardSecret' };
             document.getElementById('confirmModalMessage').textContent = 
-                'Are you sure you want to rotate the dashboard client secret? You will need to update the SWA configuration with the new secret value.';
+                'This will create a new client secret for the dashboard app registration and store it in Azure Key Vault. The SWA uses a Key Vault reference for authentication, so no manual configuration is needed. Continue?';
             document.getElementById('confirmModal').classList.add('show');
         }
 

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text.Json;
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
@@ -20,6 +22,9 @@ public class DashboardFunctions
     private readonly IAuditService _auditService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<DashboardFunctions> _logger;
+    private readonly SecretClient? _secretClient;
+
+    private const string SwaClientSecretName = "SwaClientSecret";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -41,6 +46,17 @@ public class DashboardFunctions
         _auditService = auditService;
         _configuration = configuration;
         _logger = logger;
+
+        // Initialize Key Vault client
+        var keyVaultUri = configuration["KeyVaultUri"];
+        if (!string.IsNullOrEmpty(keyVaultUri))
+        {
+            var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+            {
+                ManagedIdentityClientId = configuration["AZURE_CLIENT_ID"]
+            });
+            _secretClient = new SecretClient(new Uri(keyVaultUri), credential);
+        }
     }
 
     /// <summary>
@@ -505,7 +521,7 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Rotate the dashboard application client secret
+    /// Rotate the dashboard application client secret and store in Key Vault
     /// </summary>
     [Function("RotateDashboardSecret")]
     public async Task<HttpResponseData> RotateDashboardSecret(
@@ -515,6 +531,11 @@ public class DashboardFunctions
 
         try
         {
+            if (_secretClient == null)
+            {
+                return await CreateErrorResponse(req, "Key Vault not configured - cannot store rotated secret", HttpStatusCode.BadRequest);
+            }
+
             var clientId = _configuration["SWA_CLIENT_ID"];
             if (string.IsNullOrEmpty(clientId))
             {
@@ -527,17 +548,42 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Failed to rotate client secret");
             }
 
+            if (string.IsNullOrEmpty(result.SecretValue))
+            {
+                return await CreateErrorResponse(req, "New secret was created but value was not returned");
+            }
+
+            // Store the new secret in Key Vault
+            var secret = new KeyVaultSecret(SwaClientSecretName, result.SecretValue)
+            {
+                Properties =
+                {
+                    ExpiresOn = result.EndDateTime,
+                    ContentType = "application/x-password",
+                    Tags =
+                    {
+                        ["AppClientId"] = clientId,
+                        ["CreatedBy"] = "SamlCertRotation-ManualRotate",
+                        ["RotatedAt"] = DateTime.UtcNow.ToString("o")
+                    }
+                }
+            };
+
+            await _secretClient.SetSecretAsync(secret);
+            _logger.LogInformation("New client secret stored in Key Vault as '{SecretName}'", SwaClientSecretName);
+
             await _auditService.LogSuccessAsync(
                 clientId,
                 "Dashboard Application",
                 "Client Secret Rotated",
-                "Dashboard client secret was rotated. SWA configuration update required.");
+                $"Dashboard client secret was rotated and stored in Key Vault. Expires: {result.EndDateTime:yyyy-MM-dd}");
 
             return await CreateJsonResponse(req, new
             {
-                message = "Client secret rotated successfully. Update the AAD_CLIENT_SECRET in your Static Web App settings.",
+                message = "Client secret rotated and stored in Key Vault successfully.",
                 secretHint = result.Hint,
-                expiresAt = result.EndDateTime
+                expiresAt = result.EndDateTime,
+                keyVaultSecretName = SwaClientSecretName
             });
         }
         catch (Exception ex)
