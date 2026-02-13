@@ -384,11 +384,18 @@ az ad sp create --id $CLIENT_ID
 # Get the Service Principal ID
 $SP_ID = az ad sp list --filter "appId eq '$CLIENT_ID'" --query "[0].id" -o tsv
 Write-Host "Service Principal ID: $SP_ID"
+
+# Add the integrated app tag (shows as "Integrated Application" in Azure Portal)
+az rest --method PATCH `
+    --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID" `
+    --body '{"tags": ["WindowsAzureActiveDirectoryIntegratedApp"]}'
+
+Write-Host "Service Principal created with integrated app tag"
 ```
 
 ### 7.4 Configure User/Group Assignment
 
-This step restricts dashboard access to specific users or groups.
+This step restricts dashboard access to specific users or groups. **You must assign at least one user or group** for authentication to work.
 
 ```powershell
 # Enable "Assignment required" on the Enterprise Application
@@ -399,13 +406,16 @@ az rest --method PATCH `
 Write-Host "Assignment required enabled"
 ```
 
-Now assign users or groups to the application. Choose one of the following options:
+Now assign users or groups to the application. **Choose at least one option below:**
 
-**Option A: Assign a Security Group** (Recommended)
+**Option A: Assign a Security Group** (Recommended for production)
 
 ```powershell
-# Get the security group ID (create one first if needed)
-$GROUP_ID = az ad group show --group "Saml Rotation Dashboard Access" --query id -o tsv
+# First, create a security group if one doesn't exist
+# az ad group create --display-name "SAML Dashboard Users" --mail-nickname "saml-dashboard-users"
+
+# Get the security group ID
+$GROUP_ID = az ad group show --group "SAML Dashboard Users" --query id -o tsv
 
 # Assign the group to the Enterprise Application
 az rest --method POST `
@@ -415,7 +425,7 @@ az rest --method POST `
 Write-Host "Group assigned to Enterprise Application"
 ```
 
-**Option B: Assign Individual User**
+**Option B: Assign Individual User** (Quick setup for testing)
 
 ```powershell
 # Get your user ID
@@ -428,6 +438,8 @@ az rest --method POST `
 
 Write-Host "User assigned to Enterprise Application"
 ```
+
+> **Important**: Users who are not assigned to the Enterprise Application will receive an "Access Denied" error when trying to access the dashboard. You can also manage assignments in the Azure Portal under **Enterprise Applications** → **Users and groups**.
 
 ### 7.5 Store Client Secret in Key Vault
 
