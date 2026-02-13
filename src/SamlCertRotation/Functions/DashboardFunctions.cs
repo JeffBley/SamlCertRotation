@@ -515,10 +515,10 @@ public class DashboardFunctions
 
         try
         {
-            var clientId = _configuration["AAD_CLIENT_ID"];
+            var clientId = _configuration["SWA_CLIENT_ID"];
             if (string.IsNullOrEmpty(clientId))
             {
-                return await CreateErrorResponse(req, "Dashboard client ID not configured", HttpStatusCode.BadRequest);
+                return await CreateErrorResponse(req, "SWA_CLIENT_ID not configured in Function App settings", HttpStatusCode.BadRequest);
             }
 
             var result = await _graphService.RotateAppClientSecretAsync(clientId);
