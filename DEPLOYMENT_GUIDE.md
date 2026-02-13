@@ -299,7 +299,7 @@ Write-Host "Attribute Assignment Reader role assigned"
 #### Via Portal (Alternative):
 
 1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
-2. Navigate to **Entra ID** → **Roles % admins**
+2. Navigate to **Entra ID** → **Roles & admins**
 3. Select role: **Attribute Assignment Reader**
 4. Click **Add assignments**
 5. Under **Select member(s)** click **No member selected**
