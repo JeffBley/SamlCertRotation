@@ -16,8 +16,9 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 10. [Step 9: Configure Email Notifications](#step-9-configure-email-notifications)
 11. [Step 10: Tag Applications for Auto-Rotation](#step-10-tag-applications-for-auto-rotation)
 12. [Step 11: Verify the Deployment](#step-11-verify-the-deployment)
-13. [Troubleshooting](#troubleshooting)
-14. [Cleanup / Teardown](#cleanup--teardown)
+13. [Next Steps](#next-steps)
+14. [Troubleshooting](#troubleshooting)
+15. [Cleanup / Teardown](#cleanup--teardown)
 
 ---
 
@@ -895,6 +896,56 @@ Open your browser and navigate to:
 ```
 https://<your-static-web-app-name>.azurestaticapps.net
 ```
+
+---
+
+## Next Steps
+
+Now that deployment is complete, consider these optional enhancements:
+
+### Configure a Custom Domain
+
+By default, your dashboard URL is auto-generated (e.g., `happy-island-01f529a0f.azurestaticapps.net`). To use a custom domain like `saml-dashboard.yourcompany.com`:
+
+1. **Add the custom domain in Azure Portal:**
+   - Go to your Static Web App → **Custom domains**
+   - Click **Add**
+   - Enter your domain (e.g., `saml-dashboard.yourcompany.com`)
+   - Add the required DNS records (CNAME or TXT validation)
+   - Azure provides a free SSL certificate automatically
+
+2. **Or use Azure CLI:**
+   ```bash
+   az staticwebapp hostname set \
+     --name <your-static-web-app-name> \
+     --resource-group <your-resource-group> \
+     --hostname saml-dashboard.yourcompany.com
+   ```
+
+3. **Update your App Registration:**
+   - Go to **Microsoft Entra ID** → **App registrations** → your dashboard app
+   - Click **Authentication**
+   - Add a new redirect URI: `https://saml-dashboard.yourcompany.com/.auth/login/aad/callback`
+
+> **Documentation:** [Set up a custom domain in Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/custom-domain)
+
+### Customize the Rotation Schedule
+
+The automatic certificate rotation check runs daily at 6:00 AM UTC by default. To change this:
+
+1. Go to your **Function App** → **Settings** → **Environment variables**
+2. Add or update the `RotationSchedule` setting with a CRON expression:
+   - `0 0 6 * * *` - Daily at 6:00 AM UTC (default)
+   - `0 0 */12 * * *` - Every 12 hours
+   - `0 0 6 * * 1` - Every Monday at 6:00 AM UTC
+3. **Restart the Function App** for changes to take effect
+
+### Review Audit Logs
+
+The dashboard records all certificate operations. Use the **Audit Logs** tab to:
+- Track who rotated certificates and when
+- Monitor automatic rotation events
+- Troubleshoot failed operations
 
 ---
 
