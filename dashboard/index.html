@@ -782,15 +782,6 @@
             }
         }
 
-        // Show confirmation modal for deleting inactive certificates
-        function confirmDeleteInactiveCerts(appId, appName) {
-            closeAllDropdowns();
-            pendingAction = { type: 'deleteInactive', appId, appName };
-            document.getElementById('confirmModalMessage').textContent = 
-                `Are you sure you want to delete all inactive certificates for "${appName}"? This action cannot be undone.`;
-            document.getElementById('confirmModal').classList.add('show');
-        }
-
         // Close the confirmation modal
         function closeModal() {
             document.getElementById('confirmModal').classList.remove('show');
@@ -806,16 +797,7 @@
             document.getElementById('confirmModal').classList.remove('show');
             pendingAction = null;
             
-            if (action.type === 'deleteInactive') {
-                try {
-                    showLoading('Deleting inactive certificates...');
-                    await apiCall(`applications/${action.appId}/certificate/inactive`, { method: 'DELETE' });
-                    showSuccess(`Inactive certificates deleted for ${action.appName}`);
-                    await loadData();
-                } catch (error) {
-                    showError(`Failed to delete certificates: ${error.message}`);
-                }
-            } else if (action.type === 'rotateDashboardSecret') {
+            if (action.type === 'rotateDashboardSecret') {
                 try {
                     showLoading('Rotating dashboard client secret...');
                     await apiCall('settings/rotate-secret', { method: 'POST' });
@@ -1012,9 +994,6 @@
                                         </button>
                                         <button class="dropdown-item" onclick="activateNewestCert('${app.id}', '${app.displayName}')">
                                             Make newest cert active
-                                        </button>
-                                        <button class="dropdown-item danger" onclick="confirmDeleteInactiveCerts('${app.id}', '${app.displayName}')">
-                                            Delete inactive certificates
                                         </button>
                                     </div>
                                 </td>

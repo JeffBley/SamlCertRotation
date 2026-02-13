@@ -370,66 +370,6 @@ public class GraphService : IGraphService
     }
 
     /// <inheritdoc />
-    public async Task<int> DeleteInactiveCertificatesAsync(string servicePrincipalId, List<string> keyIds)
-    {
-        _logger.LogInformation("Deleting {Count} inactive certificates for {Id}", keyIds.Count, servicePrincipalId);
-        var deletedCount = 0;
-
-        try
-        {
-            // Get current service principal with all credentials
-            var sp = await _graphClient.ServicePrincipals[servicePrincipalId]
-                .GetAsync(config =>
-                {
-                    config.QueryParameters.Select = new[] { "id", "keyCredentials" };
-                });
-
-            if (sp?.KeyCredentials == null || !sp.KeyCredentials.Any())
-            {
-                _logger.LogWarning("No key credentials found for {Id}", servicePrincipalId);
-                return 0;
-            }
-
-            // Filter to keep only the certificates NOT in the keyIds list
-            var keysToKeep = sp.KeyCredentials
-                .Where(k => !keyIds.Contains(k.KeyId?.ToString() ?? string.Empty))
-                .ToList();
-
-            deletedCount = sp.KeyCredentials.Count - keysToKeep.Count;
-
-            if (deletedCount == 0)
-            {
-                _logger.LogInformation("No certificates matched for deletion");
-                return 0;
-            }
-
-            // Update the service principal with only the certificates to keep
-            var requestBody = new ServicePrincipal
-            {
-                KeyCredentials = keysToKeep
-            };
-
-            await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(requestBody);
-            _logger.LogInformation("Successfully deleted {Count} inactive certificates", deletedCount);
-        }
-        catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
-        {
-            var errorMessage = odataEx.Error?.Message ?? odataEx.Message;
-            var errorCode = odataEx.Error?.Code ?? "Unknown";
-            _logger.LogError(odataEx, "Graph API error deleting certificates for {Id}: {Code} - {Message}", 
-                servicePrincipalId, errorCode, errorMessage);
-            throw new InvalidOperationException($"Graph API error ({errorCode}): {errorMessage}", odataEx);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error deleting inactive certificates for {Id}", servicePrincipalId);
-            throw;
-        }
-
-        return deletedCount;
-    }
-
-    /// <inheritdoc />
     public async Task<ClientSecretInfo?> RotateAppClientSecretAsync(string clientId)
     {
         _logger.LogInformation("Rotating client secret for application {ClientId}", clientId);

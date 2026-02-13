@@ -502,60 +502,6 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Delete all inactive certificates for an application
-    /// </summary>
-    [Function("DeleteInactiveCertificates")]
-    public async Task<HttpResponseData> DeleteInactiveCertificates(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "applications/{id}/certificate/inactive")] HttpRequestData req,
-        string id)
-    {
-        _logger.LogInformation("Deleting inactive certificates for application {Id}", id);
-
-        try
-        {
-            var app = await _graphService.GetSamlApplicationAsync(id);
-            if (app == null)
-            {
-                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
-            }
-
-            if (app.Certificates == null || !app.Certificates.Any())
-            {
-                return await CreateErrorResponse(req, "No certificates found for this application", HttpStatusCode.BadRequest);
-            }
-
-            var inactiveCerts = app.Certificates.Where(c => !c.IsActive).ToList();
-            if (!inactiveCerts.Any())
-            {
-                return await CreateJsonResponse(req, new
-                {
-                    message = "No inactive certificates to delete",
-                    deletedCount = 0
-                });
-            }
-
-            var deletedCount = await _graphService.DeleteInactiveCertificatesAsync(id, inactiveCerts.Select(c => c.KeyId).ToList());
-
-            await _auditService.LogSuccessAsync(
-                id,
-                app.DisplayName,
-                "Certificates Deleted",
-                $"Deleted {deletedCount} inactive certificates via dashboard");
-
-            return await CreateJsonResponse(req, new
-            {
-                message = $"Deleted {deletedCount} inactive certificates",
-                deletedCount = deletedCount
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error deleting inactive certificates for application {Id}", id);
-            return await CreateErrorResponse(req, ex.Message);
-        }
-    }
-
-    /// <summary>
     /// Rotate the dashboard application client secret
     /// </summary>
     [Function("RotateDashboardSecret")]

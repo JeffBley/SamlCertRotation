@@ -43,11 +43,6 @@ public interface IGraphService
     Task<List<string>> GetAppOwnersEmailsAsync(string servicePrincipalId);
 
     /// <summary>
-    /// Delete inactive certificates for an application
-    /// </summary>
-    Task<int> DeleteInactiveCertificatesAsync(string servicePrincipalId, List<string> keyIds);
-
-    /// <summary>
     /// Rotate an application's client secret and return the new secret info
     /// </summary>
     Task<ClientSecretInfo?> RotateAppClientSecretAsync(string clientId);
