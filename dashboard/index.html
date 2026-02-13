@@ -763,7 +763,7 @@
                 showLoading('Creating new certificate...');
                 await apiCall(`applications/${appId}/certificate`, { method: 'POST' });
                 showSuccess(`New certificate created for ${appName}`);
-                await loadApplications();
+                await loadData();
             } catch (error) {
                 showError(`Failed to create certificate: ${error.message}`);
             }
@@ -776,7 +776,7 @@
                 showLoading('Activating newest certificate...');
                 await apiCall(`applications/${appId}/certificate/activate`, { method: 'POST' });
                 showSuccess(`Newest certificate activated for ${appName}`);
-                await loadApplications();
+                await loadData();
             } catch (error) {
                 showError(`Failed to activate certificate: ${error.message}`);
             }
@@ -808,7 +808,7 @@
                     showLoading('Deleting inactive certificates...');
                     await apiCall(`applications/${pendingAction.appId}/certificate/inactive`, { method: 'DELETE' });
                     showSuccess(`Inactive certificates deleted for ${pendingAction.appName}`);
-                    await loadApplications();
+                    await loadData();
                 } catch (error) {
                     showError(`Failed to delete certificates: ${error.message}`);
                 }
