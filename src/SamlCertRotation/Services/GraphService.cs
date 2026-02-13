@@ -412,6 +412,14 @@ public class GraphService : IGraphService
             await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(requestBody);
             _logger.LogInformation("Successfully deleted {Count} inactive certificates", deletedCount);
         }
+        catch (Microsoft.Graph.Models.ODataErrors.ODataError odataEx)
+        {
+            var errorMessage = odataEx.Error?.Message ?? odataEx.Message;
+            var errorCode = odataEx.Error?.Code ?? "Unknown";
+            _logger.LogError(odataEx, "Graph API error deleting certificates for {Id}: {Code} - {Message}", 
+                servicePrincipalId, errorCode, errorMessage);
+            throw new InvalidOperationException($"Graph API error ({errorCode}): {errorMessage}", odataEx);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting inactive certificates for {Id}", servicePrincipalId);
