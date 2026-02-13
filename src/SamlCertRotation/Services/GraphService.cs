@@ -377,30 +377,39 @@ public class GraphService : IGraphService
 
         try
         {
-            foreach (var keyId in keyIds)
+            // Get current service principal with all credentials
+            var sp = await _graphClient.ServicePrincipals[servicePrincipalId]
+                .GetAsync(config =>
+                {
+                    config.QueryParameters.Select = new[] { "id", "keyCredentials" };
+                });
+
+            if (sp?.KeyCredentials == null || !sp.KeyCredentials.Any())
             {
-                try
-                {
-                    // Use the removeKey action to delete each certificate
-                    await _graphClient.ServicePrincipals[servicePrincipalId]
-                        .RemoveKey
-                        .PostAsync(new Microsoft.Graph.ServicePrincipals.Item.RemoveKey.RemoveKeyPostRequestBody
-                        {
-                            KeyId = Guid.Parse(keyId),
-                            Proof = "" // Proof is not required when using app-only permissions
-                        });
-                    
-                    deletedCount++;
-                    _logger.LogInformation("Deleted certificate {KeyId} from {Id}", keyId, servicePrincipalId);
-                }
-                catch (Microsoft.Graph.Models.ODataErrors.ODataError ex) when (ex.ResponseStatusCode == 400)
-                {
-                    // Some certificates may not support removeKey (e.g., self-signed certs created via Graph)
-                    // Log and continue with remaining certificates
-                    _logger.LogWarning("Could not delete certificate {KeyId}: {Message}", keyId, ex.Message);
-                }
+                _logger.LogWarning("No key credentials found for {Id}", servicePrincipalId);
+                return 0;
             }
 
+            // Filter to keep only the certificates NOT in the keyIds list
+            var keysToKeep = sp.KeyCredentials
+                .Where(k => !keyIds.Contains(k.KeyId?.ToString() ?? string.Empty))
+                .ToList();
+
+            deletedCount = sp.KeyCredentials.Count - keysToKeep.Count;
+
+            if (deletedCount == 0)
+            {
+                _logger.LogInformation("No certificates matched for deletion");
+                return 0;
+            }
+
+            // Update the service principal with only the certificates to keep
+            var requestBody = new ServicePrincipal
+            {
+                KeyCredentials = keysToKeep
+            };
+
+            await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(requestBody);
             _logger.LogInformation("Successfully deleted {Count} inactive certificates", deletedCount);
         }
         catch (Exception ex)
