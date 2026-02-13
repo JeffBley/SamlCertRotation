@@ -786,7 +786,7 @@
             <p id="confirmModalMessage">Are you sure you want to proceed?</p>
             <div class="modal-buttons">
                 <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-                <button class="btn-danger" id="modalConfirmBtn" onclick="confirmModalAction()">Delete</button>
+                <button class="btn btn-primary" id="modalConfirmBtn" onclick="confirmModalAction()">Confirm</button>
             </div>
         </div>
     </div>
@@ -861,6 +861,10 @@
         function closeModal() {
             document.getElementById('confirmModal').classList.remove('show');
             pendingAction = null;
+            // Reset modal to defaults
+            document.getElementById('modalTitle').textContent = 'Confirm Action';
+            document.getElementById('confirmModalMessage').textContent = 'Are you sure you want to proceed?';
+            document.getElementById('modalConfirmBtn').textContent = 'Confirm';
         }
 
         // Execute the pending action from the confirmation modal
@@ -871,6 +875,10 @@
             const action = pendingAction;
             document.getElementById('confirmModal').classList.remove('show');
             pendingAction = null;
+            // Reset modal to defaults
+            document.getElementById('modalTitle').textContent = 'Confirm Action';
+            document.getElementById('confirmModalMessage').textContent = 'Are you sure you want to proceed?';
+            document.getElementById('modalConfirmBtn').textContent = 'Confirm';
             
             if (action.type === 'rotateDashboardSecret') {
                 try {
@@ -886,8 +894,10 @@
         // Rotate the dashboard application's client secret
         function rotateDashboardSecret() {
             pendingAction = { type: 'rotateDashboardSecret' };
+            document.getElementById('modalTitle').textContent = 'Rotate Client Secret';
             document.getElementById('confirmModalMessage').textContent = 
                 'This will create a new client secret for the dashboard app registration and store it in Azure Key Vault. The SWA uses a Key Vault reference for authentication, so no manual configuration is needed. Continue?';
+            document.getElementById('modalConfirmBtn').textContent = 'Rotate';
             document.getElementById('confirmModal').classList.add('show');
         }
 
