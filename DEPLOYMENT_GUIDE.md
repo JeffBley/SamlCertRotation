@@ -505,20 +505,7 @@ Write-Host "NOTE: The client secret is also stored in Key Vault for backup/rotat
 
 > **Important**: The `az staticwebapp appsettings set` command may display `null` for values due to security redaction. Use the `list` command to verify the settings were applied correctly.
 
-### 7.7 Disable Easy Auth on Function App
-
-The Function App must NOT have Easy Auth enabled since API authentication is handled through the SWA backend link.
-
-```powershell
-# Disable Easy Auth on the Function App
-az rest --method PUT `
-    --uri "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
-    --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"unauthenticatedClientAction":"AllowAnonymous"}}}'
-
-Write-Host "Easy Auth disabled on Function App"
-```
-
-### 7.8 Link Function App to Static Web App
+### 7.7 Link Function App to Static Web App
 
 ```powershell
 # Get the Function App resource ID
@@ -543,6 +530,32 @@ az staticwebapp backends link `
 Write-Host "Function App linked as SWA backend"
 ```
 
+### 7.8 Disable Easy Auth on Function App
+
+The `backends link` command above enables Easy Auth on the Function App. We need to **disable it** because authentication is handled by the Static Web App, not the Function App.
+
+> **Important**: This step MUST run AFTER 7.7 (backend linking), otherwise the link command will re-enable Easy Auth.
+
+```powershell
+# Disable Easy Auth on the Function App
+$SUBSCRIPTION_ID = az account show --query id -o tsv
+
+az rest --method PUT `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"unauthenticatedClientAction":"AllowAnonymous"}}}'
+
+# Verify Easy Auth is disabled (should return "false")
+$easyAuthStatus = az rest --method GET `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --query "properties.platform.enabled" -o tsv
+
+if ($easyAuthStatus -eq "false") {
+    Write-Host "Easy Auth disabled successfully" -ForegroundColor Green
+} else {
+    Write-Host "WARNING: Easy Auth is still enabled ($easyAuthStatus). API calls will fail." -ForegroundColor Red
+}
+```
+
 ### 7.9 Save Access Control Configuration
 
 ```powershell
@@ -565,12 +578,12 @@ Write-Host "Access control configuration saved to access-control-config.json"
 | Setting | Location | Value |
 |---------|----------|-------|
 | `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
-| `AAD_CLIENT_SECRET` | SWA App Settings | Key Vault Reference |
-| `SwaClientSecret` | Key Vault | The actual client secret |
+| `AAD_CLIENT_SECRET` | SWA App Settings | The actual client secret value |
+| `SwaClientSecret` | Key Vault | Backup copy of the client secret |
 | `SWA_CLIENT_ID` | Function App Settings | App Registration Client ID (for auto-rotation) |
 | `KeyVaultUri` | Function App Settings | Key Vault URI (set by Bicep) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
-| Easy Auth | Function App | Disabled |
+| Easy Auth | Function App | Disabled (Step 7.8) |
 | Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
 
 > **Note**: Only users or groups assigned to the Enterprise Application can access the dashboard. Users not assigned will see "Access Denied" from Azure AD before reaching the application.
@@ -768,33 +781,29 @@ Write-Host "Tagged: $appDisplayName"
 ### 11.1 Test the Function App API
 
 ```powershell
-# Get Function App key
-$FUNCTION_KEY = az functionapp keys list `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --query "functionKeys.default" -o tsv
-
-# Test dashboard stats endpoint
-$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats?code=$FUNCTION_KEY" -Method Get
+# Test dashboard stats endpoint (no function key needed - endpoints are anonymous)
+# Note: Easy Auth must be disabled on Function App for this to work (Step 7.8)
+$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats" -Method Get
 $response | ConvertTo-Json -Depth 5
+
+# Expected output: JSON with totalSamlApps, appsExpiringIn30Days, etc.
 ```
+
+If you get `400 Bad Request`, Easy Auth is still enabled on the Function App. Run Step 7.8 to disable it.
 
 ### 11.2 Manually Trigger Rotation
 
 ```powershell
-# Trigger manual rotation
-$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/admin/trigger-rotation?code=$FUNCTION_KEY" -Method Post
+# Trigger manual rotation check (this scans all tagged apps and rotates certificates as needed)
+$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/admin/trigger-rotation" -Method Post
 $response | ConvertTo-Json -Depth 5
 ```
 
-### 11.3 View Function Logs
+### 11.3 Verify Dashboard Access
 
-```powershell
-# Stream logs (Ctrl+C to stop)
-az functionapp log tail `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME
-```
+1. Open the dashboard URL in your browser
+2. Sign in with an account that is assigned to the Enterprise Application
+3. Verify you can see the dashboard with application statistics
 
 
 ### Dashboard shows 404 Not Found
@@ -942,23 +951,42 @@ az functionapp config appsettings list `
 ### Dashboard shows no data
 
 1. Check browser console (F12) for errors
-2. Verify the SWA backend link was configured (Step 7.8)
-3. Check that Easy Auth is disabled on the Function App (Step 7.5)
+2. Verify the SWA backend link was configured (Step 7.7)
+3. Check that Easy Auth is disabled on the Function App (Step 7.8)
 4. Ensure API_BASE_URL in index.html is empty (SWA backend handles routing)
+
+### API returns 400 Bad Request
+
+This usually means Easy Auth is enabled on the Function App:
+
+```powershell
+# Check if Easy Auth is enabled (should return "false")
+$SUBSCRIPTION_ID = az account show --query id -o tsv
+az rest --method GET `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --query "properties.platform.enabled"
+
+# If it returns "true", disable it:
+az rest --method PUT `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"unauthenticatedClientAction":"AllowAnonymous"}}}'
+```
+
+> **Note**: The `az staticwebapp backends link` command (Step 7.7) enables Easy Auth on the Function App. Step 7.8 must run AFTER to disable it.
 
 ### Dashboard shows "Unexpected token '<'" error
 
 This typically means the API is returning HTML instead of JSON. Common causes:
 
-1. **Easy Auth is enabled on Function App** - Disable it via Step 7.5
-2. **SWA backend link not configured** - Run Step 7.8
+1. **Easy Auth is enabled on Function App** - Disable it via Step 7.8
+2. **SWA backend link not configured** - Run Step 7.7
 3. **Missing exclude patterns in staticwebapp.config.json** - Ensure `/api/*` is in exclude list
 
 ### Dashboard shows "Access Denied" / User shows as "anonymous"
 
 1. **Enterprise App assignment not configured** - Run Step 7.3 through 7.4
 2. **User not assigned to the Enterprise App** - Add user/group via Azure Portal
-3. **SWA app settings not configured** - Run Step 7.7
+3. **SWA app settings not configured** - Run Step 7.6
 
 ---
 
