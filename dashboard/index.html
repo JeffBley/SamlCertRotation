@@ -539,6 +539,44 @@
             border-color: #b8b8b8;
         }
 
+        /* Info icon tooltip */
+        .info-icon {
+            cursor: help;
+            font-size: 14px;
+            position: relative;
+        }
+
+        .info-icon:hover::after {
+            content: attr(title);
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 100%;
+            margin-bottom: 8px;
+            background: #333;
+            color: white;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: normal;
+            white-space: normal;
+            width: 320px;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            line-height: 1.4;
+        }
+
+        .info-icon:hover::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 100%;
+            margin-bottom: 2px;
+            border: 6px solid transparent;
+            border-top-color: #333;
+        }
+
         .btn-secondary:disabled {
             opacity: 0.6;
             cursor: not-allowed;
@@ -704,6 +742,22 @@
                         <p style="font-size:11px;color:#888;margin-top:4px;">To change the sender email, update the NotificationSenderEmail app setting in Azure Portal.</p>
                     </div>
                     <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                </div>
+            </div>
+
+            <div class="section" style="margin-top: 24px;">
+                <div class="section-header">
+                    <h2>Automation Schedule</h2>
+                </div>
+                <div class="policy-form">
+                    <div class="form-group">
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            Rotation Check Schedule
+                            <span class="info-icon" title="To change the schedule, update the 'RotationSchedule' app setting in Azure Portal → Function App → Configuration → Application settings. Use CRON format (e.g., '0 0 6 * * *' for 6 AM UTC daily). The Function App must be restarted for changes to take effect.">ℹ️</span>
+                        </label>
+                        <input type="text" id="rotationSchedule" readonly style="background:#f4f4f4;" value="Loading...">
+                        <p style="font-size:11px;color:#888;margin-top:4px;">Automatic certificate rotation runs on this schedule. Currently set to run daily at 6:00 AM UTC.</p>
+                    </div>
                 </div>
             </div>
 
@@ -1066,9 +1120,29 @@
                 const settings = await apiCall('settings');
                 document.getElementById('notificationEmails').value = settings.notificationEmails || '';
                 document.getElementById('senderEmail').value = settings.senderEmail || 'Not configured';
+                document.getElementById('rotationSchedule').value = formatCronSchedule(settings.rotationSchedule || '0 0 6 * * *');
             } catch (error) {
                 console.error('Failed to load settings:', error);
             }
+        }
+
+        // Format CRON schedule to human-readable string
+        function formatCronSchedule(cron) {
+            // CRON format: second minute hour dayOfMonth month dayOfWeek
+            const parts = cron.split(' ');
+            if (parts.length !== 6) return cron;
+            
+            const hour = parseInt(parts[2]);
+            const minute = parseInt(parts[1]);
+            
+            // Check if it's a daily schedule
+            if (parts[3] === '*' && parts[4] === '*' && parts[5] === '*') {
+                const hourStr = hour.toString().padStart(2, '0');
+                const minStr = minute.toString().padStart(2, '0');
+                return `Daily at ${hourStr}:${minStr} UTC (${cron})`;
+            }
+            
+            return cron;
         }
 
         // Save settings

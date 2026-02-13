@@ -627,11 +627,17 @@ Write-Host "Access control configuration saved to access-control-config.json"
 | `SwaClientSecret` | Key Vault | Backup copy of the client secret |
 | `SWA_CLIENT_ID` | Function App Settings | App Registration Client ID (for auto-rotation) |
 | `KeyVaultUri` | Function App Settings | Key Vault URI (set by Bicep) |
+| `RotationSchedule` | Function App Settings | CRON expression for rotation checks (default: `0 0 6 * * *` = 6 AM UTC daily) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
 | Easy Auth | Function App | Disabled (Step 7.8) |
 | Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
 
 > **Note**: Only users or groups assigned to the Enterprise Application can access the dashboard. Users not assigned will see "Access Denied" from Azure AD before reaching the application.
+
+> **Rotation Schedule**: You can customize when automatic certificate rotation runs by setting the `RotationSchedule` app setting in the Function App. The value must be a valid NCRONTAB expression. Common examples:
+> - `0 0 6 * * *` - Daily at 6:00 AM UTC (default)
+> - `0 0 */12 * * *` - Every 12 hours
+> - `0 0 6 * * 1` - Every Monday at 6:00 AM UTC
 
 > **Auto-Rotation**: The `RotateSwaClientSecret` function runs daily and will automatically create a new
 > client secret and store it in Key Vault when the current secret is within 30 days of expiration.

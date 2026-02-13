@@ -316,7 +316,8 @@ public class DashboardFunctions
             {
                 notificationEmails = _configuration["AdminNotificationEmails"] ?? "",
                 senderEmail = _configuration["NotificationSenderEmail"] ?? "",
-                tenantId = _configuration["TenantId"] ?? ""
+                tenantId = _configuration["TenantId"] ?? "",
+                rotationSchedule = _configuration["RotationSchedule"] ?? "0 0 6 * * *"
             };
             return await CreateJsonResponse(req, settings);
         }

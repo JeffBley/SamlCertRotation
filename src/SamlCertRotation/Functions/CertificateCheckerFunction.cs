@@ -21,11 +21,12 @@ public class CertificateCheckerFunction
     }
 
     /// <summary>
-    /// Runs daily at 6:00 AM UTC to check certificates and perform rotation
+    /// Runs on a configurable schedule (default: daily at 6:00 AM UTC) to check certificates and perform rotation.
+    /// Configure via the RotationSchedule app setting in Azure Portal.
     /// </summary>
     /// <param name="timerInfo">Timer trigger information</param>
     [Function("CertificateChecker")]
-    public async Task Run([TimerTrigger("0 0 6 * * *")] TimerInfo timerInfo)
+    public async Task Run([TimerTrigger("%RotationSchedule%")] TimerInfo timerInfo)
     {
         _logger.LogInformation("Certificate checker started at: {Time}", DateTime.UtcNow);
 
