@@ -4,6 +4,7 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.ServicePrincipals.Item.AddTokenSigningCertificate;
 using SamlCertRotation.Models;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 
 namespace SamlCertRotation.Services;
@@ -343,23 +344,38 @@ public class GraphService : IGraphService
             }
         }
 
-        // Parse certificates
+        // Parse certificates - use Verify credentials which contain the public certificate
+        // Sign and Verify credentials are paired and have the same thumbprint
         if (sp.KeyCredentials != null)
         {
-            foreach (var keyCredential in sp.KeyCredentials.Where(k => k.Usage == "Sign"))
+            foreach (var keyCredential in sp.KeyCredentials.Where(k => k.Usage == "Verify"))
             {
+                // Calculate the thumbprint from the certificate key
+                string thumbprint = string.Empty;
+                if (keyCredential.Key != null && keyCredential.Key.Length > 0)
+                {
+                    try
+                    {
+                        using var x509Cert = new X509Certificate2(keyCredential.Key);
+                        thumbprint = x509Cert.Thumbprint; // SHA-1 hex string (uppercase)
+                    }
+                    catch
+                    {
+                        // If we can't parse the cert, fall back to empty thumbprint
+                        thumbprint = string.Empty;
+                    }
+                }
+
                 var cert = new SamlCertificate
                 {
                     KeyId = keyCredential.KeyId?.ToString() ?? string.Empty,
-                    Thumbprint = keyCredential.CustomKeyIdentifier != null 
-                        ? Convert.ToBase64String(keyCredential.CustomKeyIdentifier) 
-                        : string.Empty,
+                    Thumbprint = thumbprint,
                     StartDateTime = keyCredential.StartDateTime?.UtcDateTime ?? DateTime.MinValue,
                     EndDateTime = keyCredential.EndDateTime?.UtcDateTime ?? DateTime.MaxValue,
                     Type = keyCredential.Type ?? string.Empty,
                     Usage = keyCredential.Usage ?? string.Empty,
-                    IsActive = keyCredential.CustomKeyIdentifier != null &&
-                               Convert.ToBase64String(keyCredential.CustomKeyIdentifier) == sp.PreferredTokenSigningKeyThumbprint
+                    IsActive = !string.IsNullOrEmpty(thumbprint) && 
+                               string.Equals(thumbprint, sp.PreferredTokenSigningKeyThumbprint, StringComparison.OrdinalIgnoreCase)
                 };
 
                 samlApp.Certificates.Add(cert);
