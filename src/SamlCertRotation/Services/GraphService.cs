@@ -62,6 +62,17 @@ public class GraphService : IGraphService
             foreach (var sp in servicePrincipals.Value)
             {
                 var samlApp = MapToSamlApplication(sp);
+
+                // In some Graph responses, customSecurityAttributes can be omitted or partially populated
+                // for collection queries even when requested in $select. Fallback to per-object read.
+                if (string.IsNullOrWhiteSpace(samlApp.AutoRotateStatus) && !string.IsNullOrWhiteSpace(sp.Id))
+                {
+                    samlApp.AutoRotateStatus = await GetCustomSecurityAttributeAsync(
+                        sp.Id,
+                        _customAttributeSet,
+                        _customAttributeName);
+                }
+
                 samlApps.Add(samlApp);
             }
 
