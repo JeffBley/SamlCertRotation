@@ -203,16 +203,9 @@ public class GraphService : IGraphService
                 return null;
             }
 
-            // Custom security attributes are returned as a dictionary
             if (sp.CustomSecurityAttributes.AdditionalData.TryGetValue(attributeSet, out var attributeSetValue))
             {
-                if (attributeSetValue is JsonElement jsonElement)
-                {
-                    if (jsonElement.TryGetProperty(attributeName, out var attributeValue))
-                    {
-                        return attributeValue.GetString();
-                    }
-                }
+                return ExtractCustomSecurityAttributeValue(attributeSetValue, attributeName);
             }
 
             return null;
@@ -334,13 +327,7 @@ public class GraphService : IGraphService
         {
             if (sp.CustomSecurityAttributes.AdditionalData.TryGetValue(_customAttributeSet, out var attributeSetValue))
             {
-                if (attributeSetValue is JsonElement jsonElement)
-                {
-                    if (jsonElement.TryGetProperty(_customAttributeName, out var attributeValue))
-                    {
-                        samlApp.AutoRotateStatus = attributeValue.GetString();
-                    }
-                }
+                samlApp.AutoRotateStatus = ExtractCustomSecurityAttributeValue(attributeSetValue, _customAttributeName);
             }
         }
 
@@ -383,6 +370,90 @@ public class GraphService : IGraphService
         }
 
         return samlApp;
+    }
+
+    private static string? ExtractCustomSecurityAttributeValue(object? attributeSetValue, string attributeName)
+    {
+        if (attributeSetValue == null)
+        {
+            return null;
+        }
+
+        if (attributeSetValue is JsonElement jsonElement)
+        {
+            return TryGetStringFromJsonElement(jsonElement, attributeName);
+        }
+
+        if (attributeSetValue is IDictionary<string, object> dictionary &&
+            dictionary.TryGetValue(attributeName, out var rawValue))
+        {
+            return ConvertRawAttributeValueToString(rawValue);
+        }
+
+        try
+        {
+            var serialized = JsonSerializer.Serialize(attributeSetValue);
+            if (string.IsNullOrWhiteSpace(serialized))
+            {
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(serialized);
+            return TryGetStringFromJsonElement(doc.RootElement, attributeName);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? TryGetStringFromJsonElement(JsonElement container, string attributeName)
+    {
+        if (container.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!container.TryGetProperty(attributeName, out var attributeValue))
+        {
+            return null;
+        }
+
+        return attributeValue.ValueKind switch
+        {
+            JsonValueKind.String => attributeValue.GetString(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Number => attributeValue.ToString(),
+            _ => null
+        };
+    }
+
+    private static string? ConvertRawAttributeValueToString(object? rawValue)
+    {
+        if (rawValue == null)
+        {
+            return null;
+        }
+
+        if (rawValue is string str)
+        {
+            return str;
+        }
+
+        if (rawValue is JsonElement element)
+        {
+            return element.ValueKind switch
+            {
+                JsonValueKind.String => element.GetString(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.Number => element.ToString(),
+                _ => null
+            };
+        }
+
+        return rawValue.ToString();
     }
 
     /// <inheritdoc />
