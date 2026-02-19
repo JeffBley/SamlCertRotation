@@ -77,6 +77,8 @@ public class CertificateRotationService : ICertificateRotationService
                 }
             }
 
+            await SendAutomaticExpirationNotificationsAsync(apps);
+
             // Log completion
             var reportOnlyCreateCount = results.Count(r => string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase));
             var reportOnlyActivateCount = results.Count(r => string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase));
@@ -357,6 +359,67 @@ public class CertificateRotationService : ICertificateRotationService
         return result;
     }
 
+    private async Task SendAutomaticExpirationNotificationsAsync(List<SamlApplication> apps)
+    {
+        var notifyOnExpirationEnabled = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
+        if (!notifyOnExpirationEnabled)
+        {
+            return;
+        }
+
+        var globalPolicy = await _policyService.GetGlobalPolicyAsync();
+
+        foreach (var app in apps)
+        {
+            try
+            {
+                var activeCert = app.Certificates.FirstOrDefault(c => c.IsActive);
+                if (activeCert == null)
+                {
+                    continue;
+                }
+
+                var status = GetCertificateStatus(activeCert.DaysUntilExpiry, globalPolicy.CreateCertDaysBeforeExpiry, globalPolicy.ActivateCertDaysBeforeExpiry);
+                if (string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var milestoneLabel = $"Expiration-{status}";
+                var alreadySent = await HasExpirationMilestoneBeenSentAsync(app.Id, activeCert.Thumbprint, milestoneLabel);
+                if (alreadySent)
+                {
+                    continue;
+                }
+
+                var appUrl = BuildEntraManagedAppUrl(app.Id, app.AppId);
+                var sent = await _notificationService.SendSponsorExpirationStatusNotificationAsync(
+                    app,
+                    activeCert,
+                    activeCert.DaysUntilExpiry,
+                    appUrl,
+                    status,
+                    false);
+
+                if (!sent)
+                {
+                    continue;
+                }
+
+                await _auditService.LogSuccessAsync(
+                    app.Id,
+                    app.DisplayName,
+                    AuditActionType.SponsorExpirationReminderSent,
+                    $"Automatic expiration reminder sent. Milestone: {milestoneLabel}. Status: {status}. Days remaining: {activeCert.DaysUntilExpiry}. Link: {appUrl}",
+                    activeCert.Thumbprint);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error sending automatic expiration reminder for app {AppName}", app.DisplayName);
+            }
+        }
+    }
+
     /// <inheritdoc />
     public async Task<DashboardStats> GetDashboardStatsAsync()
     {
@@ -495,5 +558,36 @@ public class CertificateRotationService : ICertificateRotationService
             string.Equals(entry.ActionType, AuditActionType.CertificateExpiringSoon, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(entry.CertificateThumbprint, activeThumbprint, StringComparison.OrdinalIgnoreCase) &&
             (entry.Description?.Contains($"Milestone: {milestoneLabel}", StringComparison.OrdinalIgnoreCase) ?? false));
+    }
+
+    private async Task<bool> HasExpirationMilestoneBeenSentAsync(string servicePrincipalId, string activeThumbprint, string milestoneLabel)
+    {
+        var entries = await _auditService.GetEntriesForAppAsync(servicePrincipalId, 500);
+
+        return entries.Any(entry =>
+            entry.IsSuccess &&
+            string.Equals(entry.ActionType, AuditActionType.SponsorExpirationReminderSent, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(entry.CertificateThumbprint, activeThumbprint, StringComparison.OrdinalIgnoreCase) &&
+            (entry.Description?.Contains($"Milestone: {milestoneLabel}", StringComparison.OrdinalIgnoreCase) ?? false));
+    }
+
+    private static string GetCertificateStatus(int daysUntilExpiry, int warningThresholdDays, int criticalThresholdDays)
+    {
+        if (daysUntilExpiry < 0)
+        {
+            return "Expired";
+        }
+
+        if (daysUntilExpiry <= criticalThresholdDays)
+        {
+            return "Critical";
+        }
+
+        if (daysUntilExpiry <= warningThresholdDays)
+        {
+            return "Warning";
+        }
+
+        return "OK";
     }
 }

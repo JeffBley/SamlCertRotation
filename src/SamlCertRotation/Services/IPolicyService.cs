@@ -78,6 +78,16 @@ public interface IPolicyService
     Task UpdateSponsorsReceiveNotificationsEnabledAsync(bool enabled);
 
     /// <summary>
+    /// Get automatic sponsor expiration notification setting (default false/disabled)
+    /// </summary>
+    Task<bool> GetNotifySponsorsOnExpirationEnabledAsync();
+
+    /// <summary>
+    /// Update automatic sponsor expiration notification setting
+    /// </summary>
+    Task UpdateNotifySponsorsOnExpirationEnabledAsync(bool enabled);
+
+    /// <summary>
     /// Get sponsor reminder days (defaults: 30, 7, 1)
     /// </summary>
     Task<(int firstReminderDays, int secondReminderDays, int thirdReminderDays)> GetSponsorReminderDaysAsync();

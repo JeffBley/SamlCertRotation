@@ -36,4 +36,9 @@ public interface INotificationService
     /// Send notify-only reminder to app sponsor when certificate is approaching expiry
     /// </summary>
     Task<bool> SendNotifyOnlyReminderAsync(SamlApplication app, SamlCertificate expiringCert, int daysUntilExpiry, string appPortalUrl, string milestoneLabel);
+
+    /// <summary>
+    /// Send sponsor expiration email for Expired/Critical/Warning status
+    /// </summary>
+    Task<bool> SendSponsorExpirationStatusNotificationAsync(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string status, bool manualSend);
 }

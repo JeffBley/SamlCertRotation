@@ -338,6 +338,49 @@ public class PolicyService : IPolicyService
     }
 
     /// <inheritdoc />
+    public async Task<bool> GetNotifySponsorsOnExpirationEnabledAsync()
+    {
+        try
+        {
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "NotifySponsorsOnExpiration");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsor expiration notification setting from storage");
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateNotifySponsorsOnExpirationEnabledAsync(bool enabled)
+    {
+        try
+        {
+            var entity = new TableEntity("Settings", "NotifySponsorsOnExpiration")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated sponsor expiration notifications setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsor expiration notifications setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<(int firstReminderDays, int secondReminderDays, int thirdReminderDays)> GetSponsorReminderDaysAsync()
     {
         try

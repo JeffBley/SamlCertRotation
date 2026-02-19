@@ -26,6 +26,11 @@ public class SettingsUpdateRequest
     public bool? SponsorsReceiveNotifications { get; set; }
 
     /// <summary>
+    /// Whether sponsors should be automatically notified when certificates are expired/critical/warning
+    /// </summary>
+    public bool? NotifySponsorsOnExpiration { get; set; }
+
+    /// <summary>
     /// Days before expiry for sponsor 1st reminder
     /// </summary>
     public int? SponsorFirstReminderDays { get; set; }

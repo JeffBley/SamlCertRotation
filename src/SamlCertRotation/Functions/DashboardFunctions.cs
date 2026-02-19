@@ -21,6 +21,7 @@ public class DashboardFunctions
     private readonly IGraphService _graphService;
     private readonly IPolicyService _policyService;
     private readonly IAuditService _auditService;
+    private readonly INotificationService _notificationService;
     private readonly ISwaSettingsService _swaSettingsService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<DashboardFunctions> _logger;
@@ -39,6 +40,7 @@ public class DashboardFunctions
         IGraphService graphService,
         IPolicyService policyService,
         IAuditService auditService,
+        INotificationService notificationService,
         ISwaSettingsService swaSettingsService,
         IConfiguration configuration,
         ILogger<DashboardFunctions> logger)
@@ -47,6 +49,7 @@ public class DashboardFunctions
         _graphService = graphService;
         _policyService = policyService;
         _auditService = auditService;
+        _notificationService = notificationService;
         _swaSettingsService = swaSettingsService;
         _configuration = configuration;
         _logger = logger;
@@ -386,6 +389,7 @@ public class DashboardFunctions
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+            var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
 
             var settings = new
@@ -397,6 +401,7 @@ public class DashboardFunctions
                 reportOnlyModeEnabled,
                 retentionPolicyDays,
                 sponsorsReceiveNotifications,
+                notifySponsorsOnExpiration,
                 sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays
@@ -459,6 +464,11 @@ public class DashboardFunctions
                 await _policyService.UpdateSponsorsReceiveNotificationsEnabledAsync(settings.SponsorsReceiveNotifications.Value);
             }
 
+            if (settings.NotifySponsorsOnExpiration.HasValue)
+            {
+                await _policyService.UpdateNotifySponsorsOnExpirationEnabledAsync(settings.NotifySponsorsOnExpiration.Value);
+            }
+
             if (settings.SponsorFirstReminderDays.HasValue || settings.SponsorSecondReminderDays.HasValue || settings.SponsorThirdReminderDays.HasValue)
             {
                 var existingReminderDays = await _policyService.GetSponsorReminderDaysAsync();
@@ -478,6 +488,7 @@ public class DashboardFunctions
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+            var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
 
             return await CreateJsonResponse(req, new 
@@ -487,6 +498,7 @@ public class DashboardFunctions
                 reportOnlyModeEnabled,
                 retentionPolicyDays,
                 sponsorsReceiveNotifications,
+                notifySponsorsOnExpiration,
                 sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays
@@ -728,6 +740,70 @@ public class DashboardFunctions
     }
 
     /// <summary>
+    /// Manually resend sponsor reminder email for applications in Expired/Critical/Warning status
+    /// </summary>
+    [Function("ResendReminderEmail")]
+    public async Task<HttpResponseData> ResendReminderEmail(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "applications/{id}/resend-reminder")] HttpRequestData req,
+        string id)
+    {
+        _logger.LogInformation("Manual sponsor reminder email requested for application {Id}", id);
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
+
+        try
+        {
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            var activeCert = app.Certificates.FirstOrDefault(c => c.IsActive);
+            if (activeCert == null)
+            {
+                return await CreateErrorResponse(req, "No active certificate found for this application", HttpStatusCode.BadRequest);
+            }
+
+            var globalPolicy = await _policyService.GetGlobalPolicyAsync();
+            var status = GetCertificateStatus(activeCert.DaysUntilExpiry, globalPolicy.CreateCertDaysBeforeExpiry, globalPolicy.ActivateCertDaysBeforeExpiry);
+            if (string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase))
+            {
+                return await CreateErrorResponse(req, "Reminder emails can only be resent for Expired, Critical, or Warning applications", HttpStatusCode.BadRequest);
+            }
+
+            var appUrl = BuildEntraManagedAppUrl(app.Id, app.AppId);
+            var sent = await _notificationService.SendSponsorExpirationStatusNotificationAsync(app, activeCert, activeCert.DaysUntilExpiry, appUrl, status, true);
+            if (!sent)
+            {
+                return await CreateErrorResponse(req, "No sponsor recipient found or email failed to send", HttpStatusCode.BadRequest);
+            }
+
+            await _auditService.LogSuccessAsync(
+                app.Id,
+                app.DisplayName,
+                AuditActionType.SponsorExpirationReminderSent,
+                $"Manual expiration reminder sent. Status: {status}. Days remaining: {activeCert.DaysUntilExpiry}. Link: {appUrl}",
+                activeCert.Thumbprint);
+
+            return await CreateJsonResponse(req, new
+            {
+                message = "Reminder email sent successfully",
+                status,
+                daysUntilExpiry = activeCert.DaysUntilExpiry
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resending reminder email for application {Id}", id);
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Update sponsor tag for an application service principal
     /// </summary>
     [Function("UpdateApplicationSponsor")]
@@ -932,6 +1008,31 @@ public class DashboardFunctions
     private static bool IsValidGuid(string value)
     {
         return !string.IsNullOrEmpty(value) && Guid.TryParse(value, out _);
+    }
+
+    private static string BuildEntraManagedAppUrl(string servicePrincipalObjectId, string appId)
+    {
+        return $"https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/SignOn/objectId/{Uri.EscapeDataString(servicePrincipalObjectId)}/appId/{Uri.EscapeDataString(appId)}/preferredSingleSignOnMode/saml/servicePrincipalType/Application/fromNav/";
+    }
+
+    private static string GetCertificateStatus(int daysUntilExpiry, int warningThresholdDays, int criticalThresholdDays)
+    {
+        if (daysUntilExpiry < 0)
+        {
+            return "Expired";
+        }
+
+        if (daysUntilExpiry <= criticalThresholdDays)
+        {
+            return "Critical";
+        }
+
+        if (daysUntilExpiry <= warningThresholdDays)
+        {
+            return "Warning";
+        }
+
+        return "OK";
     }
 
     private static bool IsValidEmail(string email)

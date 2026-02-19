@@ -116,6 +116,27 @@ public class NotificationService : INotificationService
         return await _graphService.SendEmailAsync(_senderEmail, recipients, subject, body);
     }
 
+    /// <inheritdoc />
+    public async Task<bool> SendSponsorExpirationStatusNotificationAsync(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string status, bool manualSend)
+    {
+        var recipients = GetSponsorDirectRecipients(app);
+        if (!recipients.Any())
+        {
+            _logger.LogInformation("No sponsor recipient configured for app {AppName}", app.DisplayName);
+            return false;
+        }
+
+        var normalizedStatus = (status ?? string.Empty).Trim();
+        var sendModeText = manualSend ? "Manual" : "Automatic";
+
+        var subject = string.Equals(normalizedStatus, "Expired", StringComparison.OrdinalIgnoreCase)
+            ? $"[SAML Cert Rotation] [{sendModeText}] Application Certificate Expired - {app.DisplayName}"
+            : $"[SAML Cert Rotation] [{sendModeText}] {normalizedStatus} Certificate Status - {app.DisplayName}";
+
+        var body = GenerateSponsorExpirationStatusEmail(app, cert, daysUntilExpiry, appPortalUrl, normalizedStatus, manualSend);
+        return await _graphService.SendEmailAsync(_senderEmail, recipients, subject, body);
+    }
+
     private async Task<List<string>> GetRecipientsAsync(SamlApplication app)
     {
         var recipients = new List<string>();
@@ -144,6 +165,16 @@ public class NotificationService : INotificationService
             return new List<string>();
         }
 
+        if (string.IsNullOrWhiteSpace(app.Sponsor))
+        {
+            return new List<string>();
+        }
+
+        return new List<string> { app.Sponsor.Trim() };
+    }
+
+    private List<string> GetSponsorDirectRecipients(SamlApplication app)
+    {
         if (string.IsNullOrWhiteSpace(app.Sponsor))
         {
             return new List<string>();
@@ -498,6 +529,68 @@ public class NotificationService : INotificationService
                 <a class='button' href='{appPortalUrl}'>Open Enterprise Application</a>
             </div>
             <p style='margin-top:16px;'>No automatic rotation will occur while Auto-Rotate is set to Notify Only.</p>
+        </div>
+        <div class='footer'>
+            This is an automated message from the SAML Certificate Rotation Tool.
+        </div>
+    </div>
+</body>
+</html>";
+    }
+
+    private string GenerateSponsorExpirationStatusEmail(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string status, bool manualSend)
+    {
+        var isExpired = string.Equals(status, "Expired", StringComparison.OrdinalIgnoreCase);
+        var headerColor = isExpired ? "#d13438" : "#ffb900";
+        var title = isExpired ? "⚠️ SAML Certificate Has Expired" : "⚠️ SAML Certificate Needs Attention";
+        var statusText = isExpired ? "Expired" : status;
+        var introText = isExpired
+            ? "The signing certificate for this SAML application has expired. Please remediate this as quickly as possible to avoid or resolve sign-in impact."
+            : $"The signing certificate for this SAML application is in {statusText} state and requires attention.";
+
+        var dateText = isExpired
+            ? cert.EndDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC"
+            : cert.EndDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC";
+
+        var modeText = manualSend ? "Manual resend requested from dashboard." : "Automatically generated notification.";
+
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 700px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: {headerColor}; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
+        .notice {{ background: #fff4ce; border-left: 4px solid {headerColor}; padding: 15px; margin: 15px 0; }}
+        .details {{ background: white; padding: 15px; border-radius: 4px; margin-top: 15px; }}
+        .label {{ font-weight: 600; color: #666; }}
+        .button {{ display: inline-block; padding: 10px 14px; background: #0078d4; color: white; text-decoration: none; border-radius: 4px; margin-top: 12px; }}
+        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h2 style='margin:0;'>{title}</h2>
+        </div>
+        <div class='content'>
+            <div class='notice'>
+                <strong>{introText}</strong>
+            </div>
+            <div class='details'>
+                <p><span class='label'>Status:</span> {statusText}</p>
+                <p><span class='label'>Application:</span> {app.DisplayName}</p>
+                <p><span class='label'>Service Principal Object ID:</span> {app.Id}</p>
+                <p><span class='label'>App ID:</span> {app.AppId}</p>
+                <p><span class='label'>Certificate Thumbprint:</span> {cert.Thumbprint}</p>
+                <p><span class='label'>{(isExpired ? "Expired On" : "Expires On")}:</span> {dateText}</p>
+                <p><span class='label'>Days Remaining:</span> {daysUntilExpiry}</p>
+                <p><span class='label'>Notification:</span> {modeText}</p>
+                <a class='button' href='{appPortalUrl}'>Open Enterprise Application</a>
+            </div>
+            <p style='margin-top:16px;'>Please review and remediate this application promptly.</p>
         </div>
         <div class='footer'>
             This is an automated message from the SAML Certificate Rotation Tool.

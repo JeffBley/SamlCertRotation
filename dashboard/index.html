@@ -419,6 +419,14 @@
             background: #f4f4f4;
         }
 
+        .dropdown-item:disabled,
+        .dropdown-item.disabled {
+            color: #a19f9d;
+            background: #f8f8f8;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
         .dropdown-item.danger {
             color: var(--danger);
         }
@@ -825,12 +833,18 @@
                         <p style="font-size:11px;color:#888;margin-top:4px;">App Sponsors will receive notifications about their applications.</p>
                     </div>
                     <div id="sponsor-reminder-settings" class="form-group" style="display:none;">
+                        <p style="font-size:11px;color:#888;margin-bottom:8px;">Applicable only for Notify only SAML apps.</p>
                         <label for="sponsorFirstReminderDays">1st reminder</label>
                         <input type="number" id="sponsorFirstReminderDays" min="1" max="180" step="1" value="30" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
                         <label for="sponsorSecondReminderDays" style="margin-top:10px;">2nd reminder</label>
                         <input type="number" id="sponsorSecondReminderDays" min="1" max="180" step="1" value="7" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
                         <label for="sponsorThirdReminderDays" style="margin-top:10px;">3rd reminder</label>
                         <input type="number" id="sponsorThirdReminderDays" min="1" max="180" step="1" value="1" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <label for="notifySponsorsOnExpiration" style="margin-top:10px;">Notify Sponsors on Expiration</label>
+                        <select id="notifySponsorsOnExpiration" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                            <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
                         <p style="font-size:11px;color:#888;margin-top:4px;">Enter the number of days before expiration to notify sponsors (whole numbers, 1-180).</p>
                     </div>
                 </div>
@@ -1174,6 +1188,17 @@
             }
         }
 
+        async function resendReminderEmail(appId, appName) {
+            closeAllDropdowns();
+            try {
+                showLoading('Sending reminder email...');
+                const result = await apiCall(`applications/${appId}/resend-reminder`, { method: 'POST' });
+                showSuccess(result?.message || `Reminder email sent for ${appName}`);
+            } catch (error) {
+                showError(`Failed to send reminder email: ${error.message}`);
+            }
+        }
+
         // Close the confirmation modal
         function closeModal() {
             document.getElementById('confirmModal').classList.remove('show');
@@ -1435,6 +1460,9 @@
                                         <button class="dropdown-item" onclick="editSponsor('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}', '${escapeHtml(app.sponsor || '').replace(/'/g, "\\'")}')">
                                             Edit Sponsor
                                         </button>
+                                        <button class="dropdown-item ${computedStatus === 'ok' ? 'disabled' : ''}" ${computedStatus === 'ok' ? 'disabled' : ''} onclick="resendReminderEmail('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}')">
+                                            Resend Reminder Email
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -1487,6 +1515,7 @@
                 document.getElementById('sponsorFirstReminderDays').value = Number.isInteger(settings.sponsorFirstReminderDays) ? settings.sponsorFirstReminderDays : 30;
                 document.getElementById('sponsorSecondReminderDays').value = Number.isInteger(settings.sponsorSecondReminderDays) ? settings.sponsorSecondReminderDays : 7;
                 document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
+                document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
                 toggleSponsorReminderSettings();
             } catch (error) {
                 console.error('Failed to load settings:', error);
@@ -1538,6 +1567,7 @@
                     notificationEmails: document.getElementById('notificationEmails').value.trim(),
                     reportOnlyModeEnabled: document.getElementById('reportOnlyMode').value === 'enabled',
                     sponsorsReceiveNotifications: document.getElementById('sponsorsReceiveNotifications').value === 'enabled',
+                    notifySponsorsOnExpiration: document.getElementById('notifySponsorsOnExpiration').value === 'enabled',
                     sponsorFirstReminderDays,
                     sponsorSecondReminderDays,
                     sponsorThirdReminderDays,
