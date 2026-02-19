@@ -17,6 +17,7 @@ public class PolicyService : IPolicyService
     private readonly int _defaultActivateDays;
 
     private const string PolicyTableName = "RotationPolicies";
+    private const int DefaultRetentionPolicyDays = 180;
 
     public PolicyService(
         TableServiceClient tableServiceClient, 
@@ -236,6 +237,54 @@ public class PolicyService : IPolicyService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating report-only mode setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> GetRetentionPolicyDaysAsync()
+    {
+        try
+        {
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "RetentionPolicyDays");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Days");
+                if (int.TryParse(value, out var days) && days > 0)
+                {
+                    return days;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting retention policy setting from storage");
+        }
+
+        return DefaultRetentionPolicyDays;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateRetentionPolicyDaysAsync(int days)
+    {
+        if (days < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(days), "Retention policy must be at least 1 day.");
+        }
+
+        try
+        {
+            var entity = new TableEntity("Settings", "RetentionPolicyDays")
+            {
+                { "Days", days.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated retention policy days: {Days}", days);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating retention policy setting");
             throw;
         }
     }

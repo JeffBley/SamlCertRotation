@@ -14,4 +14,9 @@ public class SettingsUpdateRequest
     /// Whether report-only mode is enabled
     /// </summary>
     public bool? ReportOnlyModeEnabled { get; set; }
+
+    /// <summary>
+    /// Retention policy in days
+    /// </summary>
+    public int? RetentionPolicyDays { get; set; }
 }

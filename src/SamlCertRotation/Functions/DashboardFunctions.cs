@@ -321,7 +321,8 @@ public class DashboardFunctions
             else
             {
                 var daysParam = req.Query["days"];
-                var days = int.TryParse(daysParam, out var d) ? d : 7;
+                var days = int.TryParse(daysParam, out var d) ? d : 30;
+                days = Math.Max(1, days);
                 startDate = DateTime.UtcNow.AddDays(-days);
                 endDate = DateTime.UtcNow;
             }
@@ -382,6 +383,7 @@ public class DashboardFunctions
             }
 
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
+            var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
 
             var settings = new
             {
@@ -389,7 +391,8 @@ public class DashboardFunctions
                 senderEmail = _configuration["NotificationSenderEmail"] ?? "",
                 tenantId = _configuration["TenantId"] ?? "",
                 rotationSchedule = _configuration["RotationSchedule"] ?? "0 0 6 * * *",
-                reportOnlyModeEnabled
+                reportOnlyModeEnabled,
+                retentionPolicyDays
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -435,13 +438,24 @@ public class DashboardFunctions
                 await _policyService.UpdateReportOnlyModeEnabledAsync(settings.ReportOnlyModeEnabled.Value);
             }
 
+            if (settings.RetentionPolicyDays.HasValue)
+            {
+                if (settings.RetentionPolicyDays.Value < 1)
+                {
+                    return await CreateErrorResponse(req, "Retention policy must be at least 1 day", HttpStatusCode.BadRequest);
+                }
+                await _policyService.UpdateRetentionPolicyDaysAsync(settings.RetentionPolicyDays.Value);
+            }
+
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
+            var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
 
             return await CreateJsonResponse(req, new 
             { 
                 message = "Settings updated successfully",
                 notificationEmails = settings.NotificationEmails,
-                reportOnlyModeEnabled
+                reportOnlyModeEnabled,
+                retentionPolicyDays
             });
         }
         catch (Exception ex)

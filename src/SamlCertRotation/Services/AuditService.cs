@@ -1,4 +1,5 @@
 using Azure.Data.Tables;
+using Azure;
 using Microsoft.Extensions.Logging;
 using SamlCertRotation.Models;
 
@@ -124,5 +125,40 @@ public class AuditService : IAuditService
         }
 
         return entries;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> PurgeEntriesOlderThanAsync(int retentionDays)
+    {
+        if (retentionDays < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(retentionDays), "Retention days must be at least 1.");
+        }
+
+        var deletedCount = 0;
+        var cutoffDate = DateTime.UtcNow.Date.AddDays(-retentionDays);
+        var cutoffPartitionKey = cutoffDate.ToString("yyyy-MM-dd");
+
+        try
+        {
+            await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(filter: $"PartitionKey lt '{cutoffPartitionKey}'"))
+            {
+                await _auditTable.DeleteEntityAsync(entry.PartitionKey, entry.RowKey, ETag.All);
+                deletedCount++;
+            }
+
+            _logger.LogInformation(
+                "Purged {Count} audit entries older than {CutoffDate} (retention days: {RetentionDays})",
+                deletedCount,
+                cutoffDate,
+                retentionDays);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error purging audit entries older than {CutoffDate}", cutoffDate);
+            throw;
+        }
+
+        return deletedCount;
     }
 }

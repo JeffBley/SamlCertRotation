@@ -56,4 +56,14 @@ public interface IPolicyService
     /// Update report-only mode setting
     /// </summary>
     Task UpdateReportOnlyModeEnabledAsync(bool enabled);
+
+    /// <summary>
+    /// Get retention policy in days (default 180)
+    /// </summary>
+    Task<int> GetRetentionPolicyDaysAsync();
+
+    /// <summary>
+    /// Update retention policy in days
+    /// </summary>
+    Task UpdateRetentionPolicyDaysAsync(int days);
 }

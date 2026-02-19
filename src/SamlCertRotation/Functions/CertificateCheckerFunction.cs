@@ -10,13 +10,19 @@ namespace SamlCertRotation.Functions;
 public class CertificateCheckerFunction
 {
     private readonly ICertificateRotationService _rotationService;
+    private readonly IPolicyService _policyService;
+    private readonly IAuditService _auditService;
     private readonly ILogger<CertificateCheckerFunction> _logger;
 
     public CertificateCheckerFunction(
         ICertificateRotationService rotationService,
+        IPolicyService policyService,
+        IAuditService auditService,
         ILogger<CertificateCheckerFunction> logger)
     {
         _rotationService = rotationService;
+        _policyService = policyService;
+        _auditService = auditService;
         _logger = logger;
     }
 
@@ -40,6 +46,13 @@ public class CertificateCheckerFunction
             _logger.LogInformation(
                 "Certificate checker completed. Processed: {Total}, Success: {Success}, Failed: {Failed}",
                 results.Count, successCount, failureCount);
+
+            var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
+            var purgedCount = await _auditService.PurgeEntriesOlderThanAsync(retentionPolicyDays);
+            _logger.LogInformation(
+                "Audit retention purge completed. Retention policy: {RetentionDays} day(s), Purged: {PurgedCount}",
+                retentionPolicyDays,
+                purgedCount);
 
             if (timerInfo.ScheduleStatus != null)
             {

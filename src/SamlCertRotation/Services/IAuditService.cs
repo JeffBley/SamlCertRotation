@@ -33,4 +33,9 @@ public interface IAuditService
     /// Get audit entries for a specific application
     /// </summary>
     Task<List<AuditEntry>> GetEntriesForAppAsync(string servicePrincipalId, int maxResults = 100);
+
+    /// <summary>
+    /// Purge audit entries older than the specified retention in days
+    /// </summary>
+    Task<int> PurgeEntriesOlderThanAsync(int retentionDays);
 }
