@@ -46,4 +46,14 @@ public interface IPolicyService
     /// Update notification emails setting
     /// </summary>
     Task UpdateNotificationEmailsAsync(string emails);
+
+    /// <summary>
+    /// Get report-only mode setting (default true/enabled)
+    /// </summary>
+    Task<bool> GetReportOnlyModeEnabledAsync();
+
+    /// <summary>
+    /// Update report-only mode setting
+    /// </summary>
+    Task UpdateReportOnlyModeEnabledAsync(bool enabled);
 }

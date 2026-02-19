@@ -29,13 +29,15 @@ public class CertificateRotationService : ICertificateRotationService
     }
 
     /// <inheritdoc />
-    public async Task<List<RotationResult>> RunRotationAsync()
+    public async Task<List<RotationResult>> RunRotationAsync(bool? forceReportOnlyMode = null)
     {
         var results = new List<RotationResult>();
 
         try
         {
             _logger.LogInformation("Starting certificate rotation run at {Time}", DateTime.UtcNow);
+            var reportOnlyMode = forceReportOnlyMode ?? await _policyService.GetReportOnlyModeEnabledAsync();
+            _logger.LogInformation("Rotation run mode: {Mode}", reportOnlyMode ? "ReportOnly" : "Production");
 
             // Get all SAML applications
             var apps = await _graphService.GetSamlApplicationsAsync();
@@ -52,7 +54,7 @@ public class CertificateRotationService : ICertificateRotationService
             {
                 try
                 {
-                    var result = await ProcessApplicationAsync(app);
+                    var result = await ProcessApplicationAsync(app, reportOnlyMode);
                     results.Add(result);
                 }
                 catch (Exception ex)
@@ -74,7 +76,7 @@ public class CertificateRotationService : ICertificateRotationService
                 "SYSTEM",
                 "System",
                 AuditActionType.ScanCompleted,
-                $"Completed rotation run. Processed {appsToProcess.Count} apps. Success: {results.Count(r => r.Success)}, Failed: {results.Count(r => !r.Success)}");
+                $"Completed {(reportOnlyMode ? "report-only" : "production")} rotation run. Processed {appsToProcess.Count} apps. Success: {results.Count(r => r.Success)}, Failed: {results.Count(r => !r.Success)}");
 
             // Send daily summary
             var stats = await GetDashboardStatsAsync();
@@ -92,7 +94,7 @@ public class CertificateRotationService : ICertificateRotationService
     }
 
     /// <inheritdoc />
-    public async Task<RotationResult> ProcessApplicationAsync(SamlApplication app)
+    public async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode = false)
     {
         var result = new RotationResult
         {
@@ -131,31 +133,43 @@ public class CertificateRotationService : ICertificateRotationService
 
                 if (newerInactiveCert == null)
                 {
-                    // Create new certificate
-                    _logger.LogInformation("Creating new certificate for {AppName}", app.DisplayName);
-                    
-                    var newCert = await _graphService.CreateSamlCertificateAsync(app.Id);
-                    
-                    if (newCert != null)
+                    if (reportOnlyMode)
                     {
-                        result.Action = "Created";
-                        result.NewCertificateThumbprint = newCert.Thumbprint;
-
+                        result.Action = "Would Create";
                         await _auditService.LogSuccessAsync(
                             app.Id, 
                             app.DisplayName, 
                             AuditActionType.CertificateCreated,
-                            $"Created new certificate expiring {newCert.EndDateTime:yyyy-MM-dd}",
-                            activeCert.Thumbprint,
-                            newCert.Thumbprint);
-
-                        await _notificationService.SendCertificateCreatedNotificationAsync(app, newCert);
+                            $"Report-only mode: would create a new certificate. Active cert expires in {daysUntilExpiry} day(s).",
+                            activeCert.Thumbprint);
                     }
                     else
                     {
-                        result.Success = false;
-                        result.Action = "Create Failed";
-                        result.ErrorMessage = "Certificate creation returned null";
+                        _logger.LogInformation("Creating new certificate for {AppName}", app.DisplayName);
+                        
+                        var newCert = await _graphService.CreateSamlCertificateAsync(app.Id);
+                        
+                        if (newCert != null)
+                        {
+                            result.Action = "Created";
+                            result.NewCertificateThumbprint = newCert.Thumbprint;
+
+                            await _auditService.LogSuccessAsync(
+                                app.Id, 
+                                app.DisplayName, 
+                                AuditActionType.CertificateCreated,
+                                $"Created new certificate expiring {newCert.EndDateTime:yyyy-MM-dd}",
+                                activeCert.Thumbprint,
+                                newCert.Thumbprint);
+
+                            await _notificationService.SendCertificateCreatedNotificationAsync(app, newCert);
+                        }
+                        else
+                        {
+                            result.Success = false;
+                            result.Action = "Create Failed";
+                            result.ErrorMessage = "Certificate creation returned null";
+                        }
                     }
                 }
                 else
@@ -165,32 +179,47 @@ public class CertificateRotationService : ICertificateRotationService
                     // Check if we should ACTIVATE the pending cert
                     if (daysUntilExpiry <= policy.ActivateCertDaysBeforeExpiry)
                     {
-                        _logger.LogInformation("Activating certificate for {AppName}", app.DisplayName);
-                        
-                        var activated = await _graphService.ActivateCertificateAsync(app.Id, newerInactiveCert.Thumbprint);
-                        
-                        if (activated)
+                        if (reportOnlyMode)
                         {
-                            result.Action = "Activated";
-                            result.NewCertificateThumbprint = newerInactiveCert.Thumbprint;
+                            result.Action = "Would Activate";
 
                             await _auditService.LogSuccessAsync(
                                 app.Id,
                                 app.DisplayName,
                                 AuditActionType.CertificateActivated,
-                                $"Activated certificate {newerInactiveCert.Thumbprint}",
+                                $"Report-only mode: would activate pending certificate {newerInactiveCert.Thumbprint}.",
                                 activeCert.Thumbprint,
                                 newerInactiveCert.Thumbprint);
-
-                            await _notificationService.SendCertificateActivatedNotificationAsync(app, newerInactiveCert);
                         }
                         else
                         {
-                            result.Success = false;
-                            result.Action = "Activate Failed";
-                            result.ErrorMessage = "Certificate activation failed";
+                            _logger.LogInformation("Activating certificate for {AppName}", app.DisplayName);
+                            
+                            var activated = await _graphService.ActivateCertificateAsync(app.Id, newerInactiveCert.Thumbprint);
+                            
+                            if (activated)
+                            {
+                                result.Action = "Activated";
+                                result.NewCertificateThumbprint = newerInactiveCert.Thumbprint;
 
-                            await _notificationService.SendErrorNotificationAsync(app, "Certificate activation failed", "Activate");
+                                await _auditService.LogSuccessAsync(
+                                    app.Id,
+                                    app.DisplayName,
+                                    AuditActionType.CertificateActivated,
+                                    $"Activated certificate {newerInactiveCert.Thumbprint}",
+                                    activeCert.Thumbprint,
+                                    newerInactiveCert.Thumbprint);
+
+                                await _notificationService.SendCertificateActivatedNotificationAsync(app, newerInactiveCert);
+                            }
+                            else
+                            {
+                                result.Success = false;
+                                result.Action = "Activate Failed";
+                                result.ErrorMessage = "Certificate activation failed";
+
+                                await _notificationService.SendErrorNotificationAsync(app, "Certificate activation failed", "Activate");
+                            }
                         }
                     }
                 }
@@ -205,30 +234,45 @@ public class CertificateRotationService : ICertificateRotationService
 
                 if (pendingCert != null)
                 {
-                    _logger.LogInformation("Activating pending certificate for {AppName}", app.DisplayName);
-                    
-                    var activated = await _graphService.ActivateCertificateAsync(app.Id, pendingCert.Thumbprint);
-                    
-                    if (activated)
+                    if (reportOnlyMode)
                     {
-                        result.Action = "Activated";
-                        result.NewCertificateThumbprint = pendingCert.Thumbprint;
+                        result.Action = "Would Activate";
 
                         await _auditService.LogSuccessAsync(
                             app.Id,
                             app.DisplayName,
                             AuditActionType.CertificateActivated,
-                            $"Activated certificate {pendingCert.Thumbprint}",
+                            $"Report-only mode: would activate pending certificate {pendingCert.Thumbprint}.",
                             activeCert.Thumbprint,
                             pendingCert.Thumbprint);
-
-                        await _notificationService.SendCertificateActivatedNotificationAsync(app, pendingCert);
                     }
                     else
                     {
-                        result.Success = false;
-                        result.Action = "Activate Failed";
-                        result.ErrorMessage = "Certificate activation failed";
+                        _logger.LogInformation("Activating pending certificate for {AppName}", app.DisplayName);
+                        
+                        var activated = await _graphService.ActivateCertificateAsync(app.Id, pendingCert.Thumbprint);
+                        
+                        if (activated)
+                        {
+                            result.Action = "Activated";
+                            result.NewCertificateThumbprint = pendingCert.Thumbprint;
+
+                            await _auditService.LogSuccessAsync(
+                                app.Id,
+                                app.DisplayName,
+                                AuditActionType.CertificateActivated,
+                                $"Activated certificate {pendingCert.Thumbprint}",
+                                activeCert.Thumbprint,
+                                pendingCert.Thumbprint);
+
+                            await _notificationService.SendCertificateActivatedNotificationAsync(app, pendingCert);
+                        }
+                        else
+                        {
+                            result.Success = false;
+                            result.Action = "Activate Failed";
+                            result.ErrorMessage = "Certificate activation failed";
+                        }
                     }
                 }
             }

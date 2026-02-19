@@ -196,4 +196,47 @@ public class PolicyService : IPolicyService
             throw;
         }
     }
+
+    /// <inheritdoc />
+    public async Task<bool> GetReportOnlyModeEnabledAsync()
+    {
+        try
+        {
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "ReportOnlyMode");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting report-only mode setting from storage");
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateReportOnlyModeEnabledAsync(bool enabled)
+    {
+        try
+        {
+            var entity = new TableEntity("Settings", "ReportOnlyMode")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated report-only mode: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating report-only mode setting");
+            throw;
+        }
+    }
 }

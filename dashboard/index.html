@@ -642,6 +642,8 @@
                         <span class="last-updated" id="last-updated"></span>
                         <button class="btn btn-secondary" onclick="exportApplications()">Export</button>
                         <button class="btn btn-secondary" onclick="loadData()">Refresh</button>
+                        <button class="btn btn-secondary" onclick="triggerReportOnlyRun()">Run - Report-only</button>
+                        <button class="btn btn-primary" onclick="triggerProdRun()">Run - Prod</button>
                     </div>
                 </div>
                 <div class="filter-bar">
@@ -740,6 +742,14 @@
                         <label>Sender Email (read-only)</label>
                         <input type="text" id="senderEmail" readonly style="background:#f4f4f4;">
                         <p style="font-size:11px;color:#888;margin-top:4px;">To change the sender email, update the NotificationSenderEmail app setting in Azure Portal.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="reportOnlyMode">Report-only mode</label>
+                        <select id="reportOnlyMode" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                            <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                        <p style="font-size:11px;color:#888;margin-top:4px;">Enabled (default) runs evaluation only and logs what would happen. Disabled runs production automation and can create or activate certificates.</p>
                     </div>
                     <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
                 </div>
@@ -901,6 +911,21 @@
                 } catch (error) {
                     showError(`Failed to rotate secret: ${error.message}`);
                 }
+            } else if (action.type === 'triggerRotation') {
+                try {
+                    const isReportOnly = action.mode === 'report-only';
+                    showLoading(isReportOnly ? 'Running report-only evaluation...' : 'Running production rotation...');
+
+                    const endpoint = isReportOnly
+                        ? 'admin/trigger-rotation/report-only'
+                        : 'admin/trigger-rotation/prod';
+
+                    const result = await apiCall(endpoint, { method: 'POST' });
+                    showSuccess(`${result.message}. Processed: ${result.totalProcessed}, Success: ${result.successful}, Failed: ${result.failed}`);
+                    await loadData();
+                } catch (error) {
+                    showError(`Failed to run rotation: ${error.message}`);
+                }
             }
         }
 
@@ -911,6 +936,24 @@
             document.getElementById('confirmModalMessage').textContent = 
                 'This will create a new client secret for the dashboard app registration and store it in Azure Key Vault. The SWA uses a Key Vault reference for authentication, so no manual configuration is needed. Continue?';
             document.getElementById('modalConfirmBtn').textContent = 'Rotate';
+            document.getElementById('confirmModal').classList.add('show');
+        }
+
+        function triggerReportOnlyRun() {
+            pendingAction = { type: 'triggerRotation', mode: 'report-only' };
+            document.getElementById('modalTitle').textContent = 'Run - Report-only';
+            document.getElementById('confirmModalMessage').textContent =
+                'Run an immediate report-only evaluation. No certificate changes will be made.';
+            document.getElementById('modalConfirmBtn').textContent = 'Run';
+            document.getElementById('confirmModal').classList.add('show');
+        }
+
+        function triggerProdRun() {
+            pendingAction = { type: 'triggerRotation', mode: 'prod' };
+            document.getElementById('modalTitle').textContent = 'Run - Prod';
+            document.getElementById('confirmModalMessage').textContent =
+                'Run immediate production automation. This may create or activate certificates.';
+            document.getElementById('modalConfirmBtn').textContent = 'Run';
             document.getElementById('confirmModal').classList.add('show');
         }
 
@@ -1144,6 +1187,7 @@
                 document.getElementById('notificationEmails').value = settings.notificationEmails || '';
                 document.getElementById('senderEmail').value = settings.senderEmail || 'Not configured';
                 document.getElementById('rotationSchedule').value = formatCronSchedule(settings.rotationSchedule || '0 0 6 * * *');
+                document.getElementById('reportOnlyMode').value = settings.reportOnlyModeEnabled === false ? 'disabled' : 'enabled';
             } catch (error) {
                 console.error('Failed to load settings:', error);
             }
@@ -1172,7 +1216,8 @@
         async function saveSettings() {
             try {
                 const settings = {
-                    notificationEmails: document.getElementById('notificationEmails').value.trim()
+                    notificationEmails: document.getElementById('notificationEmails').value.trim(),
+                    reportOnlyModeEnabled: document.getElementById('reportOnlyMode').value === 'enabled'
                 };
                 await apiCall('settings', {
                     method: 'PUT',

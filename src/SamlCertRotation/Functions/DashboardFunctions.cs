@@ -351,12 +351,21 @@ public class DashboardFunctions
 
         try
         {
+            var notificationEmails = await _policyService.GetNotificationEmailsAsync();
+            if (string.IsNullOrWhiteSpace(notificationEmails))
+            {
+                notificationEmails = _configuration["AdminNotificationEmails"] ?? "";
+            }
+
+            var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
+
             var settings = new
             {
-                notificationEmails = _configuration["AdminNotificationEmails"] ?? "",
+                notificationEmails,
                 senderEmail = _configuration["NotificationSenderEmail"] ?? "",
                 tenantId = _configuration["TenantId"] ?? "",
-                rotationSchedule = _configuration["RotationSchedule"] ?? "0 0 6 * * *"
+                rotationSchedule = _configuration["RotationSchedule"] ?? "0 0 6 * * *",
+                reportOnlyModeEnabled
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -397,10 +406,18 @@ public class DashboardFunctions
             // Store settings in policy service (we'll reuse the table)
             await _policyService.UpdateNotificationEmailsAsync(settings.NotificationEmails ?? "");
 
+            if (settings.ReportOnlyModeEnabled.HasValue)
+            {
+                await _policyService.UpdateReportOnlyModeEnabledAsync(settings.ReportOnlyModeEnabled.Value);
+            }
+
+            var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
+
             return await CreateJsonResponse(req, new 
             { 
                 message = "Settings updated successfully",
-                notificationEmails = settings.NotificationEmails
+                notificationEmails = settings.NotificationEmails,
+                reportOnlyModeEnabled
             });
         }
         catch (Exception ex)
@@ -417,14 +434,15 @@ public class DashboardFunctions
     public async Task<HttpResponseData> TriggerRotation(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation")] HttpRequestData req)
     {
-        _logger.LogInformation("Manual rotation triggered");
+        _logger.LogInformation("Manual production rotation triggered via legacy endpoint");
 
         try
         {
-            var results = await _rotationService.RunRotationAsync();
+            var results = await _rotationService.RunRotationAsync(false);
             return await CreateJsonResponse(req, new
             {
-                message = "Rotation completed",
+                message = "Production rotation completed",
+                mode = "prod",
                 totalProcessed = results.Count,
                 successful = results.Count(r => r.Success),
                 failed = results.Count(r => !r.Success),
@@ -433,7 +451,65 @@ public class DashboardFunctions
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during manual rotation");
+            _logger.LogError(ex, "Error during manual production rotation");
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Manually trigger certificate rotation in report-only mode
+    /// </summary>
+    [Function("TriggerRotationReportOnly")]
+    public async Task<HttpResponseData> TriggerRotationReportOnly(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation/report-only")] HttpRequestData req)
+    {
+        _logger.LogInformation("Manual report-only rotation triggered");
+
+        try
+        {
+            var results = await _rotationService.RunRotationAsync(true);
+            return await CreateJsonResponse(req, new
+            {
+                message = "Report-only rotation completed",
+                mode = "report-only",
+                totalProcessed = results.Count,
+                successful = results.Count(r => r.Success),
+                failed = results.Count(r => !r.Success),
+                results = results
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during manual report-only rotation");
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Manually trigger certificate rotation in production mode
+    /// </summary>
+    [Function("TriggerRotationProd")]
+    public async Task<HttpResponseData> TriggerRotationProd(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation/prod")] HttpRequestData req)
+    {
+        _logger.LogInformation("Manual production rotation triggered");
+
+        try
+        {
+            var results = await _rotationService.RunRotationAsync(false);
+            return await CreateJsonResponse(req, new
+            {
+                message = "Production rotation completed",
+                mode = "prod",
+                totalProcessed = results.Count,
+                successful = results.Count(r => r.Success),
+                failed = results.Count(r => !r.Success),
+                results = results
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during manual production rotation");
             return await CreateErrorResponse(req, ex.Message);
         }
     }

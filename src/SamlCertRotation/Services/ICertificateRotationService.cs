@@ -10,7 +10,7 @@ public interface ICertificateRotationService
     /// <summary>
     /// Run the full certificate check and rotation process
     /// </summary>
-    Task<List<RotationResult>> RunRotationAsync();
+    Task<List<RotationResult>> RunRotationAsync(bool? forceReportOnlyMode = null);
 
     /// <summary>
     /// Get dashboard statistics
@@ -20,5 +20,5 @@ public interface ICertificateRotationService
     /// <summary>
     /// Process a single application
     /// </summary>
-    Task<RotationResult> ProcessApplicationAsync(SamlApplication app);
+    Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode = false);
 }
