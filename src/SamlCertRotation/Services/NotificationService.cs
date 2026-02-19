@@ -10,16 +10,19 @@ namespace SamlCertRotation.Services;
 public class NotificationService : INotificationService
 {
     private readonly IGraphService _graphService;
+    private readonly IPolicyService _policyService;
     private readonly ILogger<NotificationService> _logger;
     private readonly string _senderEmail;
     private readonly string _adminEmails;
 
     public NotificationService(
         IGraphService graphService,
+        IPolicyService policyService,
         ILogger<NotificationService> logger,
         IConfiguration configuration)
     {
         _graphService = graphService;
+        _policyService = policyService;
         _logger = logger;
         _senderEmail = configuration["NotificationSenderEmail"] ?? "noreply@yourdomain.com";
         _adminEmails = configuration["AdminNotificationEmails"] ?? "";
@@ -28,10 +31,10 @@ public class NotificationService : INotificationService
     /// <inheritdoc />
     public async Task<bool> SendCertificateCreatedNotificationAsync(SamlApplication app, SamlCertificate newCert)
     {
-        var recipients = await GetRecipientsAsync(app);
+        var recipients = await GetSponsorRecipientsAsync(app);
         if (!recipients.Any())
         {
-            _logger.LogWarning("No recipients found for app {AppName}", app.DisplayName);
+            _logger.LogInformation("Sponsor notifications disabled or no sponsor recipient for app {AppName}", app.DisplayName);
             return false;
         }
 
@@ -44,10 +47,10 @@ public class NotificationService : INotificationService
     /// <inheritdoc />
     public async Task<bool> SendCertificateActivatedNotificationAsync(SamlApplication app, SamlCertificate activatedCert)
     {
-        var recipients = await GetRecipientsAsync(app);
+        var recipients = await GetSponsorRecipientsAsync(app);
         if (!recipients.Any())
         {
-            _logger.LogWarning("No recipients found for app {AppName}", app.DisplayName);
+            _logger.LogInformation("Sponsor notifications disabled or no sponsor recipient for app {AppName}", app.DisplayName);
             return false;
         }
 
@@ -60,7 +63,7 @@ public class NotificationService : INotificationService
     /// <inheritdoc />
     public async Task<bool> SendExpirationWarningNotificationAsync(SamlApplication app, SamlCertificate expiringCert, int daysUntilExpiry)
     {
-        var recipients = await GetRecipientsAsync(app);
+        var recipients = await GetSponsorRecipientsAsync(app);
         if (!recipients.Any()) return false;
 
         var urgency = daysUntilExpiry <= 7 ? "URGENT" : "Warning";
@@ -85,7 +88,7 @@ public class NotificationService : INotificationService
     /// <inheritdoc />
     public async Task<bool> SendDailySummaryAsync(DashboardStats stats, List<RotationResult> results)
     {
-        var adminRecipients = GetAdminRecipients();
+        var adminRecipients = await GetRunSummaryRecipientsAsync();
         if (!adminRecipients.Any())
         {
             _logger.LogWarning("No admin recipients configured for daily summary");
@@ -96,6 +99,21 @@ public class NotificationService : INotificationService
         var body = GenerateDailySummaryEmail(stats, results);
 
         return await _graphService.SendEmailAsync(_senderEmail, adminRecipients, subject, body);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> SendNotifyOnlyReminderAsync(SamlApplication app, SamlCertificate expiringCert, int daysUntilExpiry, string appPortalUrl, string milestoneLabel)
+    {
+        var recipients = await GetSponsorRecipientsAsync(app);
+        if (!recipients.Any())
+        {
+            _logger.LogInformation("Sponsor notifications disabled or no sponsor recipient for app {AppName}", app.DisplayName);
+            return false;
+        }
+
+        var subject = $"[SAML Cert Rotation] [Notify] Certificate Expiring in {daysUntilExpiry} day(s) - {app.DisplayName}";
+        var body = GenerateNotifyOnlyReminderEmail(app, expiringCert, daysUntilExpiry, appPortalUrl, milestoneLabel);
+        return await _graphService.SendEmailAsync(_senderEmail, recipients, subject, body);
     }
 
     private async Task<List<string>> GetRecipientsAsync(SamlApplication app)
@@ -116,6 +134,49 @@ public class NotificationService : INotificationService
         recipients.AddRange(GetAdminRecipients());
 
         return recipients.Distinct().ToList();
+    }
+
+    private async Task<List<string>> GetSponsorRecipientsAsync(SamlApplication app)
+    {
+        var enabled = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+        if (!enabled)
+        {
+            return new List<string>();
+        }
+
+        if (string.IsNullOrWhiteSpace(app.Sponsor))
+        {
+            return new List<string>();
+        }
+
+        return new List<string> { app.Sponsor.Trim() };
+    }
+
+    private async Task<List<string>> GetRunSummaryRecipientsAsync()
+    {
+        var recipients = new List<string>();
+
+        var configured = await _policyService.GetNotificationEmailsAsync();
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            recipients.AddRange(SplitEmails(configured));
+        }
+
+        if (!recipients.Any())
+        {
+            recipients.AddRange(GetAdminRecipients());
+        }
+
+        return recipients
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Select(e => e.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IEnumerable<string> SplitEmails(string emails)
+    {
+        return emails.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
     }
 
     private List<string> GetAdminRecipients()
@@ -390,6 +451,53 @@ public class NotificationService : INotificationService
                 </tr>
                 {resultsHtml}
             </table>" : "<p>No rotation actions were performed today.</p>")}
+        </div>
+        <div class='footer'>
+            This is an automated message from the SAML Certificate Rotation Tool.
+        </div>
+    </div>
+</body>
+</html>";
+    }
+
+    private string GenerateNotifyOnlyReminderEmail(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string milestoneLabel)
+    {
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 700px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: #d13438; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
+        .warning {{ background: #fff4ce; border-left: 4px solid #ffb900; padding: 15px; margin: 15px 0; }}
+        .details {{ background: white; padding: 15px; border-radius: 4px; margin-top: 15px; }}
+        .label {{ font-weight: 600; color: #666; }}
+        .button {{ display: inline-block; padding: 10px 14px; background: #0078d4; color: white; text-decoration: none; border-radius: 4px; margin-top: 12px; }}
+        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h2 style='margin:0;'>⚠️ SAML Certificate Expiration Reminder</h2>
+        </div>
+        <div class='content'>
+            <div class='warning'>
+                <strong>This application is configured as Notify Only.</strong><br/>
+                The current signing certificate expires in <strong>{daysUntilExpiry} day(s)</strong>.
+            </div>
+            <div class='details'>
+                <p><span class='label'>Reminder milestone:</span> {milestoneLabel}</p>
+                <p><span class='label'>Application:</span> {app.DisplayName}</p>
+                <p><span class='label'>Service Principal Object ID:</span> {app.Id}</p>
+                <p><span class='label'>App ID:</span> {app.AppId}</p>
+                <p><span class='label'>Certificate Thumbprint:</span> {cert.Thumbprint}</p>
+                <p><span class='label'>Expires On:</span> {cert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
+                <a class='button' href='{appPortalUrl}'>Open Enterprise Application</a>
+            </div>
+            <p style='margin-top:16px;'>No automatic rotation will occur while Auto-Rotate is set to Notify Only.</p>
         </div>
         <div class='footer'>
             This is an automated message from the SAML Certificate Rotation Tool.
