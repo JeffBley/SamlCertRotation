@@ -214,7 +214,7 @@ public class GraphService : IGraphService
                 return null;
             }
 
-            if (sp.CustomSecurityAttributes.AdditionalData.TryGetValue(attributeSet, out var attributeSetValue))
+            if (TryGetValueIgnoreCase(sp.CustomSecurityAttributes.AdditionalData, attributeSet, out var attributeSetValue))
             {
                 return ExtractCustomSecurityAttributeValue(attributeSetValue, attributeName);
             }
@@ -336,7 +336,7 @@ public class GraphService : IGraphService
         // Parse custom security attributes
         if (sp.CustomSecurityAttributes?.AdditionalData != null)
         {
-            if (sp.CustomSecurityAttributes.AdditionalData.TryGetValue(_customAttributeSet, out var attributeSetValue))
+            if (TryGetValueIgnoreCase(sp.CustomSecurityAttributes.AdditionalData, _customAttributeSet, out var attributeSetValue))
             {
                 samlApp.AutoRotateStatus = ExtractCustomSecurityAttributeValue(attributeSetValue, _customAttributeName);
             }
@@ -396,7 +396,7 @@ public class GraphService : IGraphService
         }
 
         if (attributeSetValue is IDictionary<string, object> dictionary &&
-            dictionary.TryGetValue(attributeName, out var rawValue))
+            TryGetValueIgnoreCase(dictionary, attributeName, out var rawValue))
         {
             return ConvertRawAttributeValueToString(rawValue);
         }
@@ -425,7 +425,7 @@ public class GraphService : IGraphService
             return null;
         }
 
-        if (!container.TryGetProperty(attributeName, out var attributeValue))
+        if (!TryGetPropertyIgnoreCase(container, attributeName, out var attributeValue))
         {
             return null;
         }
@@ -465,6 +465,46 @@ public class GraphService : IGraphService
         }
 
         return rawValue.ToString();
+    }
+
+    private static bool TryGetValueIgnoreCase(IDictionary<string, object> dictionary, string key, out object? value)
+    {
+        if (dictionary.TryGetValue(key, out value))
+        {
+            return true;
+        }
+
+        foreach (var pair in dictionary)
+        {
+            if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase))
+            {
+                value = pair.Value;
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement container, string propertyName, out JsonElement value)
+    {
+        if (container.TryGetProperty(propertyName, out value))
+        {
+            return true;
+        }
+
+        foreach (var property in container.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
     }
 
     /// <inheritdoc />
