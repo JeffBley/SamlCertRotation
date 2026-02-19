@@ -306,15 +306,21 @@ public class NotificationService : INotificationService
 
     private string GenerateDailySummaryEmail(DashboardStats stats, List<RotationResult> results)
     {
-        var successCount = results.Count(r => r.Success);
+        var successCount = results.Count(r =>
+            r.Success && (
+                string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase)));
         var failureCount = results.Count(r => !r.Success);
+        var skippedCount = Math.Max(0, results.Count - successCount - failureCount);
 
         var resultsHtml = string.Join("", results.Select(r => $@"
             <tr>
                 <td style='padding: 8px; border-bottom: 1px solid #eee;'>{r.AppDisplayName}</td>
                 <td style='padding: 8px; border-bottom: 1px solid #eee;'>{r.Action}</td>
                 <td style='padding: 8px; border-bottom: 1px solid #eee;'>
-                    <span style='color: {(r.Success ? "#107c10" : "#d13438")}'>{(r.Success ? "✓ Success" : "✗ Failed")}</span>
+                    <span style='color: {(!r.Success ? "#d13438" : (string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase) ? "#107c10" : "#797775"))}'>{(!r.Success ? "✗ Failed" : (string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase) ? "✓ Success" : "↷ Skipped"))}</span>
                 </td>
             </tr>"));
 
@@ -374,6 +380,7 @@ public class NotificationService : INotificationService
             </div>
 
             <h3>Today's Actions ({results.Count} operations)</h3>
+            <p><strong>Success:</strong> {successCount} &nbsp; <strong>Skipped:</strong> {skippedCount} &nbsp; <strong>Failed:</strong> {failureCount}</p>
             {(results.Any() ? $@"
             <table>
                 <tr>

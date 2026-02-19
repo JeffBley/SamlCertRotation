@@ -672,7 +672,7 @@ public class DashboardFunctions
                 id,
                 app.DisplayName,
                 AuditActionType.CertificateActivated,
-                $"Certificate activated via dashboard. KeyId: {newestCert.KeyId}, Thumbprint: {newestCert.Thumbprint}");
+                $"Certificate activated via dashboard. KeyId: {newestCert.KeyId}, Thumbprint: {newestCert.Thumbprint}, Expires: {newestCert.EndDateTime:yyyy-MM-dd}");
 
             return await CreateJsonResponse(req, new
             {

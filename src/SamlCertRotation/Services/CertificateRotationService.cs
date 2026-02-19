@@ -74,10 +74,18 @@ public class CertificateRotationService : ICertificateRotationService
             // Log completion
             var reportOnlyCreateCount = results.Count(r => string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase));
             var reportOnlyActivateCount = results.Count(r => string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase));
+            var successCount = results.Count(r =>
+                r.Success && (
+                    string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase)));
+            var failedCount = results.Count(r => !r.Success);
+            var skippedCount = Math.Max(0, results.Count - successCount - failedCount);
 
             var completionDescription = reportOnlyMode
-                ? $"Report-only run completed. {appsToProcess.Count} apps evaluated. {reportOnlyCreateCount} apps would generate new cert. {reportOnlyActivateCount} apps would activate new cert. Success: {results.Count(r => r.Success)}, Failed: {results.Count(r => !r.Success)}"
-                : $"Completed production rotation run. Processed {appsToProcess.Count} apps. Success: {results.Count(r => r.Success)}, Failed: {results.Count(r => !r.Success)}";
+                ? $"Report-only run completed. {appsToProcess.Count} apps evaluated. {reportOnlyCreateCount} apps would generate new cert. {reportOnlyActivateCount} apps would activate new cert. Success: {successCount}, Skipped: {skippedCount}, Failed: {failedCount}"
+                : $"Completed production rotation run. Processed {appsToProcess.Count} apps. Success: {successCount}, Skipped: {skippedCount}, Failed: {failedCount}";
 
             await _auditService.LogSuccessAsync(
                 "SYSTEM",
@@ -194,7 +202,7 @@ public class CertificateRotationService : ICertificateRotationService
                                 app.Id,
                                 app.DisplayName,
                                 AuditActionType.CertificateActivatedReportOnly,
-                                $"Report-only mode: would activate pending certificate {newerInactiveCert.Thumbprint}.",
+                                $"Report-only mode: would activate pending certificate {newerInactiveCert.Thumbprint} (expires {newerInactiveCert.EndDateTime:yyyy-MM-dd}).",
                                 activeCert.Thumbprint,
                                 newerInactiveCert.Thumbprint);
                         }
@@ -213,7 +221,7 @@ public class CertificateRotationService : ICertificateRotationService
                                     app.Id,
                                     app.DisplayName,
                                     AuditActionType.CertificateActivated,
-                                    $"Activated certificate {newerInactiveCert.Thumbprint}",
+                                    $"Activated certificate {newerInactiveCert.Thumbprint} (expires {newerInactiveCert.EndDateTime:yyyy-MM-dd})",
                                     activeCert.Thumbprint,
                                     newerInactiveCert.Thumbprint);
 
@@ -249,7 +257,7 @@ public class CertificateRotationService : ICertificateRotationService
                             app.Id,
                             app.DisplayName,
                             AuditActionType.CertificateActivatedReportOnly,
-                            $"Report-only mode: would activate pending certificate {pendingCert.Thumbprint}.",
+                            $"Report-only mode: would activate pending certificate {pendingCert.Thumbprint} (expires {pendingCert.EndDateTime:yyyy-MM-dd}).",
                             activeCert.Thumbprint,
                             pendingCert.Thumbprint);
                     }
@@ -268,7 +276,7 @@ public class CertificateRotationService : ICertificateRotationService
                                 app.Id,
                                 app.DisplayName,
                                 AuditActionType.CertificateActivated,
-                                $"Activated certificate {pendingCert.Thumbprint}",
+                                $"Activated certificate {pendingCert.Thumbprint} (expires {pendingCert.EndDateTime:yyyy-MM-dd})",
                                 activeCert.Thumbprint,
                                 pendingCert.Thumbprint);
 
