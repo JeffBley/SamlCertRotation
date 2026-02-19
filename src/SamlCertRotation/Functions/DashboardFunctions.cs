@@ -385,6 +385,8 @@ public class DashboardFunctions
 
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
+            var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+            var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
 
             var settings = new
             {
@@ -393,7 +395,11 @@ public class DashboardFunctions
                 tenantId = _configuration["TenantId"] ?? "",
                 rotationSchedule = _configuration["RotationSchedule"] ?? "0 0 6 * * *",
                 reportOnlyModeEnabled,
-                retentionPolicyDays
+                retentionPolicyDays,
+                sponsorsReceiveNotifications,
+                sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
+                sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
+                sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -448,15 +454,42 @@ public class DashboardFunctions
                 await _policyService.UpdateRetentionPolicyDaysAsync(settings.RetentionPolicyDays.Value);
             }
 
+            if (settings.SponsorsReceiveNotifications.HasValue)
+            {
+                await _policyService.UpdateSponsorsReceiveNotificationsEnabledAsync(settings.SponsorsReceiveNotifications.Value);
+            }
+
+            if (settings.SponsorFirstReminderDays.HasValue || settings.SponsorSecondReminderDays.HasValue || settings.SponsorThirdReminderDays.HasValue)
+            {
+                var existingReminderDays = await _policyService.GetSponsorReminderDaysAsync();
+
+                var firstReminderDays = settings.SponsorFirstReminderDays ?? existingReminderDays.firstReminderDays;
+                var secondReminderDays = settings.SponsorSecondReminderDays ?? existingReminderDays.secondReminderDays;
+                var thirdReminderDays = settings.SponsorThirdReminderDays ?? existingReminderDays.thirdReminderDays;
+
+                if (firstReminderDays < 1 || firstReminderDays > 180 || secondReminderDays < 1 || secondReminderDays > 180 || thirdReminderDays < 1 || thirdReminderDays > 180)
+                {
+                    return await CreateErrorResponse(req, "Sponsor reminder days must be whole numbers between 1 and 180", HttpStatusCode.BadRequest);
+                }
+
+                await _policyService.UpdateSponsorReminderDaysAsync(firstReminderDays, secondReminderDays, thirdReminderDays);
+            }
+
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
+            var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+            var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
 
             return await CreateJsonResponse(req, new 
             { 
                 message = "Settings updated successfully",
                 notificationEmails = settings.NotificationEmails,
                 reportOnlyModeEnabled,
-                retentionPolicyDays
+                retentionPolicyDays,
+                sponsorsReceiveNotifications,
+                sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
+                sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
+                sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays
             });
         }
         catch (Exception ex)

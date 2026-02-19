@@ -19,4 +19,24 @@ public class SettingsUpdateRequest
     /// Retention policy in days
     /// </summary>
     public int? RetentionPolicyDays { get; set; }
+
+    /// <summary>
+    /// Whether app sponsors should receive notifications
+    /// </summary>
+    public bool? SponsorsReceiveNotifications { get; set; }
+
+    /// <summary>
+    /// Days before expiry for sponsor 1st reminder
+    /// </summary>
+    public int? SponsorFirstReminderDays { get; set; }
+
+    /// <summary>
+    /// Days before expiry for sponsor 2nd reminder
+    /// </summary>
+    public int? SponsorSecondReminderDays { get; set; }
+
+    /// <summary>
+    /// Days before expiry for sponsor 3rd reminder
+    /// </summary>
+    public int? SponsorThirdReminderDays { get; set; }
 }

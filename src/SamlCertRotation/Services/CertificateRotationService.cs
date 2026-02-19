@@ -8,6 +8,9 @@ namespace SamlCertRotation.Services;
 /// </summary>
 public class CertificateRotationService : ICertificateRotationService
 {
+    private const string AutoRotateOn = "on";
+    private const string AutoRotateNotify = "notify";
+
     private readonly IGraphService _graphService;
     private readonly IPolicyService _policyService;
     private readonly INotificationService _notificationService;
@@ -43,9 +46,12 @@ public class CertificateRotationService : ICertificateRotationService
             var apps = await _graphService.GetSamlApplicationsAsync();
             _logger.LogInformation("Found {Count} SAML applications", apps.Count);
 
-            // Filter to apps with AutoRotate = "on"
-            var appsToProcess = apps.Where(a => 
-                string.Equals(a.AutoRotateStatus, "on", StringComparison.OrdinalIgnoreCase))
+            // Filter to apps with AutoRotate = "on" or "notify"
+            var appsToProcess = apps.Where(a =>
+            {
+                var mode = a.AutoRotateStatus?.Trim().ToLowerInvariant();
+                return mode == AutoRotateOn || mode == AutoRotateNotify;
+            })
                 .ToList();
 
             _logger.LogInformation("Processing {Count} applications with AutoRotate=on", appsToProcess.Count);
@@ -121,6 +127,8 @@ public class CertificateRotationService : ICertificateRotationService
 
         try
         {
+            var autoRotateMode = app.AutoRotateStatus?.Trim().ToLowerInvariant();
+
             // Get effective policy for this app
             var policy = await _policyService.GetEffectivePolicyAsync(app.Id);
 
@@ -136,6 +144,43 @@ public class CertificateRotationService : ICertificateRotationService
             var daysUntilExpiry = activeCert.DaysUntilExpiry;
             _logger.LogInformation("App {AppName}: Active cert expires in {Days} days", 
                 app.DisplayName, daysUntilExpiry);
+
+            if (autoRotateMode == AutoRotateNotify)
+            {
+                var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
+                var notifyMilestone = await GetNotifyMilestoneToSendAsync(app, activeCert, daysUntilExpiry, sponsorReminderDays);
+                if (notifyMilestone == null)
+                {
+                    result.Action = "None";
+                    return result;
+                }
+
+                var appUrl = BuildEntraManagedAppUrl(app.Id, app.AppId);
+                var sent = await _notificationService.SendNotifyOnlyReminderAsync(app, activeCert, daysUntilExpiry, appUrl, notifyMilestone);
+
+                if (sent)
+                {
+                    result.Action = "Notified";
+                    await _auditService.LogSuccessAsync(
+                        app.Id,
+                        app.DisplayName,
+                        AuditActionType.CertificateExpiringSoon,
+                        $"NotifyOnly reminder sent. Milestone: {notifyMilestone}. Days remaining: {daysUntilExpiry}. Link: {appUrl}",
+                        activeCert.Thumbprint);
+                }
+                else
+                {
+                    result.Action = "None";
+                }
+
+                return result;
+            }
+
+            if (autoRotateMode != AutoRotateOn)
+            {
+                result.Action = "None";
+                return result;
+            }
 
             // Check if we need to CREATE a new certificate
             if (daysUntilExpiry <= policy.CreateCertDaysBeforeExpiry)
@@ -399,5 +444,56 @@ public class CertificateRotationService : ICertificateRotationService
         if (daysUntilExpiry <= 60) return "Warning";
         if (daysUntilExpiry <= 90) return "Attention";
         return "OK";
+    }
+
+    private static string BuildEntraManagedAppUrl(string servicePrincipalObjectId, string appId)
+    {
+        return $"https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/SignOn/objectId/{Uri.EscapeDataString(servicePrincipalObjectId)}/appId/{Uri.EscapeDataString(appId)}/preferredSingleSignOnMode/saml/servicePrincipalType/Application/fromNav/";
+    }
+
+    private async Task<string?> GetNotifyMilestoneToSendAsync(
+        SamlApplication app,
+        SamlCertificate activeCert,
+        int daysUntilExpiry,
+        (int firstReminderDays, int secondReminderDays, int thirdReminderDays) sponsorReminderDays)
+    {
+        if (daysUntilExpiry < 0)
+        {
+            return null;
+        }
+
+        var milestones = new List<(string Label, int TriggerDays)>
+        {
+            ($"1st-{sponsorReminderDays.firstReminderDays}", sponsorReminderDays.firstReminderDays),
+            ($"2nd-{sponsorReminderDays.secondReminderDays}", sponsorReminderDays.secondReminderDays),
+            ($"3rd-{sponsorReminderDays.thirdReminderDays}", sponsorReminderDays.thirdReminderDays)
+        };
+
+        foreach (var milestone in milestones.OrderBy(m => m.TriggerDays))
+        {
+            if (daysUntilExpiry > milestone.TriggerDays)
+            {
+                continue;
+            }
+
+            var alreadySent = await HasNotifyMilestoneBeenSentAsync(app.Id, activeCert.Thumbprint, milestone.Label);
+            if (!alreadySent)
+            {
+                return milestone.Label;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<bool> HasNotifyMilestoneBeenSentAsync(string servicePrincipalId, string activeThumbprint, string milestoneLabel)
+    {
+        var entries = await _auditService.GetEntriesForAppAsync(servicePrincipalId, 500);
+
+        return entries.Any(entry =>
+            entry.IsSuccess &&
+            string.Equals(entry.ActionType, AuditActionType.CertificateExpiringSoon, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(entry.CertificateThumbprint, activeThumbprint, StringComparison.OrdinalIgnoreCase) &&
+            (entry.Description?.Contains($"Milestone: {milestoneLabel}", StringComparison.OrdinalIgnoreCase) ?? false));
     }
 }

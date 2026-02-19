@@ -18,6 +18,11 @@ public class PolicyService : IPolicyService
 
     private const string PolicyTableName = "RotationPolicies";
     private const int DefaultRetentionPolicyDays = 180;
+    private const int DefaultFirstSponsorReminderDays = 30;
+    private const int DefaultSecondSponsorReminderDays = 7;
+    private const int DefaultThirdSponsorReminderDays = 1;
+    private const int MinSponsorReminderDays = 1;
+    private const int MaxSponsorReminderDays = 180;
 
     public PolicyService(
         TableServiceClient tableServiceClient, 
@@ -286,6 +291,119 @@ public class PolicyService : IPolicyService
         {
             _logger.LogError(ex, "Error updating retention policy setting");
             throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> GetSponsorsReceiveNotificationsEnabledAsync()
+    {
+        try
+        {
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorsReceiveNotifications");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsor notifications setting from storage");
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSponsorsReceiveNotificationsEnabledAsync(bool enabled)
+    {
+        try
+        {
+            var entity = new TableEntity("Settings", "SponsorsReceiveNotifications")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated sponsor notifications setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsor notifications setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<(int firstReminderDays, int secondReminderDays, int thirdReminderDays)> GetSponsorReminderDaysAsync()
+    {
+        try
+        {
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorReminderDays");
+            if (response.HasValue && response.Value != null)
+            {
+                var first = ParseReminderDays(response.Value.GetString("FirstReminderDays"), DefaultFirstSponsorReminderDays);
+                var second = ParseReminderDays(response.Value.GetString("SecondReminderDays"), DefaultSecondSponsorReminderDays);
+                var third = ParseReminderDays(response.Value.GetString("ThirdReminderDays"), DefaultThirdSponsorReminderDays);
+                return (first, second, third);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsor reminder day settings from storage");
+        }
+
+        return (DefaultFirstSponsorReminderDays, DefaultSecondSponsorReminderDays, DefaultThirdSponsorReminderDays);
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSponsorReminderDaysAsync(int firstReminderDays, int secondReminderDays, int thirdReminderDays)
+    {
+        ValidateReminderDays(firstReminderDays, nameof(firstReminderDays));
+        ValidateReminderDays(secondReminderDays, nameof(secondReminderDays));
+        ValidateReminderDays(thirdReminderDays, nameof(thirdReminderDays));
+
+        try
+        {
+            var entity = new TableEntity("Settings", "SponsorReminderDays")
+            {
+                { "FirstReminderDays", firstReminderDays.ToString() },
+                { "SecondReminderDays", secondReminderDays.ToString() },
+                { "ThirdReminderDays", thirdReminderDays.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation(
+                "Updated sponsor reminder day settings: first={First}, second={Second}, third={Third}",
+                firstReminderDays,
+                secondReminderDays,
+                thirdReminderDays);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsor reminder day settings");
+            throw;
+        }
+    }
+
+    private static int ParseReminderDays(string? value, int defaultValue)
+    {
+        if (int.TryParse(value, out var parsed) && parsed >= MinSponsorReminderDays && parsed <= MaxSponsorReminderDays)
+        {
+            return parsed;
+        }
+
+        return defaultValue;
+    }
+
+    private static void ValidateReminderDays(int days, string paramName)
+    {
+        if (days < MinSponsorReminderDays || days > MaxSponsorReminderDays)
+        {
+            throw new ArgumentOutOfRangeException(paramName, $"Reminder day value must be between {MinSponsorReminderDays} and {MaxSponsorReminderDays}.");
         }
     }
 }

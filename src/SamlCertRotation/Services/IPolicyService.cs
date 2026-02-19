@@ -66,4 +66,24 @@ public interface IPolicyService
     /// Update retention policy in days
     /// </summary>
     Task UpdateRetentionPolicyDaysAsync(int days);
+
+    /// <summary>
+    /// Get sponsor notifications setting (default true/enabled)
+    /// </summary>
+    Task<bool> GetSponsorsReceiveNotificationsEnabledAsync();
+
+    /// <summary>
+    /// Update sponsor notifications setting
+    /// </summary>
+    Task UpdateSponsorsReceiveNotificationsEnabledAsync(bool enabled);
+
+    /// <summary>
+    /// Get sponsor reminder days (defaults: 30, 7, 1)
+    /// </summary>
+    Task<(int firstReminderDays, int secondReminderDays, int thirdReminderDays)> GetSponsorReminderDaysAsync();
+
+    /// <summary>
+    /// Update sponsor reminder days (must be 1..180)
+    /// </summary>
+    Task UpdateSponsorReminderDaysAsync(int firstReminderDays, int secondReminderDays, int thirdReminderDays);
 }

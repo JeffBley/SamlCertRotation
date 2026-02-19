@@ -238,6 +238,7 @@
 
         .status-on { background: #dff6dd; color: #0e700e; }
         .status-off { background: #fde7e9; color: #c42b1c; }
+        .status-notify { background: #fff4ce; color: #835c00; }
         .status-null { background: #edebe9; color: #605e5c; }
 
         .expiry-badge {
@@ -689,6 +690,7 @@
                             <div id="app-auto-rotate-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown" onclick="event.stopPropagation()">
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="on" onchange="onAppFilterChanged()">On</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="off" onchange="onAppFilterChanged()">Off</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notify" onchange="onAppFilterChanged()">Notify Only</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notset" onchange="onAppFilterChanged()">Not Set</label>
                             </div>
                         </div>
@@ -810,9 +812,26 @@
                 </div>
                 <div class="policy-form">
                     <div class="form-group">
-                        <label for="notificationEmails">Notification Email Addresses</label>
-                        <p style="font-size:12px;color:#666;margin-bottom:8px;">Enter email addresses that should receive rotation notifications. Separate multiple addresses with commas.</p>
+                        <label for="notificationEmails">Run Summary Notifications</label>
+                        <p style="font-size:12px;color:#666;margin-bottom:8px;">Enter email addresses that should receive email notifications summarizing the daily runs. Separate multiple addresses with commas.</p>
                         <textarea id="notificationEmails" rows="3" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;resize:vertical;" placeholder="admin@example.com, security@example.com"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="sponsorsReceiveNotifications">Sponsors receive notifications</label>
+                        <select id="sponsorsReceiveNotifications" onchange="toggleSponsorReminderSettings()" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                            <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                        <p style="font-size:11px;color:#888;margin-top:4px;">App Sponsors will receive notifications about their applications.</p>
+                    </div>
+                    <div id="sponsor-reminder-settings" class="form-group" style="display:none;">
+                        <label for="sponsorFirstReminderDays">1st reminder</label>
+                        <input type="number" id="sponsorFirstReminderDays" min="1" max="180" step="1" value="30" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <label for="sponsorSecondReminderDays" style="margin-top:10px;">2nd reminder</label>
+                        <input type="number" id="sponsorSecondReminderDays" min="1" max="180" step="1" value="7" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <label for="sponsorThirdReminderDays" style="margin-top:10px;">3rd reminder</label>
+                        <input type="number" id="sponsorThirdReminderDays" min="1" max="180" step="1" value="1" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <p style="font-size:11px;color:#888;margin-top:4px;">Enter the number of days before expiration to notify sponsors (whole numbers, 1-180).</p>
                     </div>
                 </div>
             </div>
@@ -1005,7 +1024,11 @@
             if (selected.length === 0) {
                 label.textContent = 'Auto-Rotate';
             } else if (selected.length <= 2) {
-                label.textContent = selected.map(value => value === 'notset' ? 'Not Set' : value.charAt(0).toUpperCase() + value.slice(1)).join(', ');
+                label.textContent = selected.map(value => {
+                    if (value === 'notset') return 'Not Set';
+                    if (value === 'notify') return 'Notify Only';
+                    return value.charAt(0).toUpperCase() + value.slice(1);
+                }).join(', ');
             } else {
                 label.textContent = `${selected.length} selected`;
             }
@@ -1060,7 +1083,13 @@
 
             return allApps.filter(app => {
                 const status = (app.autoRotateStatus || '').toLowerCase();
-                const autoRotateValue = status === 'on' ? 'on' : status === 'off' ? 'off' : 'notset';
+                const autoRotateValue = status === 'on'
+                    ? 'on'
+                    : status === 'off'
+                        ? 'off'
+                        : status === 'notify'
+                            ? 'notify'
+                            : 'notset';
                 const computedStatus = getComputedAppStatus(app);
 
                 const autoRotateMatch = selectedAutoRotateFilters.length === 0 || selectedAutoRotateFilters.includes(autoRotateValue);
@@ -1384,7 +1413,7 @@
                                 <td>${escapeHtml(app.sponsor) || 'Not Set'}</td>
                                 <td>
                                     <span class="status-badge status-${(app.autoRotateStatus || 'null').toLowerCase()}">
-                                        ${escapeHtml(app.autoRotateStatus) || 'Not Set'}
+                                        ${((app.autoRotateStatus || '').toLowerCase() === 'notify') ? 'Notify Only' : (escapeHtml(app.autoRotateStatus) || 'Not Set')}
                                     </span>
                                 </td>
                                 <td>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
@@ -1454,6 +1483,11 @@
                 document.getElementById('rotationSchedule').value = formatCronSchedule(settings.rotationSchedule || '0 0 6 * * *');
                 document.getElementById('reportOnlyMode').value = settings.reportOnlyModeEnabled === false ? 'disabled' : 'enabled';
                 document.getElementById('retentionPolicyDays').value = settings.retentionPolicyDays || 180;
+                document.getElementById('sponsorsReceiveNotifications').value = settings.sponsorsReceiveNotifications === false ? 'disabled' : 'enabled';
+                document.getElementById('sponsorFirstReminderDays').value = Number.isInteger(settings.sponsorFirstReminderDays) ? settings.sponsorFirstReminderDays : 30;
+                document.getElementById('sponsorSecondReminderDays').value = Number.isInteger(settings.sponsorSecondReminderDays) ? settings.sponsorSecondReminderDays : 7;
+                document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
+                toggleSponsorReminderSettings();
             } catch (error) {
                 console.error('Failed to load settings:', error);
             }
@@ -1488,9 +1522,25 @@
                     return;
                 }
 
+                const sponsorFirstReminderDays = parseInt(document.getElementById('sponsorFirstReminderDays').value, 10);
+                const sponsorSecondReminderDays = parseInt(document.getElementById('sponsorSecondReminderDays').value, 10);
+                const sponsorThirdReminderDays = parseInt(document.getElementById('sponsorThirdReminderDays').value, 10);
+
+                const reminderValues = [sponsorFirstReminderDays, sponsorSecondReminderDays, sponsorThirdReminderDays];
+                const invalidReminderValue = reminderValues.some(value => !Number.isInteger(value) || value < 1 || value > 180);
+
+                if (invalidReminderValue) {
+                    alert('Sponsor reminder values must be whole numbers between 1 and 180.');
+                    return;
+                }
+
                 const settings = {
                     notificationEmails: document.getElementById('notificationEmails').value.trim(),
                     reportOnlyModeEnabled: document.getElementById('reportOnlyMode').value === 'enabled',
+                    sponsorsReceiveNotifications: document.getElementById('sponsorsReceiveNotifications').value === 'enabled',
+                    sponsorFirstReminderDays,
+                    sponsorSecondReminderDays,
+                    sponsorThirdReminderDays,
                     retentionPolicyDays
                 };
                 await apiCall('settings', {
@@ -1501,6 +1551,17 @@
             } catch (error) {
                 alert('Failed to save settings: ' + error.message);
             }
+        }
+
+        function toggleSponsorReminderSettings() {
+            const select = document.getElementById('sponsorsReceiveNotifications');
+            const reminderContainer = document.getElementById('sponsor-reminder-settings');
+
+            if (!select || !reminderContainer) {
+                return;
+            }
+
+            reminderContainer.style.display = select.value === 'enabled' ? 'block' : 'none';
         }
 
         // Load audit log
