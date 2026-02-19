@@ -19,7 +19,11 @@ var host = new HostBuilder()
         // Register Microsoft Graph client with Managed Identity
         services.AddSingleton(sp =>
         {
-            var credential = new DefaultAzureCredential();
+            var managedIdentityClientId = configuration["AZURE_CLIENT_ID"];
+            var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+            {
+                ManagedIdentityClientId = managedIdentityClientId
+            });
             return new GraphServiceClient(credential, new[] { "https://graph.microsoft.com/.default" });
         });
 
