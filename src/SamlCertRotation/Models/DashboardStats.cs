@@ -26,9 +26,14 @@ public class DashboardStats
     public int AppsWithAutoRotateNull { get; set; }
 
     /// <summary>
-    /// Apps with certificates expiring within 30 days
+    /// Apps with certificates expiring within the configured create threshold
     /// </summary>
     public int AppsExpiringIn30Days { get; set; }
+
+    /// <summary>
+    /// Current create-threshold (days) used to calculate AppsExpiringIn30Days
+    /// </summary>
+    public int ExpiringSoonThresholdDays { get; set; } = 30;
 
     /// <summary>
     /// Apps with certificates expiring within 60 days

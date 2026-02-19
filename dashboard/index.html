@@ -649,7 +649,7 @@
             </div>
             <div class="stat-card expiring">
                 <div class="stat-value" id="stat-expiring-30">-</div>
-                <div class="stat-label">Expiring ≤30 Days</div>
+                <div class="stat-label" id="stat-expiring-label">Expiring ≤30 Days</div>
             </div>
             <div class="stat-card expired">
                 <div class="stat-value" id="stat-expired">-</div>
@@ -1291,6 +1291,10 @@
                 document.getElementById('stat-null').textContent = stats.appsWithAutoRotateNull;
                 document.getElementById('stat-expiring-30').textContent = stats.appsExpiringIn30Days;
                 document.getElementById('stat-expired').textContent = stats.appsWithExpiredCerts;
+                const expiringThresholdDays = typeof stats.expiringSoonThresholdDays === 'number'
+                    ? stats.expiringSoonThresholdDays
+                    : createCertDaysThreshold;
+                document.getElementById('stat-expiring-label').textContent = `Expiring ≤${expiringThresholdDays} Days`;
 
                 // Update last updated
                 document.getElementById('last-updated').textContent = 

@@ -319,6 +319,10 @@ public class CertificateRotationService : ICertificateRotationService
 
         try
         {
+            var globalPolicy = await _policyService.GetGlobalPolicyAsync();
+            var expiringSoonThresholdDays = Math.Max(1, globalPolicy.CreateCertDaysBeforeExpiry);
+            stats.ExpiringSoonThresholdDays = expiringSoonThresholdDays;
+
             var apps = await _graphService.GetSamlApplicationsAsync();
             stats.TotalSamlApps = apps.Count;
 
@@ -346,7 +350,7 @@ public class CertificateRotationService : ICertificateRotationService
 
                     if (daysUntilExpiry < 0)
                         stats.AppsWithExpiredCerts++;
-                    else if (daysUntilExpiry <= 30)
+                    else if (daysUntilExpiry <= expiringSoonThresholdDays)
                         stats.AppsExpiringIn30Days++;
                     else if (daysUntilExpiry <= 60)
                         stats.AppsExpiringIn60Days++;
