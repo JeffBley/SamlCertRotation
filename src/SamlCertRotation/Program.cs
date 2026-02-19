@@ -1,4 +1,5 @@
 using Azure.Data.Tables;
+using Azure.Core;
 using Azure.Identity;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,13 +18,18 @@ var host = new HostBuilder()
         services.ConfigureFunctionsApplicationInsights();
 
         // Register Microsoft Graph client with Managed Identity
-        services.AddSingleton(sp =>
+        services.AddSingleton<TokenCredential>(sp =>
         {
             var managedIdentityClientId = configuration["AZURE_CLIENT_ID"];
-            var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+            return new DefaultAzureCredential(new DefaultAzureCredentialOptions
             {
                 ManagedIdentityClientId = managedIdentityClientId
             });
+        });
+
+        services.AddSingleton(sp =>
+        {
+            var credential = sp.GetRequiredService<TokenCredential>();
             return new GraphServiceClient(credential, new[] { "https://graph.microsoft.com/.default" });
         });
 

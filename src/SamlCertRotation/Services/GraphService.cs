@@ -4,8 +4,10 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.ServicePrincipals.Item.AddTokenSigningCertificate;
 using SamlCertRotation.Models;
+using Azure.Core;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using System.Net.Http.Headers;
 
 namespace SamlCertRotation.Services;
 
@@ -17,17 +19,20 @@ public class GraphService : IGraphService
     private readonly GraphServiceClient _graphClient;
     private readonly ILogger<GraphService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly TokenCredential _tokenCredential;
     private readonly string _customAttributeSet;
     private readonly string _customAttributeName;
 
     public GraphService(
         GraphServiceClient graphClient, 
         ILogger<GraphService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        TokenCredential tokenCredential)
     {
         _graphClient = graphClient;
         _logger = logger;
         _configuration = configuration;
+        _tokenCredential = tokenCredential;
         _customAttributeSet = configuration["CustomSecurityAttributeSet"] ?? "SamlCertRotation";
         _customAttributeName = configuration["CustomSecurityAttributeName"] ?? "AutoRotate";
     }
@@ -216,10 +221,14 @@ public class GraphService : IGraphService
 
             if (TryGetValueIgnoreCase(sp.CustomSecurityAttributes.AdditionalData, attributeSet, out var attributeSetValue))
             {
-                return ExtractCustomSecurityAttributeValue(attributeSetValue, attributeName);
+                var sdkValue = ExtractCustomSecurityAttributeValue(attributeSetValue, attributeName);
+                if (!string.IsNullOrWhiteSpace(sdkValue))
+                {
+                    return sdkValue;
+                }
             }
 
-            return null;
+            return await GetCustomSecurityAttributeViaRestAsync(servicePrincipalId, attributeSet, attributeName);
         }
         catch (Exception ex)
         {
@@ -505,6 +514,53 @@ public class GraphService : IGraphService
 
         value = default;
         return false;
+    }
+
+    private async Task<string?> GetCustomSecurityAttributeViaRestAsync(string servicePrincipalId, string attributeSet, string attributeName)
+    {
+        try
+        {
+            var token = await _tokenCredential.GetTokenAsync(
+                new TokenRequestContext(new[] { "https://graph.microsoft.com/.default" }),
+                CancellationToken.None);
+
+            using var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
+
+            var requestUrl = $"https://graph.microsoft.com/v1.0/servicePrincipals/{servicePrincipalId}?$select=customSecurityAttributes";
+            var response = await httpClient.GetAsync(requestUrl);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("Raw Graph CSA read failed for {Id}. Status: {Status}. Body: {Body}",
+                    servicePrincipalId,
+                    (int)response.StatusCode,
+                    errorBody);
+                return null;
+            }
+
+            using var contentStream = await response.Content.ReadAsStreamAsync();
+            using var document = await JsonDocument.ParseAsync(contentStream);
+
+            if (!document.RootElement.TryGetProperty("customSecurityAttributes", out var csaElement) ||
+                csaElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            if (!TryGetPropertyIgnoreCase(csaElement, attributeSet, out var setElement))
+            {
+                return null;
+            }
+
+            return TryGetStringFromJsonElement(setElement, attributeName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Raw Graph fallback failed for custom security attribute read for {Id}", servicePrincipalId);
+            return null;
+        }
     }
 
     /// <inheritdoc />
