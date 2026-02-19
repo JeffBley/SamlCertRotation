@@ -46,4 +46,9 @@ public interface IGraphService
     /// Rotate an application's client secret and return the new secret info
     /// </summary>
     Task<ClientSecretInfo?> RotateAppClientSecretAsync(string clientId);
+
+    /// <summary>
+    /// Upsert sponsor tag (AppSponsor=&lt;email&gt;) on a service principal while preserving all other tags
+    /// </summary>
+    Task<bool> UpdateAppSponsorTagAsync(string servicePrincipalId, string sponsorEmail);
 }

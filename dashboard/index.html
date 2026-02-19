@@ -1111,6 +1111,40 @@
             }
         }
 
+        // Edit sponsor tag for an app
+        async function editSponsor(appId, appName, currentSponsor) {
+            closeAllDropdowns();
+
+            const enteredValue = prompt(`Enter sponsor email for ${appName}:`, currentSponsor || '');
+            if (enteredValue === null) {
+                return;
+            }
+
+            const sponsorEmail = enteredValue.trim();
+            if (!sponsorEmail) {
+                showError('Sponsor email is required.');
+                return;
+            }
+
+            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailPattern.test(sponsorEmail)) {
+                showError('Please enter a valid sponsor email address.');
+                return;
+            }
+
+            try {
+                showLoading('Updating sponsor...');
+                await apiCall(`applications/${appId}/sponsor`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ sponsorEmail })
+                });
+                showSuccess(`Sponsor updated for ${appName}`);
+                await loadData();
+            } catch (error) {
+                showError(`Failed to update sponsor: ${error.message}`);
+            }
+        }
+
         // Close the confirmation modal
         function closeModal() {
             document.getElementById('confirmModal').classList.remove('show');
@@ -1333,6 +1367,7 @@
                     <thead>
                         <tr>
                             <th>Application</th>
+                            <th>Sponsor</th>
                             <th>Auto-Rotate</th>
                             <th>Certificate Expiry</th>
                             <th>Days Remaining</th>
@@ -1346,6 +1381,7 @@
                             return `
                             <tr>
                                 <td>${escapeHtml(app.displayName)}</td>
+                                <td>${escapeHtml(app.sponsor) || 'Not Set'}</td>
                                 <td>
                                     <span class="status-badge status-${(app.autoRotateStatus || 'null').toLowerCase()}">
                                         ${escapeHtml(app.autoRotateStatus) || 'Not Set'}
@@ -1366,6 +1402,9 @@
                                         </button>
                                         <button class="dropdown-item" onclick="activateNewestCert('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}')">
                                             Make newest cert active
+                                        </button>
+                                        <button class="dropdown-item" onclick="editSponsor('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}', '${escapeHtml(app.sponsor || '').replace(/'/g, "\\'")}')">
+                                            Edit Sponsor
                                         </button>
                                     </div>
                                 </td>
@@ -1850,6 +1889,7 @@
                 applications: filteredApps.map(app => ({
                     displayName: app.displayName,
                     id: app.id,
+                    sponsor: app.sponsor,
                     autoRotateStatus: app.autoRotateStatus,
                     certExpiryDate: app.certExpiryDate,
                     daysUntilExpiry: app.daysUntilExpiry,

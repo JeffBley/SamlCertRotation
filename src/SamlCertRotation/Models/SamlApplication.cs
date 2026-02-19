@@ -26,6 +26,11 @@ public class SamlApplication
     public string? AutoRotateStatus { get; set; }
 
     /// <summary>
+    /// Sponsor email extracted from service principal tag AppSponsor=&lt;email&gt;
+    /// </summary>
+    public string? Sponsor { get; set; }
+
+    /// <summary>
     /// List of SAML signing certificates
     /// </summary>
     public List<SamlCertificate> Certificates { get; set; } = new();

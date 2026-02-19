@@ -68,6 +68,7 @@ public class SamlAppSummary
 {
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public string? Sponsor { get; set; }
     public string? AutoRotateStatus { get; set; }
     public DateTime? CertExpiryDate { get; set; }
     public int? DaysUntilExpiry { get; set; }

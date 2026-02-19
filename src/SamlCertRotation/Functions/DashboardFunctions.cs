@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Mail;
 using System.Text.Json;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
@@ -694,6 +695,86 @@ public class DashboardFunctions
     }
 
     /// <summary>
+    /// Update sponsor tag for an application service principal
+    /// </summary>
+    [Function("UpdateApplicationSponsor")]
+    public async Task<HttpResponseData> UpdateApplicationSponsor(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "applications/{id}/sponsor")] HttpRequestData req,
+        string id)
+    {
+        _logger.LogInformation("Updating sponsor for application {Id}", id);
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
+
+        SamlApplication? app = null;
+
+        try
+        {
+            var body = await req.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
+            }
+
+            var request = JsonSerializer.Deserialize<SponsorUpdateRequest>(body, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            var sponsorEmail = request?.SponsorEmail?.Trim();
+            if (string.IsNullOrWhiteSpace(sponsorEmail))
+            {
+                return await CreateErrorResponse(req, "Sponsor email is required", HttpStatusCode.BadRequest);
+            }
+
+            if (!IsValidEmail(sponsorEmail))
+            {
+                return await CreateErrorResponse(req, "Sponsor email format is invalid", HttpStatusCode.BadRequest);
+            }
+
+            app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            var updated = await _graphService.UpdateAppSponsorTagAsync(id, sponsorEmail);
+            if (!updated)
+            {
+                return await CreateErrorResponse(req, "Failed to update sponsor tag");
+            }
+
+            await _auditService.LogSuccessAsync(
+                id,
+                app.DisplayName,
+                AuditActionType.SponsorUpdated,
+                $"Sponsor updated to AppSponsor={sponsorEmail}");
+
+            return await CreateJsonResponse(req, new
+            {
+                message = "Sponsor updated successfully",
+                sponsor = sponsorEmail
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsor for application {Id}", id);
+
+            await _auditService.LogFailureAsync(
+                id,
+                app?.DisplayName ?? "Unknown",
+                AuditActionType.SponsorUpdated,
+                "Error updating sponsor",
+                ex.Message);
+
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Rotate the dashboard application client secret and store in Key Vault
     /// </summary>
     [Function("RotateDashboardSecret")]
@@ -818,6 +899,24 @@ public class DashboardFunctions
     private static bool IsValidGuid(string value)
     {
         return !string.IsNullOrEmpty(value) && Guid.TryParse(value, out _);
+    }
+
+    private static bool IsValidEmail(string email)
+    {
+        try
+        {
+            _ = new MailAddress(email);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private sealed class SponsorUpdateRequest
+    {
+        public string? SponsorEmail { get; set; }
     }
 
     private static (int successful, int skipped, int failed) GetRotationOutcomeCounts(List<RotationResult> results)

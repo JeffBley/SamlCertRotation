@@ -362,6 +362,7 @@ public class CertificateRotationService : ICertificateRotationService
                     {
                         Id = app.Id,
                         DisplayName = app.DisplayName,
+                        Sponsor = app.Sponsor,
                         AutoRotateStatus = app.AutoRotateStatus,
                         CertExpiryDate = activeCert.EndDateTime,
                         DaysUntilExpiry = daysUntilExpiry,
@@ -374,6 +375,7 @@ public class CertificateRotationService : ICertificateRotationService
                     {
                         Id = app.Id,
                         DisplayName = app.DisplayName,
+                        Sponsor = app.Sponsor,
                         AutoRotateStatus = app.AutoRotateStatus,
                         ExpiryCategory = "Unknown"
                     });

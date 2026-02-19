@@ -16,6 +16,8 @@ namespace SamlCertRotation.Services;
 /// </summary>
 public class GraphService : IGraphService
 {
+    private const string SponsorTagPrefix = "AppSponsor=";
+
     private readonly GraphServiceClient _graphClient;
     private readonly ILogger<GraphService> _logger;
     private readonly IConfiguration _configuration;
@@ -53,7 +55,7 @@ public class GraphService : IGraphService
                     { 
                         "id", "appId", "displayName", "keyCredentials", 
                         "preferredTokenSigningKeyThumbprint", "notificationEmailAddresses",
-                        "customSecurityAttributes"
+                        "customSecurityAttributes", "tags"
                     };
                     config.QueryParameters.Top = 999;
                 });
@@ -104,7 +106,7 @@ public class GraphService : IGraphService
                     { 
                         "id", "appId", "displayName", "keyCredentials", 
                         "preferredTokenSigningKeyThumbprint", "notificationEmailAddresses",
-                        "customSecurityAttributes"
+                        "customSecurityAttributes", "tags"
                     };
                 });
 
@@ -331,6 +333,62 @@ public class GraphService : IGraphService
         return emails.Distinct().ToList();
     }
 
+    /// <inheritdoc />
+    public async Task<bool> UpdateAppSponsorTagAsync(string servicePrincipalId, string sponsorEmail)
+    {
+        if (string.IsNullOrWhiteSpace(servicePrincipalId))
+        {
+            throw new ArgumentException("Service principal ID is required.", nameof(servicePrincipalId));
+        }
+
+        if (string.IsNullOrWhiteSpace(sponsorEmail))
+        {
+            throw new ArgumentException("Sponsor email is required.", nameof(sponsorEmail));
+        }
+
+        var normalizedSponsorEmail = sponsorEmail.Trim();
+
+        try
+        {
+            var sp = await _graphClient.ServicePrincipals[servicePrincipalId]
+                .GetAsync(config =>
+                {
+                    config.QueryParameters.Select = new[] { "id", "tags" };
+                });
+
+            if (sp == null)
+            {
+                _logger.LogWarning("Service principal {Id} not found while updating sponsor tag", servicePrincipalId);
+                return false;
+            }
+
+            var existingTags = (sp.Tags ?? new List<string>())
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .ToList();
+
+            var updatedTags = existingTags
+                .Where(tag => !tag.StartsWith(SponsorTagPrefix, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            updatedTags.Add($"{SponsorTagPrefix}{normalizedSponsorEmail}");
+
+            var patchBody = new ServicePrincipal
+            {
+                Tags = updatedTags
+            };
+
+            await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(patchBody);
+
+            _logger.LogInformation("Updated sponsor tag for service principal {Id}", servicePrincipalId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsor tag for service principal {Id}", servicePrincipalId);
+            throw;
+        }
+    }
+
     private SamlApplication MapToSamlApplication(ServicePrincipal sp)
     {
         var samlApp = new SamlApplication
@@ -339,7 +397,8 @@ public class GraphService : IGraphService
             AppId = sp.AppId ?? string.Empty,
             DisplayName = sp.DisplayName ?? string.Empty,
             ActiveCertificateThumbprint = sp.PreferredTokenSigningKeyThumbprint,
-            NotificationEmails = sp.NotificationEmailAddresses?.ToList() ?? new List<string>()
+            NotificationEmails = sp.NotificationEmailAddresses?.ToList() ?? new List<string>(),
+            Sponsor = ExtractSponsorFromTags(sp.Tags)
         };
 
         // Parse custom security attributes
@@ -390,6 +449,26 @@ public class GraphService : IGraphService
         }
 
         return samlApp;
+    }
+
+    private static string? ExtractSponsorFromTags(List<string>? tags)
+    {
+        if (tags == null || tags.Count == 0)
+        {
+            return null;
+        }
+
+        var sponsorTag = tags.FirstOrDefault(tag =>
+            !string.IsNullOrWhiteSpace(tag) &&
+            tag.StartsWith(SponsorTagPrefix, StringComparison.OrdinalIgnoreCase));
+
+        if (string.IsNullOrWhiteSpace(sponsorTag))
+        {
+            return null;
+        }
+
+        var sponsorEmail = sponsorTag.Substring(SponsorTagPrefix.Length).Trim();
+        return string.IsNullOrWhiteSpace(sponsorEmail) ? null : sponsorEmail;
     }
 
     private static string? ExtractCustomSecurityAttributeValue(object? attributeSetValue, string attributeName)
