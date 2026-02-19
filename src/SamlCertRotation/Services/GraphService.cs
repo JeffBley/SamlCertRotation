@@ -532,11 +532,9 @@ public class GraphService : IGraphService
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorBody = await response.Content.ReadAsStringAsync();
-                _logger.LogWarning("Raw Graph CSA read failed for {Id}. Status: {Status}. Body: {Body}",
+                _logger.LogWarning("Raw Graph CSA read failed for {Id}. Status: {Status}",
                     servicePrincipalId,
-                    (int)response.StatusCode,
-                    errorBody);
+                    (int)response.StatusCode);
                 return null;
             }
 

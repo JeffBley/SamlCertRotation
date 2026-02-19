@@ -1103,6 +1103,30 @@ This means the managed identity can't read custom security attributes. You need 
 1. Graph API permission (`CustomSecAttributeAssignment.Read.All`) - Step 5.2
 2. Attribute Assignment Reader role - Step 5.4
 
+Also verify these common pitfalls:
+
+1. **Managed identity selection for Graph**
+    - Ensure `AZURE_CLIENT_ID` is set on the Function App and points to your user-assigned identity.
+    - If multiple identities exist, Graph calls can silently use the wrong identity if this is not configured.
+
+2. **Graph application permissions**
+    - In addition to `CustomSecAttributeAssignment.Read.All`, make sure `Application.Read.All` is assigned on Microsoft Graph.
+    - `Application.ReadWrite.All` is not always sufficient for all read query paths.
+
+3. **Attribute set and key mapping**
+    - Ensure Function App settings match your actual CSA payload exactly:
+      - `CustomSecurityAttributeSet` (for example: `Applications`)
+      - `CustomSecurityAttributeName` (for example: `SamlCertRotation`)
+    - Verify by querying Graph directly:
+
+```powershell
+$targetSpId = "<SERVICE_PRINCIPAL_OBJECT_ID>"
+Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/servicePrincipals/${targetSpId}?`$select=id,displayName,customSecurityAttributes" | ConvertTo-Json -Depth 20
+```
+
+4. **Token refresh after permission/role updates**
+    - After assigning new Graph permissions or Entra roles, restart the Function App and wait for propagation.
+
 ```powershell
 # Check if the role is assigned
 az rest --method GET `
