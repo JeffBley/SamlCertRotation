@@ -1308,6 +1308,11 @@
                 return;
             }
 
+            const formatComputedStatus = (status) => {
+                if (status === 'ok') return 'OK';
+                return status.charAt(0).toUpperCase() + status.slice(1);
+            };
+
             const tableHtml = `
                 <table>
                     <thead>
@@ -1321,7 +1326,9 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${apps.map(app => `
+                        ${apps.map(app => {
+                            const computedStatus = getComputedAppStatus(app);
+                            return `
                             <tr>
                                 <td>${escapeHtml(app.displayName)}</td>
                                 <td>
@@ -1347,8 +1354,8 @@
                                         </button>
                                     </div>
                                 </td>
-                            </tr>
-                        `).join('')}
+                                        <span class="expiry-badge expiry-${computedStatus}">
+                                            ${formatComputedStatus(computedStatus)}
                     </tbody>
                 </table>
             `;
@@ -1650,7 +1657,8 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${entries.map(entry => `
+                        `;
+                        }).join('')}
                             <tr>
                                 <td>${new Date(entry.timestamp).toLocaleString()}</td>
                                 <td>${entry.appDisplayName}</td>
