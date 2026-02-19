@@ -733,13 +733,20 @@
                             To
                             <input type="date" id="audit-to-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;" onchange="loadAuditLog()">
                         </label>
-                        <input type="text" id="audit-app-filter" placeholder="Application contains..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:220px;" oninput="applyAuditFilters()">
-                        <input type="text" id="audit-action-filter" placeholder="Action contains..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;" oninput="applyAuditFilters()">
-                        <select id="audit-result-filter" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyAuditFilters()">
-                            <option value="all">Result: All</option>
-                            <option value="success">Result: Success</option>
-                            <option value="failed">Result: Failed</option>
-                        </select>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            Action
+                            <select id="audit-action-filter" multiple size="7" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:260px;" onchange="applyAuditFilters()">
+                                <option value="ScanCompleted">ScanCompleted</option>
+                                <option value="ScanCompletedReportOnly">ScanCompletedReportOnly</option>
+                                <option value="CertificateCreated">CertificateCreated</option>
+                                <option value="CertificateCreatedReportOnly">CertificateCreatedReportOnly</option>
+                                <option value="CertificateActivated">CertificateActivated</option>
+                                <option value="CertificateActivatedReportOnly">CertificateActivatedReportOnly</option>
+                                <option value="Error">Error</option>
+                            </select>
+                        </label>
+                        <button class="btn btn-secondary" onclick="addAuditFilterRow()">Add Filter</button>
+                        <button class="btn btn-secondary" onclick="clearAuditFilters()">Clear Filters</button>
                         <select id="audit-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyAuditFilters()">
                             <option value="time">Sort: Time</option>
                             <option value="application">Sort: Application</option>
@@ -752,6 +759,7 @@
                         </select>
                     </div>
                 </div>
+                <div id="audit-dynamic-filters" class="filter-group" style="margin-bottom: 16px;"></div>
                 <div id="audit-table-container">
                     <div class="loading">Loading audit log...</div>
                 </div>
@@ -843,6 +851,14 @@
         // Store apps data for filtering
         let allApps = [];
         let allAuditEntries = [];
+        let nextAuditFilterId = 1;
+        const auditFilterColumns = [
+            { value: 'time', label: 'Time' },
+            { value: 'application', label: 'Application' },
+            { value: 'action', label: 'Action' },
+            { value: 'result', label: 'Result' },
+            { value: 'details', label: 'Details' }
+        ];
         
         // Current action for confirmation modal
         let pendingAction = null;
@@ -1284,25 +1300,151 @@
             }
         }
 
+        function getAuditFilterPlaceholder(column) {
+            if (column === 'result') return 'success or failed';
+            if (column === 'time') return 'contains date/time text';
+            return 'contains text';
+        }
+
+        function getAuditFieldValue(entry, column) {
+            switch (column) {
+                case 'time':
+                    return `${new Date(entry.timestamp || 0).toLocaleString()} ${entry.timestamp || ''}`;
+                case 'application':
+                    return entry.appDisplayName || '';
+                case 'action':
+                    return entry.actionType || '';
+                case 'result':
+                    return entry.isSuccess ? 'success' : 'failed';
+                case 'details':
+                    return `${entry.description || ''} ${entry.errorMessage || ''}`;
+                default:
+                    return '';
+            }
+        }
+
+        function getUsedAuditColumns(excludeFilterId = null) {
+            const rows = Array.from(document.querySelectorAll('#audit-dynamic-filters .audit-filter-row'));
+            return rows
+                .filter(row => row.dataset.filterId !== String(excludeFilterId))
+                .map(row => row.querySelector('.audit-filter-column')?.value)
+                .filter(Boolean);
+        }
+
+        function buildAuditColumnOptions(selectedColumn, excludeFilterId = null) {
+            const usedColumns = new Set(getUsedAuditColumns(excludeFilterId));
+            return auditFilterColumns.map(column => {
+                const isSelected = column.value === selectedColumn;
+                const isDisabled = usedColumns.has(column.value) && !isSelected;
+                return `<option value="${column.value}" ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}>${column.label}</option>`;
+            }).join('');
+        }
+
+        function refreshAuditFilterColumnOptions() {
+            const rows = Array.from(document.querySelectorAll('#audit-dynamic-filters .audit-filter-row'));
+            rows.forEach(row => {
+                const filterId = row.dataset.filterId;
+                const select = row.querySelector('.audit-filter-column');
+                const selectedColumn = select?.value || 'application';
+                if (select) {
+                    select.innerHTML = buildAuditColumnOptions(selectedColumn, filterId);
+                }
+            });
+        }
+
+        function onAuditFilterColumnChanged(filterId) {
+            const row = document.querySelector(`#audit-filter-row-${filterId}`);
+            if (!row) return;
+
+            const column = row.querySelector('.audit-filter-column')?.value || 'application';
+            const input = row.querySelector('.audit-filter-value');
+            if (input) {
+                input.placeholder = getAuditFilterPlaceholder(column);
+            }
+
+            refreshAuditFilterColumnOptions();
+            applyAuditFilters();
+        }
+
+        function addAuditFilterRow() {
+            const usedColumns = new Set(getUsedAuditColumns());
+            const firstAvailableColumn = auditFilterColumns.find(column => !usedColumns.has(column.value));
+
+            if (!firstAvailableColumn) {
+                alert('All available audit columns already have filters.');
+                return;
+            }
+
+            const filterId = nextAuditFilterId++;
+            const row = document.createElement('div');
+            row.id = `audit-filter-row-${filterId}`;
+            row.className = 'audit-filter-row';
+            row.dataset.filterId = String(filterId);
+            row.style.display = 'flex';
+            row.style.gap = '8px';
+            row.style.alignItems = 'center';
+
+            row.innerHTML = `
+                <select class="audit-filter-column" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="onAuditFilterColumnChanged(${filterId})">
+                    ${buildAuditColumnOptions(firstAvailableColumn.value, filterId)}
+                </select>
+                <input class="audit-filter-value" type="text" placeholder="${getAuditFilterPlaceholder(firstAvailableColumn.value)}" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:220px;" oninput="applyAuditFilters()">
+                <button class="btn btn-secondary" onclick="removeAuditFilterRow(${filterId})">Remove</button>
+            `;
+
+            document.getElementById('audit-dynamic-filters').appendChild(row);
+            refreshAuditFilterColumnOptions();
+            applyAuditFilters();
+        }
+
+        function removeAuditFilterRow(filterId) {
+            const row = document.getElementById(`audit-filter-row-${filterId}`);
+            if (row) {
+                row.remove();
+                refreshAuditFilterColumnOptions();
+                applyAuditFilters();
+            }
+        }
+
+        function clearAuditFilters() {
+            document.getElementById('audit-dynamic-filters').innerHTML = '';
+            const actionFilter = document.getElementById('audit-action-filter');
+            if (actionFilter) {
+                Array.from(actionFilter.options).forEach(option => option.selected = false);
+            }
+            applyAuditFilters();
+        }
+
         function applyAuditFilters() {
-            const appFilter = (document.getElementById('audit-app-filter')?.value || '').trim().toLowerCase();
-            const actionFilter = (document.getElementById('audit-action-filter')?.value || '').trim().toLowerCase();
-            const resultFilter = (document.getElementById('audit-result-filter')?.value || 'all').toLowerCase();
             const sortBy = (document.getElementById('audit-sort-by')?.value || 'time').toLowerCase();
             const sortDirection = (document.getElementById('audit-sort-direction')?.value || 'desc').toLowerCase();
+            const selectedActionFilters = Array.from(document.getElementById('audit-action-filter')?.selectedOptions || [])
+                .map(option => option.value);
+
+            const activeFilters = Array.from(document.querySelectorAll('#audit-dynamic-filters .audit-filter-row'))
+                .map(row => {
+                    const column = row.querySelector('.audit-filter-column')?.value;
+                    const value = (row.querySelector('.audit-filter-value')?.value || '').trim().toLowerCase();
+                    return { column, value };
+                })
+                .filter(filter => filter.column && filter.value);
 
             let filtered = allAuditEntries.filter(entry => {
-                const appName = (entry.appDisplayName || '').toLowerCase();
-                const actionName = (entry.actionType || '').toLowerCase();
+                const actionMatch = selectedActionFilters.length === 0 || selectedActionFilters.includes(entry.actionType || '');
+                if (!actionMatch) {
+                    return false;
+                }
 
-                const appMatch = !appFilter || appName.includes(appFilter);
-                const actionMatch = !actionFilter || actionName.includes(actionFilter);
+                return activeFilters.every(filter => {
+                    const fieldValue = getAuditFieldValue(entry, filter.column).toLowerCase();
 
-                let resultMatch = true;
-                if (resultFilter === 'success') resultMatch = entry.isSuccess === true;
-                if (resultFilter === 'failed') resultMatch = entry.isSuccess === false;
+                    if (filter.column === 'result') {
+                        if (filter.value === 'success') return entry.isSuccess === true;
+                        if (filter.value === 'failed') return entry.isSuccess === false;
+                    }
 
-                return appMatch && actionMatch && resultMatch;
+                    return fieldValue.includes(filter.value);
+                });
             });
 
             filtered.sort((a, b) => {

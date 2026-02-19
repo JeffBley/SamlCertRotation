@@ -590,7 +590,7 @@ public class DashboardFunctions
             await _auditService.LogSuccessAsync(
                 id,
                 app.DisplayName,
-                "Certificate Created",
+                AuditActionType.CertificateCreated,
                 $"New certificate created via dashboard. KeyId: {cert.KeyId}");
 
             return await CreateJsonResponse(req, new
@@ -657,7 +657,7 @@ public class DashboardFunctions
             await _auditService.LogSuccessAsync(
                 id,
                 app.DisplayName,
-                "Certificate Activated",
+                AuditActionType.CertificateActivated,
                 $"Certificate activated via dashboard. KeyId: {newestCert.KeyId}, Thumbprint: {newestCert.Thumbprint}");
 
             return await CreateJsonResponse(req, new

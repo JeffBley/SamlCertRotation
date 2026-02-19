@@ -82,7 +82,7 @@ public class CertificateRotationService : ICertificateRotationService
             await _auditService.LogSuccessAsync(
                 "SYSTEM",
                 "System",
-                AuditActionType.ScanCompleted,
+                reportOnlyMode ? AuditActionType.ScanCompletedReportOnly : AuditActionType.ScanCompleted,
                 completionDescription);
 
             // Send daily summary
@@ -146,7 +146,7 @@ public class CertificateRotationService : ICertificateRotationService
                         await _auditService.LogSuccessAsync(
                             app.Id, 
                             app.DisplayName, 
-                            AuditActionType.CertificateCreated,
+                            AuditActionType.CertificateCreatedReportOnly,
                             $"Report-only mode: would create a new certificate. Active cert expires in {daysUntilExpiry} day(s).",
                             activeCert.Thumbprint);
                     }
@@ -193,7 +193,7 @@ public class CertificateRotationService : ICertificateRotationService
                             await _auditService.LogSuccessAsync(
                                 app.Id,
                                 app.DisplayName,
-                                AuditActionType.CertificateActivated,
+                                AuditActionType.CertificateActivatedReportOnly,
                                 $"Report-only mode: would activate pending certificate {newerInactiveCert.Thumbprint}.",
                                 activeCert.Thumbprint,
                                 newerInactiveCert.Thumbprint);
@@ -248,7 +248,7 @@ public class CertificateRotationService : ICertificateRotationService
                         await _auditService.LogSuccessAsync(
                             app.Id,
                             app.DisplayName,
-                            AuditActionType.CertificateActivated,
+                            AuditActionType.CertificateActivatedReportOnly,
                             $"Report-only mode: would activate pending certificate {pendingCert.Thumbprint}.",
                             activeCert.Thumbprint,
                             pendingCert.Thumbprint);
