@@ -827,6 +827,11 @@
                         </select>
                         <p style="font-size:11px;color:#888;margin-top:4px;">Enabled (default) runs evaluation only and logs what would happen. Disabled runs production automation and can create or activate certificates.</p>
                     </div>
+                    <div class="form-group">
+                        <label for="retentionPolicyDays">Retention policy (days)</label>
+                        <input type="number" id="retentionPolicyDays" min="1" value="180" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <p style="font-size:11px;color:#888;margin-top:4px;">Daily purge deletes audit logs older than this many days.</p>
+                    </div>
                     <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
                 </div>
             </div>
@@ -1400,6 +1405,7 @@
                 document.getElementById('senderEmail').value = settings.senderEmail || 'Not configured';
                 document.getElementById('rotationSchedule').value = formatCronSchedule(settings.rotationSchedule || '0 0 6 * * *');
                 document.getElementById('reportOnlyMode').value = settings.reportOnlyModeEnabled === false ? 'disabled' : 'enabled';
+                document.getElementById('retentionPolicyDays').value = settings.retentionPolicyDays || 180;
             } catch (error) {
                 console.error('Failed to load settings:', error);
             }
@@ -1427,9 +1433,17 @@
         // Save settings
         async function saveSettings() {
             try {
+                const retentionPolicyDays = parseInt(document.getElementById('retentionPolicyDays').value, 10);
+
+                if (Number.isNaN(retentionPolicyDays) || retentionPolicyDays < 1) {
+                    alert('Retention policy must be at least 1 day.');
+                    return;
+                }
+
                 const settings = {
                     notificationEmails: document.getElementById('notificationEmails').value.trim(),
-                    reportOnlyModeEnabled: document.getElementById('reportOnlyMode').value === 'enabled'
+                    reportOnlyModeEnabled: document.getElementById('reportOnlyMode').value === 'enabled',
+                    retentionPolicyDays
                 };
                 await apiCall('settings', {
                     method: 'PUT',
@@ -1447,7 +1461,7 @@
                 const fromDate = document.getElementById('audit-from-date')?.value;
                 const toDate = document.getElementById('audit-to-date')?.value;
 
-                let endpoint = 'audit?days=7';
+                let endpoint = 'audit?days=30';
                 if (fromDate && toDate) {
                     endpoint = `audit?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`;
                 }
