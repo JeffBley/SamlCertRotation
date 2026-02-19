@@ -477,13 +477,15 @@ public class DashboardFunctions
         try
         {
             var results = await _rotationService.RunRotationAsync(false);
+            var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
             return await CreateJsonResponse(req, new
             {
-                message = "Production rotation completed",
+                message = "Completed production rotation run",
                 mode = "prod",
                 totalProcessed = results.Count,
-                successful = results.Count(r => r.Success),
-                failed = results.Count(r => !r.Success),
+                successful,
+                skipped,
+                failed,
                 results = results
             });
         }
@@ -506,13 +508,15 @@ public class DashboardFunctions
         try
         {
             var results = await _rotationService.RunRotationAsync(true);
+            var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
             return await CreateJsonResponse(req, new
             {
-                message = "Report-only rotation completed",
+                message = "Report-only run completed",
                 mode = "report-only",
                 totalProcessed = results.Count,
-                successful = results.Count(r => r.Success),
-                failed = results.Count(r => !r.Success),
+                successful,
+                skipped,
+                failed,
                 results = results
             });
         }
@@ -545,13 +549,15 @@ public class DashboardFunctions
         try
         {
             var results = await _rotationService.RunRotationAsync(false);
+            var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
             return await CreateJsonResponse(req, new
             {
-                message = "Production rotation completed",
+                message = "Completed production rotation run",
                 mode = "prod",
                 totalProcessed = results.Count,
-                successful = results.Count(r => r.Success),
-                failed = results.Count(r => !r.Success),
+                successful,
+                skipped,
+                failed,
                 results = results
             });
         }
@@ -812,5 +818,19 @@ public class DashboardFunctions
     private static bool IsValidGuid(string value)
     {
         return !string.IsNullOrEmpty(value) && Guid.TryParse(value, out _);
+    }
+
+    private static (int successful, int skipped, int failed) GetRotationOutcomeCounts(List<RotationResult> results)
+    {
+        var successful = results.Count(r =>
+            r.Success && (
+                string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase)));
+
+        var failed = results.Count(r => !r.Success);
+        var skipped = Math.Max(0, results.Count - successful - failed);
+        return (successful, skipped, failed);
     }
 }

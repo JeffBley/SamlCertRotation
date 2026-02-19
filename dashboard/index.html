@@ -1157,7 +1157,10 @@
                         : 'rotation/trigger/prod';
 
                     const result = await apiCall(endpoint, { method: 'POST' });
-                    showSuccess(`${result.message}. Processed: ${result.totalProcessed}, Success: ${result.successful}, Failed: ${result.failed}`);
+                    const skipped = typeof result.skipped === 'number'
+                        ? result.skipped
+                        : Math.max(0, (result.totalProcessed || 0) - (result.successful || 0) - (result.failed || 0));
+                    showSuccess(`${result.message}. Processed ${result.totalProcessed} apps. Success: ${result.successful}, Skipped: ${skipped}, Failed: ${result.failed}`);
                     await loadData();
                 } catch (error) {
                     showError(`Failed to run rotation: ${error.message}`);
