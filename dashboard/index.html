@@ -426,12 +426,12 @@
             background: #fde7e9;
         }
 
-        .audit-action-filter-wrapper {
+        .multi-select-filter-wrapper {
             position: relative;
             min-width: 260px;
         }
 
-        .audit-action-filter-toggle {
+        .multi-select-filter-toggle {
             min-width: 260px;
             text-align: left;
             display: flex;
@@ -439,7 +439,7 @@
             justify-content: space-between;
         }
 
-        .audit-action-filter-dropdown {
+        .multi-select-filter-dropdown {
             right: auto;
             left: 0;
             min-width: 260px;
@@ -448,7 +448,7 @@
             padding: 8px;
         }
 
-        .audit-action-filter-option {
+        .multi-select-filter-option {
             display: flex;
             align-items: center;
             gap: 8px;
@@ -681,26 +681,29 @@
                     <label>Filter:</label>
                     <div class="filter-group">
                         <input type="text" id="app-search" placeholder="Search application name..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:240px;" oninput="applyFilters()">
-                        <label class="filter-checkbox">
-                            <input type="checkbox" id="filter-on" checked onchange="applyFilters()">
-                            <span class="status-badge status-on">Auto-Rotate ON</span>
-                        </label>
-                        <label class="filter-checkbox">
-                            <input type="checkbox" id="filter-off" checked onchange="applyFilters()">
-                            <span class="status-badge status-off">Auto-Rotate OFF</span>
-                        </label>
-                        <label class="filter-checkbox">
-                            <input type="checkbox" id="filter-null" checked onchange="applyFilters()">
-                            <span class="status-badge status-null">Not Configured</span>
-                        </label>
-                        <label class="filter-checkbox">
-                            <input type="checkbox" id="filter-expiring" onchange="applyFilters()">
-                            <span class="expiry-badge expiry-warning">Expiring ≤30 Days</span>
-                        </label>
-                        <label class="filter-checkbox">
-                            <input type="checkbox" id="filter-expired" onchange="applyFilters()">
-                            <span class="expiry-badge expiry-expired">Expired</span>
-                        </label>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="app-auto-rotate-filter-toggle" class="btn btn-secondary multi-select-filter-toggle" onclick="toggleAppAutoRotateFilterDropdown(event)">
+                                <span id="app-auto-rotate-filter-label">Auto-Rotate</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="app-auto-rotate-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown" onclick="event.stopPropagation()">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="on" onchange="onAppFilterChanged()">On</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="off" onchange="onAppFilterChanged()">Off</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notset" onchange="onAppFilterChanged()">Not Set</label>
+                            </div>
+                        </div>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="app-status-filter-toggle" class="btn btn-secondary multi-select-filter-toggle" onclick="toggleAppStatusFilterDropdown(event)">
+                                <span id="app-status-filter-label">Status</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="app-status-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown" onclick="event.stopPropagation()">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="expired" onchange="onAppFilterChanged()">Expired</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="critical" onchange="onAppFilterChanged()">Critical</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="warning" onchange="onAppFilterChanged()">Warning</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="ok" onchange="onAppFilterChanged()">OK</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="apps-table-container">
@@ -764,19 +767,19 @@
                             To
                             <input type="date" id="audit-to-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;" onchange="loadAuditLog()">
                         </label>
-                        <div class="audit-action-filter-wrapper">
-                            <button type="button" id="audit-action-filter-toggle" class="btn btn-secondary audit-action-filter-toggle" onclick="toggleAuditActionFilterDropdown(event)">
-                                <span id="audit-action-filter-label">None Selected</span>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="audit-action-filter-toggle" class="btn btn-secondary multi-select-filter-toggle" onclick="toggleAuditActionFilterDropdown(event)">
+                                <span id="audit-action-filter-label">Actions</span>
                                 <span>▾</span>
                             </button>
-                            <div id="audit-action-filter-dropdown" class="dropdown-menu audit-action-filter-dropdown" onclick="event.stopPropagation()">
-                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompleted" onchange="onAuditActionFilterChanged()">ScanCompleted</label>
-                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompletedReportOnly" onchange="onAuditActionFilterChanged()">ScanCompletedReportOnly</label>
-                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreated" onchange="onAuditActionFilterChanged()">CertificateCreated</label>
-                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreatedReportOnly" onchange="onAuditActionFilterChanged()">CertificateCreatedReportOnly</label>
-                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivated" onchange="onAuditActionFilterChanged()">CertificateActivated</label>
-                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivatedReportOnly" onchange="onAuditActionFilterChanged()">CertificateActivatedReportOnly</label>
-                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="Error" onchange="onAuditActionFilterChanged()">Error</label>
+                            <div id="audit-action-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown" onclick="event.stopPropagation()">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompleted" onchange="onAuditActionFilterChanged()">ScanCompleted</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompletedReportOnly" onchange="onAuditActionFilterChanged()">ScanCompletedReportOnly</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreated" onchange="onAuditActionFilterChanged()">CertificateCreated</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreatedReportOnly" onchange="onAuditActionFilterChanged()">CertificateCreatedReportOnly</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivated" onchange="onAuditActionFilterChanged()">CertificateActivated</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivatedReportOnly" onchange="onAuditActionFilterChanged()">CertificateActivatedReportOnly</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="Error" onchange="onAuditActionFilterChanged()">Error</label>
                             </div>
                         </div>
                         <button class="btn btn-secondary" onclick="addAuditFilterRow()">Add Filter</button>
@@ -886,10 +889,10 @@
         let allApps = [];
         let allAuditEntries = [];
         let nextAuditFilterId = 1;
+        let createCertDaysThreshold = 60;
+        let activateCertDaysThreshold = 30;
         const auditFilterColumns = [
-            { value: 'time', label: 'Time' },
             { value: 'application', label: 'Application' },
-            { value: 'action', label: 'Action' },
             { value: 'result', label: 'Result' },
             { value: 'details', label: 'Details' }
         ];
@@ -939,7 +942,7 @@
             if (!label) return;
 
             if (selectedActions.length === 0) {
-                label.textContent = 'None Selected';
+                label.textContent = 'Actions';
                 return;
             }
 
@@ -954,6 +957,110 @@
         function onAuditActionFilterChanged() {
             updateAuditActionFilterLabel();
             applyAuditFilters();
+        }
+
+        function toggleAppAutoRotateFilterDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('app-auto-rotate-filter-dropdown');
+            const wasOpen = dropdown.classList.contains('show');
+            closeAllDropdowns();
+            if (!wasOpen) {
+                dropdown.classList.add('show');
+            }
+        }
+
+        function toggleAppStatusFilterDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('app-status-filter-dropdown');
+            const wasOpen = dropdown.classList.contains('show');
+            closeAllDropdowns();
+            if (!wasOpen) {
+                dropdown.classList.add('show');
+            }
+        }
+
+        function getSelectedAppAutoRotateFilters() {
+            return Array.from(document.querySelectorAll('.app-auto-rotate-filter-option-input:checked'))
+                .map(input => input.value);
+        }
+
+        function getSelectedAppStatusFilters() {
+            return Array.from(document.querySelectorAll('.app-status-filter-option-input:checked'))
+                .map(input => input.value);
+        }
+
+        function updateAppAutoRotateFilterLabel() {
+            const selected = getSelectedAppAutoRotateFilters();
+            const label = document.getElementById('app-auto-rotate-filter-label');
+            if (!label) return;
+
+            if (selected.length === 0) {
+                label.textContent = 'Auto-Rotate';
+            } else if (selected.length <= 2) {
+                label.textContent = selected.map(value => value === 'notset' ? 'Not Set' : value.charAt(0).toUpperCase() + value.slice(1)).join(', ');
+            } else {
+                label.textContent = `${selected.length} selected`;
+            }
+        }
+
+        function updateAppStatusFilterLabel() {
+            const selected = getSelectedAppStatusFilters();
+            const label = document.getElementById('app-status-filter-label');
+            if (!label) return;
+
+            if (selected.length === 0) {
+                label.textContent = 'Status';
+            } else if (selected.length <= 2) {
+                label.textContent = selected.map(value => value.toUpperCase() === 'OK' ? 'OK' : value.charAt(0).toUpperCase() + value.slice(1)).join(', ');
+            } else {
+                label.textContent = `${selected.length} selected`;
+            }
+        }
+
+        function onAppFilterChanged() {
+            updateAppAutoRotateFilterLabel();
+            updateAppStatusFilterLabel();
+            applyFilters();
+        }
+
+        function getComputedAppStatus(app) {
+            const daysUntilExpiry = typeof app.daysUntilExpiry === 'number' ? app.daysUntilExpiry : null;
+
+            if (daysUntilExpiry === null) {
+                return 'ok';
+            }
+
+            if (daysUntilExpiry < 0) {
+                return 'expired';
+            }
+
+            if (daysUntilExpiry <= activateCertDaysThreshold) {
+                return 'critical';
+            }
+
+            if (daysUntilExpiry <= createCertDaysThreshold) {
+                return 'warning';
+            }
+
+            return 'ok';
+        }
+
+        function getFilteredApps() {
+            const searchTerm = (document.getElementById('app-search')?.value || '').trim().toLowerCase();
+            const selectedAutoRotateFilters = getSelectedAppAutoRotateFilters();
+            const selectedStatusFilters = getSelectedAppStatusFilters();
+
+            return allApps.filter(app => {
+                const status = (app.autoRotateStatus || '').toLowerCase();
+                const autoRotateValue = status === 'on' ? 'on' : status === 'off' ? 'off' : 'notset';
+                const computedStatus = getComputedAppStatus(app);
+
+                const autoRotateMatch = selectedAutoRotateFilters.length === 0 || selectedAutoRotateFilters.includes(autoRotateValue);
+                const statusMatch = selectedStatusFilters.length === 0 || selectedStatusFilters.includes(computedStatus);
+                const nameMatch = !searchTerm || (app.displayName || '').toLowerCase().includes(searchTerm);
+
+                return autoRotateMatch && statusMatch && nameMatch;
+            });
         }
 
         // Toggle actions menu for an app
@@ -1152,7 +1259,19 @@
         // Load dashboard data
         async function loadData() {
             try {
-                const stats = await apiCall('dashboard/stats');
+                const [stats, policy] = await Promise.all([
+                    apiCall('dashboard/stats'),
+                    apiCall('policy').catch(() => null)
+                ]);
+
+                if (policy) {
+                    createCertDaysThreshold = typeof policy.createCertDaysBeforeExpiry === 'number'
+                        ? policy.createCertDaysBeforeExpiry
+                        : createCertDaysThreshold;
+                    activateCertDaysThreshold = typeof policy.activateCertDaysBeforeExpiry === 'number'
+                        ? policy.activateCertDaysBeforeExpiry
+                        : activateCertDaysThreshold;
+                }
                 
                 // Update stats
                 document.getElementById('stat-total').textContent = stats.totalSamlApps;
@@ -1178,46 +1297,7 @@
 
         // Apply filters and render apps table
         function applyFilters() {
-            const searchTerm = (document.getElementById('app-search')?.value || '').trim().toLowerCase();
-            const showOn = document.getElementById('filter-on').checked;
-            const showOff = document.getElementById('filter-off').checked;
-            const showNull = document.getElementById('filter-null').checked;
-            const showExpiring = document.getElementById('filter-expiring').checked;
-            const showExpired = document.getElementById('filter-expired').checked;
-
-            const filteredApps = allApps.filter(app => {
-                const status = (app.autoRotateStatus || '').toLowerCase();
-                const expiry = app.expiryCategory.toLowerCase();
-                const isExpiringSoon = expiry === 'warning' || (app.daysUntilExpiry !== null && app.daysUntilExpiry <= 30);
-                const isExpired = expiry === 'expired';
-                
-                // Check auto-rotate status filters
-                let statusMatch = false;
-                if (showOn && status === 'on') statusMatch = true;
-                if (showOff && status === 'off') statusMatch = true;
-                if (showNull && (!app.autoRotateStatus || status === '')) statusMatch = true;
-                
-                // If none of the status filters are checked, ignore status filtering
-                const anyStatusFilterChecked = showOn || showOff || showNull;
-                if (!anyStatusFilterChecked) statusMatch = true;
-                
-                // Check expiry filters
-                let expiryMatch = false;
-                if (showExpiring && isExpiringSoon) expiryMatch = true;
-                if (showExpired && isExpired) expiryMatch = true;
-                
-                // If no expiry filters are checked, ignore expiry filtering
-                const anyExpiryFilterChecked = showExpiring || showExpired;
-                if (!anyExpiryFilterChecked) expiryMatch = true;
-                
-                const nameMatch = !searchTerm || (app.displayName || '').toLowerCase().includes(searchTerm);
-
-                // Show app if it matches both active filter categories plus search term
-                // (If a category has no filters checked, it's considered a match)
-                return statusMatch && expiryMatch && nameMatch;
-            });
-
-            renderApps(filteredApps);
+            renderApps(getFilteredApps());
         }
 
         // Render apps table
@@ -1689,37 +1769,10 @@
         function exportApplications() {
             // Get current filter state to export only visible apps
             const searchTerm = (document.getElementById('app-search')?.value || '').trim().toLowerCase();
-            const showOn = document.getElementById('filter-on').checked;
-            const showOff = document.getElementById('filter-off').checked;
-            const showNull = document.getElementById('filter-null').checked;
-            const showExpiring = document.getElementById('filter-expiring').checked;
-            const showExpired = document.getElementById('filter-expired').checked;
+            const selectedAutoRotateFilters = getSelectedAppAutoRotateFilters();
+            const selectedStatusFilters = getSelectedAppStatusFilters();
 
-            const filteredApps = allApps.filter(app => {
-                const status = (app.autoRotateStatus || '').toLowerCase();
-                const expiry = app.expiryCategory.toLowerCase();
-                const isExpiringSoon = expiry === 'warning' || (app.daysUntilExpiry !== null && app.daysUntilExpiry <= 30);
-                const isExpired = expiry === 'expired';
-                
-                let statusMatch = false;
-                if (showOn && status === 'on') statusMatch = true;
-                if (showOff && status === 'off') statusMatch = true;
-                if (showNull && (!app.autoRotateStatus || status === '')) statusMatch = true;
-                
-                const anyStatusFilterChecked = showOn || showOff || showNull;
-                if (!anyStatusFilterChecked) statusMatch = true;
-                
-                let expiryMatch = false;
-                if (showExpiring && isExpiringSoon) expiryMatch = true;
-                if (showExpired && isExpired) expiryMatch = true;
-                
-                const anyExpiryFilterChecked = showExpiring || showExpired;
-                if (!anyExpiryFilterChecked) expiryMatch = true;
-
-                const nameMatch = !searchTerm || (app.displayName || '').toLowerCase().includes(searchTerm);
-                
-                return statusMatch && expiryMatch && nameMatch;
-            });
+            const filteredApps = getFilteredApps();
 
             if (filteredApps.length === 0) {
                 showError('No applications to export');
@@ -1731,11 +1784,8 @@
                 exportType: 'saml-applications',
                 filters: {
                     search: searchTerm,
-                    autoRotateOn: showOn,
-                    autoRotateOff: showOff,
-                    notConfigured: showNull,
-                    expiringSoon: showExpiring,
-                    expired: showExpired
+                    autoRotate: selectedAutoRotateFilters,
+                    status: selectedStatusFilters
                 },
                 totalApps: filteredApps.length,
                 applications: filteredApps.map(app => ({
@@ -1771,6 +1821,9 @@
         }
 
         // Initial load
+        updateAuditActionFilterLabel();
+        updateAppAutoRotateFilterLabel();
+        updateAppStatusFilterLabel();
         loadData();
     </script>
 </body>
