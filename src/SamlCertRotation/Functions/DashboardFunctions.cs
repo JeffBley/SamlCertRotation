@@ -297,12 +297,36 @@ public class DashboardFunctions
 
         try
         {
-            var daysParam = req.Query["days"];
-            var days = int.TryParse(daysParam, out var d) ? d : 7;
+            var fromParam = req.Query["from"];
+            var toParam = req.Query["to"];
 
-            var entries = await _auditService.GetEntriesAsync(
-                DateTime.UtcNow.AddDays(-days), 
-                DateTime.UtcNow);
+            DateTime startDate;
+            DateTime endDate;
+
+            if (!string.IsNullOrWhiteSpace(fromParam) && !string.IsNullOrWhiteSpace(toParam))
+            {
+                if (!DateTime.TryParse(fromParam, out var fromDate) || !DateTime.TryParse(toParam, out var toDate))
+                {
+                    return await CreateErrorResponse(req, "Invalid from/to date format", HttpStatusCode.BadRequest);
+                }
+
+                startDate = fromDate.Date;
+                endDate = toDate.Date.AddDays(1).AddTicks(-1);
+
+                if (startDate > endDate)
+                {
+                    return await CreateErrorResponse(req, "From date must be before or equal to To date", HttpStatusCode.BadRequest);
+                }
+            }
+            else
+            {
+                var daysParam = req.Query["days"];
+                var days = int.TryParse(daysParam, out var d) ? d : 7;
+                startDate = DateTime.UtcNow.AddDays(-days);
+                endDate = DateTime.UtcNow;
+            }
+
+            var entries = await _auditService.GetEntriesAsync(startDate, endDate);
 
             return await CreateJsonResponse(req, entries);
         }

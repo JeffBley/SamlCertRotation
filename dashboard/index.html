@@ -649,6 +649,7 @@
                 <div class="filter-bar">
                     <label>Filter:</label>
                     <div class="filter-group">
+                        <input type="text" id="app-search" placeholder="Search application name..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:240px;" oninput="applyFilters()">
                         <label class="filter-checkbox">
                             <input type="checkbox" id="filter-on" checked onchange="applyFilters()">
                             <span class="status-badge status-on">Auto-Rotate ON</span>
@@ -720,6 +721,36 @@
                 <div class="section-header">
                     <h2>Audit Log</h2>
                     <button class="btn btn-secondary" onclick="loadAuditLog()">Refresh</button>
+                </div>
+                <div class="filter-bar" style="margin-bottom: 16px;">
+                    <label>Filters:</label>
+                    <div class="filter-group">
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            From
+                            <input type="date" id="audit-from-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;" onchange="loadAuditLog()">
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            To
+                            <input type="date" id="audit-to-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;" onchange="loadAuditLog()">
+                        </label>
+                        <input type="text" id="audit-app-filter" placeholder="Application contains..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:220px;" oninput="applyAuditFilters()">
+                        <input type="text" id="audit-action-filter" placeholder="Action contains..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;" oninput="applyAuditFilters()">
+                        <select id="audit-result-filter" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyAuditFilters()">
+                            <option value="all">Result: All</option>
+                            <option value="success">Result: Success</option>
+                            <option value="failed">Result: Failed</option>
+                        </select>
+                        <select id="audit-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyAuditFilters()">
+                            <option value="time">Sort: Time</option>
+                            <option value="application">Sort: Application</option>
+                            <option value="action">Sort: Action</option>
+                            <option value="result">Sort: Result</option>
+                        </select>
+                        <select id="audit-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyAuditFilters()">
+                            <option value="desc">Desc</option>
+                            <option value="asc">Asc</option>
+                        </select>
+                    </div>
                 </div>
                 <div id="audit-table-container">
                     <div class="loading">Loading audit log...</div>
@@ -811,6 +842,7 @@
 
         // Store apps data for filtering
         let allApps = [];
+        let allAuditEntries = [];
         
         // Current action for confirmation modal
         let pendingAction = null;
@@ -1057,6 +1089,7 @@
 
         // Apply filters and render apps table
         function applyFilters() {
+            const searchTerm = (document.getElementById('app-search')?.value || '').trim().toLowerCase();
             const showOn = document.getElementById('filter-on').checked;
             const showOff = document.getElementById('filter-off').checked;
             const showNull = document.getElementById('filter-null').checked;
@@ -1088,9 +1121,11 @@
                 const anyExpiryFilterChecked = showExpiring || showExpired;
                 if (!anyExpiryFilterChecked) expiryMatch = true;
                 
-                // Show app if it matches both active filter categories
+                const nameMatch = !searchTerm || (app.displayName || '').toLowerCase().includes(searchTerm);
+
+                // Show app if it matches both active filter categories plus search term
                 // (If a category has no filters checked, it's considered a match)
-                return statusMatch && expiryMatch;
+                return statusMatch && expiryMatch && nameMatch;
             });
 
             renderApps(filteredApps);
@@ -1232,42 +1267,112 @@
         // Load audit log
         async function loadAuditLog() {
             try {
-                const entries = await apiCall('audit?days=7');
-                
-                const tableHtml = `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Application</th>
-                                <th>Action</th>
-                                <th>Result</th>
-                                <th>Details</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${entries.map(entry => `
-                                <tr>
-                                    <td>${new Date(entry.timestamp).toLocaleString()}</td>
-                                    <td>${entry.appDisplayName}</td>
-                                    <td>${entry.actionType}</td>
-                                    <td>
-                                        <span class="status-badge ${entry.isSuccess ? 'status-on' : 'status-off'}">
-                                            ${entry.isSuccess ? 'Success' : 'Failed'}
-                                        </span>
-                                    </td>
-                                    <td>${entry.description}${entry.errorMessage ? ` - ${entry.errorMessage}` : ''}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-                document.getElementById('audit-table-container').innerHTML = tableHtml;
+                const fromDate = document.getElementById('audit-from-date')?.value;
+                const toDate = document.getElementById('audit-to-date')?.value;
+
+                let endpoint = 'audit?days=7';
+                if (fromDate && toDate) {
+                    endpoint = `audit?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}`;
+                }
+
+                allAuditEntries = await apiCall(endpoint);
+                applyAuditFilters();
 
             } catch (error) {
                 document.getElementById('audit-table-container').innerHTML = 
                     `<div class="error">Failed to load audit log: ${error.message}</div>`;
             }
+        }
+
+        function applyAuditFilters() {
+            const appFilter = (document.getElementById('audit-app-filter')?.value || '').trim().toLowerCase();
+            const actionFilter = (document.getElementById('audit-action-filter')?.value || '').trim().toLowerCase();
+            const resultFilter = (document.getElementById('audit-result-filter')?.value || 'all').toLowerCase();
+            const sortBy = (document.getElementById('audit-sort-by')?.value || 'time').toLowerCase();
+            const sortDirection = (document.getElementById('audit-sort-direction')?.value || 'desc').toLowerCase();
+
+            let filtered = allAuditEntries.filter(entry => {
+                const appName = (entry.appDisplayName || '').toLowerCase();
+                const actionName = (entry.actionType || '').toLowerCase();
+
+                const appMatch = !appFilter || appName.includes(appFilter);
+                const actionMatch = !actionFilter || actionName.includes(actionFilter);
+
+                let resultMatch = true;
+                if (resultFilter === 'success') resultMatch = entry.isSuccess === true;
+                if (resultFilter === 'failed') resultMatch = entry.isSuccess === false;
+
+                return appMatch && actionMatch && resultMatch;
+            });
+
+            filtered.sort((a, b) => {
+                let left;
+                let right;
+
+                switch (sortBy) {
+                    case 'application':
+                        left = (a.appDisplayName || '').toLowerCase();
+                        right = (b.appDisplayName || '').toLowerCase();
+                        break;
+                    case 'action':
+                        left = (a.actionType || '').toLowerCase();
+                        right = (b.actionType || '').toLowerCase();
+                        break;
+                    case 'result':
+                        left = a.isSuccess ? 1 : 0;
+                        right = b.isSuccess ? 1 : 0;
+                        break;
+                    case 'time':
+                    default:
+                        left = new Date(a.timestamp || 0).getTime();
+                        right = new Date(b.timestamp || 0).getTime();
+                        break;
+                }
+
+                if (left < right) return sortDirection === 'asc' ? -1 : 1;
+                if (left > right) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            renderAuditLogTable(filtered);
+        }
+
+        function renderAuditLogTable(entries) {
+            if (!entries || entries.length === 0) {
+                document.getElementById('audit-table-container').innerHTML =
+                    '<div style="text-align:center;padding:40px;color:#666;">No audit entries match the selected filters.</div>';
+                return;
+            }
+
+            const tableHtml = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Application</th>
+                            <th>Action</th>
+                            <th>Result</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${entries.map(entry => `
+                            <tr>
+                                <td>${new Date(entry.timestamp).toLocaleString()}</td>
+                                <td>${entry.appDisplayName}</td>
+                                <td>${entry.actionType}</td>
+                                <td>
+                                    <span class="status-badge ${entry.isSuccess ? 'status-on' : 'status-off'}">
+                                        ${entry.isSuccess ? 'Success' : 'Failed'}
+                                    </span>
+                                </td>
+                                <td>${entry.description}${entry.errorMessage ? ` - ${entry.errorMessage}` : ''}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            document.getElementById('audit-table-container').innerHTML = tableHtml;
         }
 
         // Store cleanup data for export
@@ -1369,6 +1474,7 @@
         // Export currently visible applications to JSON
         function exportApplications() {
             // Get current filter state to export only visible apps
+            const searchTerm = (document.getElementById('app-search')?.value || '').trim().toLowerCase();
             const showOn = document.getElementById('filter-on').checked;
             const showOff = document.getElementById('filter-off').checked;
             const showNull = document.getElementById('filter-null').checked;
@@ -1395,8 +1501,10 @@
                 
                 const anyExpiryFilterChecked = showExpiring || showExpired;
                 if (!anyExpiryFilterChecked) expiryMatch = true;
+
+                const nameMatch = !searchTerm || (app.displayName || '').toLowerCase().includes(searchTerm);
                 
-                return statusMatch && expiryMatch;
+                return statusMatch && expiryMatch && nameMatch;
             });
 
             if (filteredApps.length === 0) {
@@ -1408,6 +1516,7 @@
                 exportDate: new Date().toISOString(),
                 exportType: 'saml-applications',
                 filters: {
+                    search: searchTerm,
                     autoRotateOn: showOn,
                     autoRotateOff: showOff,
                     notConfigured: showNull,
