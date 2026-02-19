@@ -1477,6 +1477,34 @@
             }
         }
 
+        function setDefaultAuditDateRange() {
+            const fromInput = document.getElementById('audit-from-date');
+            const toInput = document.getElementById('audit-to-date');
+
+            if (!fromInput || !toInput) {
+                return;
+            }
+
+            if (fromInput.value && toInput.value) {
+                return;
+            }
+
+            const today = new Date();
+            const fromDate = new Date(today);
+            fromDate.setDate(fromDate.getDate() - 30);
+
+            const toDateValue = today.toISOString().split('T')[0];
+            const fromDateValue = fromDate.toISOString().split('T')[0];
+
+            if (!fromInput.value) {
+                fromInput.value = fromDateValue;
+            }
+
+            if (!toInput.value) {
+                toInput.value = toDateValue;
+            }
+        }
+
         function getAuditFilterPlaceholder(column) {
             if (column === 'result') return 'success or failed';
             if (column === 'time') return 'contains date/time text';
@@ -1848,6 +1876,7 @@
         updateAuditActionFilterLabel();
         updateAppAutoRotateFilterLabel();
         updateAppStatusFilterLabel();
+        setDefaultAuditDateRange();
         loadData();
     </script>
 </body>
