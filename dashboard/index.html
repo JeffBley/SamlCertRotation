@@ -426,6 +426,37 @@
             background: #fde7e9;
         }
 
+        .audit-action-filter-wrapper {
+            position: relative;
+            min-width: 260px;
+        }
+
+        .audit-action-filter-toggle {
+            min-width: 260px;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .audit-action-filter-dropdown {
+            right: auto;
+            left: 0;
+            min-width: 260px;
+            max-height: 260px;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .audit-action-filter-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 0;
+            font-size: 14px;
+            color: var(--text);
+        }
+
         /* Confirmation modal */
         .modal-overlay {
             display: none;
@@ -733,18 +764,21 @@
                             To
                             <input type="date" id="audit-to-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;" onchange="loadAuditLog()">
                         </label>
-                        <label style="display:flex;align-items:center;gap:6px;">
-                            Action
-                            <select id="audit-action-filter" multiple size="7" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:260px;" onchange="applyAuditFilters()">
-                                <option value="ScanCompleted">ScanCompleted</option>
-                                <option value="ScanCompletedReportOnly">ScanCompletedReportOnly</option>
-                                <option value="CertificateCreated">CertificateCreated</option>
-                                <option value="CertificateCreatedReportOnly">CertificateCreatedReportOnly</option>
-                                <option value="CertificateActivated">CertificateActivated</option>
-                                <option value="CertificateActivatedReportOnly">CertificateActivatedReportOnly</option>
-                                <option value="Error">Error</option>
-                            </select>
-                        </label>
+                        <div class="audit-action-filter-wrapper">
+                            <button type="button" id="audit-action-filter-toggle" class="btn btn-secondary audit-action-filter-toggle" onclick="toggleAuditActionFilterDropdown(event)">
+                                <span id="audit-action-filter-label">None Selected</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="audit-action-filter-dropdown" class="dropdown-menu audit-action-filter-dropdown" onclick="event.stopPropagation()">
+                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompleted" onchange="onAuditActionFilterChanged()">ScanCompleted</label>
+                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompletedReportOnly" onchange="onAuditActionFilterChanged()">ScanCompletedReportOnly</label>
+                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreated" onchange="onAuditActionFilterChanged()">CertificateCreated</label>
+                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreatedReportOnly" onchange="onAuditActionFilterChanged()">CertificateCreatedReportOnly</label>
+                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivated" onchange="onAuditActionFilterChanged()">CertificateActivated</label>
+                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivatedReportOnly" onchange="onAuditActionFilterChanged()">CertificateActivatedReportOnly</label>
+                                <label class="audit-action-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="Error" onchange="onAuditActionFilterChanged()">Error</label>
+                            </div>
+                        </div>
                         <button class="btn btn-secondary" onclick="addAuditFilterRow()">Add Filter</button>
                         <button class="btn btn-secondary" onclick="clearAuditFilters()">Clear Filters</button>
                         <select id="audit-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyAuditFilters()">
@@ -881,6 +915,45 @@
             document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
                 menu.classList.remove('show');
             });
+        }
+
+        function toggleAuditActionFilterDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('audit-action-filter-dropdown');
+            const wasOpen = dropdown.classList.contains('show');
+            closeAllDropdowns();
+            if (!wasOpen) {
+                dropdown.classList.add('show');
+            }
+        }
+
+        function getSelectedAuditActionFilters() {
+            return Array.from(document.querySelectorAll('.audit-action-filter-option-input:checked'))
+                .map(input => input.value);
+        }
+
+        function updateAuditActionFilterLabel() {
+            const selectedActions = getSelectedAuditActionFilters();
+            const label = document.getElementById('audit-action-filter-label');
+
+            if (!label) return;
+
+            if (selectedActions.length === 0) {
+                label.textContent = 'None Selected';
+                return;
+            }
+
+            if (selectedActions.length <= 2) {
+                label.textContent = selectedActions.join(', ');
+                return;
+            }
+
+            label.textContent = `${selectedActions.length} selected`;
+        }
+
+        function onAuditActionFilterChanged() {
+            updateAuditActionFilterLabel();
+            applyAuditFilters();
         }
 
         // Toggle actions menu for an app
@@ -1408,18 +1481,17 @@
 
         function clearAuditFilters() {
             document.getElementById('audit-dynamic-filters').innerHTML = '';
-            const actionFilter = document.getElementById('audit-action-filter');
-            if (actionFilter) {
-                Array.from(actionFilter.options).forEach(option => option.selected = false);
-            }
+            document.querySelectorAll('.audit-action-filter-option-input').forEach(input => {
+                input.checked = false;
+            });
+            updateAuditActionFilterLabel();
             applyAuditFilters();
         }
 
         function applyAuditFilters() {
             const sortBy = (document.getElementById('audit-sort-by')?.value || 'time').toLowerCase();
             const sortDirection = (document.getElementById('audit-sort-direction')?.value || 'desc').toLowerCase();
-            const selectedActionFilters = Array.from(document.getElementById('audit-action-filter')?.selectedOptions || [])
-                .map(option => option.value);
+            const selectedActionFilters = getSelectedAuditActionFilters();
 
             const activeFilters = Array.from(document.querySelectorAll('#audit-dynamic-filters .audit-filter-row'))
                 .map(row => {
