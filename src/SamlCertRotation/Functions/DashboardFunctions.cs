@@ -486,6 +486,16 @@ public class DashboardFunctions
     }
 
     /// <summary>
+    /// Manually trigger certificate rotation in report-only mode (non-admin alias route)
+    /// </summary>
+    [Function("TriggerRotationReportOnlyAlias")]
+    public Task<HttpResponseData> TriggerRotationReportOnlyAlias(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "rotation/trigger/report-only")] HttpRequestData req)
+    {
+        return TriggerRotationReportOnly(req);
+    }
+
+    /// <summary>
     /// Manually trigger certificate rotation in production mode
     /// </summary>
     [Function("TriggerRotationProd")]
@@ -512,6 +522,16 @@ public class DashboardFunctions
             _logger.LogError(ex, "Error during manual production rotation");
             return await CreateErrorResponse(req, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Manually trigger certificate rotation in production mode (non-admin alias route)
+    /// </summary>
+    [Function("TriggerRotationProdAlias")]
+    public Task<HttpResponseData> TriggerRotationProdAlias(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "rotation/trigger/prod")] HttpRequestData req)
+    {
+        return TriggerRotationProd(req);
     }
 
     /// <summary>
