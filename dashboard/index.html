@@ -1339,8 +1339,8 @@
                                 <td>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
                                 <td>${app.daysUntilExpiry ?? 'N/A'}</td>
                                 <td>
-                                    <span class="expiry-badge expiry-${app.expiryCategory.toLowerCase()}">
-                                        ${escapeHtml(app.expiryCategory)}
+                                    <span class="expiry-badge expiry-${computedStatus}">
+                                        ${formatComputedStatus(computedStatus)}
                                     </span>
                                 </td>
                                 <td class="actions-cell">
@@ -1354,8 +1354,9 @@
                                         </button>
                                     </div>
                                 </td>
-                                        <span class="expiry-badge expiry-${computedStatus}">
-                                            ${formatComputedStatus(computedStatus)}
+                            </tr>
+                        `;
+                        }).join('')}
                     </tbody>
                 </table>
             `;
@@ -1657,8 +1658,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        `;
-                        }).join('')}
+                        ${entries.map(entry => `
                             <tr>
                                 <td>${new Date(entry.timestamp).toLocaleString()}</td>
                                 <td>${entry.appDisplayName}</td>
