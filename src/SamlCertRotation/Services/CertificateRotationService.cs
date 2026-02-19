@@ -72,11 +72,18 @@ public class CertificateRotationService : ICertificateRotationService
             }
 
             // Log completion
+            var reportOnlyCreateCount = results.Count(r => string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase));
+            var reportOnlyActivateCount = results.Count(r => string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase));
+
+            var completionDescription = reportOnlyMode
+                ? $"Report-only run completed. {appsToProcess.Count} apps evaluated. {reportOnlyCreateCount} apps would generate new cert. {reportOnlyActivateCount} apps would activate new cert. Success: {results.Count(r => r.Success)}, Failed: {results.Count(r => !r.Success)}"
+                : $"Completed production rotation run. Processed {appsToProcess.Count} apps. Success: {results.Count(r => r.Success)}, Failed: {results.Count(r => !r.Success)}";
+
             await _auditService.LogSuccessAsync(
                 "SYSTEM",
                 "System",
                 AuditActionType.ScanCompleted,
-                $"Completed {(reportOnlyMode ? "report-only" : "production")} rotation run. Processed {appsToProcess.Count} apps. Success: {results.Count(r => r.Success)}, Failed: {results.Count(r => !r.Success)}");
+                completionDescription);
 
             // Send daily summary
             var stats = await GetDashboardStatsAsync();
