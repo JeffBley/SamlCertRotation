@@ -171,6 +171,8 @@ az deployment group create `
 Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 ```
 
+> **Note**: If `Get-Content` showed no results, you most likely lost the variables set in Step 2.2. Ensure `$RESOURCE_GROUP` is populated and try 4.2 again.
+
 ### 4.3 Save Output Values as Variables
 
 ```powershell
