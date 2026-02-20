@@ -1199,6 +1199,17 @@ $MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
 $KEY_VAULT_NAME = $outputs.keyVaultName.value
 ```
 
+### PowerShell parameter-file syntax (`az deployment`)
+
+In Cloud Shell PowerShell, pass parameter files as a quoted literal to avoid `@` parsing errors:
+
+```powershell
+az deployment group what-if `
+    --resource-group $RESOURCE_GROUP `
+    --template-file main.bicep `
+    --parameters "@main.parameters.json"
+```
+
 ### Recover CLIENT_ID and Key Vault secret
 
 If you lose these variables during Step 7:
@@ -1270,6 +1281,43 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName $FUNCTION_APP_NAME -Resou
 2. Verify the SWA backend link was configured (Step 7.9)
 3. Check that Easy Auth is disabled on the Function App (Step 7.10)
 4. Ensure API_BASE_URL in index.html is empty (SWA backend handles routing)
+5. Verify `https://<SWA_HOST>/api/GetRoles` is not 404 (302/200 is expected)
+
+Compatibility note for backend inspection command:
+
+```powershell
+az staticwebapp backends show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    -o json
+```
+
+Some CLI builds do not support `az staticwebapp backends list`.
+
+### Dashboard shows `API error: 401`
+
+This usually means the API exists, but auth context is not reaching Functions correctly.
+
+```powershell
+# 1) Confirm function routes are indexed (must not be empty)
+az functionapp function list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "[].name" -o table
+
+# 2) Re-link backend (safe/idempotent)
+$FUNCTION_APP_ID = az functionapp show --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME --query id -o tsv
+$FUNC_LOCATION = az functionapp show --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME --query location -o tsv
+az staticwebapp backends link --resource-group $RESOURCE_GROUP --name $STATIC_WEB_APP_NAME --backend-resource-id $FUNCTION_APP_ID --backend-region $FUNC_LOCATION
+
+# 3) Disable Easy Auth on Function App AFTER backend link
+$SUBSCRIPTION_ID = az account show --query id -o tsv
+az rest --method PUT `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"requireAuthentication":false,"unauthenticatedClientAction":"AllowAnonymous"}}}'
+```
+
+Then sign out and sign back in at `https://<SWA_HOST>/.auth/login/aad` and retry `https://<SWA_HOST>/api/dashboard/stats`.
 
 ### Dashboard shows `API error: 403`
 
