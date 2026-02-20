@@ -1402,10 +1402,20 @@ public class DashboardFunctions
 
     private void ApplyConfiguredRoleMappings(HashSet<string> roles, IEnumerable<string> claimRoleValues, IEnumerable<string> claimGroupValues)
     {
-        var configuredAdminAppRole = _configuration["SWA_ADMIN_APP_ROLE"] ?? "SamlCertRotation.Admin";
-        var configuredReaderAppRole = _configuration["SWA_READER_APP_ROLE"] ?? "SamlCertRotation.Reader";
+        var configuredAdminAppRole = _configuration["SWA_ADMIN_APP_ROLE"];
+        var configuredReaderAppRole = _configuration["SWA_READER_APP_ROLE"];
         var configuredAdminGroup = _configuration["SWA_ADMIN_GROUP_ID"];
         var configuredReaderGroup = _configuration["SWA_READER_GROUP_ID"];
+
+        if (string.IsNullOrWhiteSpace(configuredAdminAppRole))
+        {
+            configuredAdminAppRole = "SamlCertRotation.Admin";
+        }
+
+        if (string.IsNullOrWhiteSpace(configuredReaderAppRole))
+        {
+            configuredReaderAppRole = "SamlCertRotation.Reader";
+        }
 
         var roleSet = claimRoleValues is HashSet<string> roleHash
             ? roleHash
