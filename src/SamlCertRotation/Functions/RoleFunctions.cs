@@ -45,15 +45,18 @@ public class RoleFunctions
 
             // Get role mappings from configuration
             var adminGroupId = _configuration["SWA_ADMIN_GROUP_ID"];
-            var adminAppRole = _configuration["SWA_ADMIN_APP_ROLE"];
             var readerGroupId = _configuration["SWA_READER_GROUP_ID"];
+            var adminAppRole = _configuration["SWA_ADMIN_APP_ROLE"];
             var readerAppRole = _configuration["SWA_READER_APP_ROLE"];
-            
-            if (string.IsNullOrEmpty(adminGroupId) && string.IsNullOrEmpty(adminAppRole) &&
-                string.IsNullOrEmpty(readerGroupId) && string.IsNullOrEmpty(readerAppRole))
+
+            if (string.IsNullOrWhiteSpace(adminAppRole))
             {
-                _logger.LogWarning("No role mappings configured. Set SWA_ADMIN_* and/or SWA_READER_* settings.");
-                return await CreateJsonResponse(req, new { roles = Array.Empty<string>() });
+                adminAppRole = "SamlCertRotation.Admin";
+            }
+
+            if (string.IsNullOrWhiteSpace(readerAppRole))
+            {
+                readerAppRole = "SamlCertRotation.Reader";
             }
 
             var roles = new List<string>();
@@ -75,12 +78,10 @@ public class RoleFunctions
 
                 var isAdminByGroup = !string.IsNullOrWhiteSpace(adminGroupId) &&
                                      groupClaims.Contains(adminGroupId, StringComparer.OrdinalIgnoreCase);
-                var isAdminByAppRole = !string.IsNullOrWhiteSpace(adminAppRole) &&
-                                       appRoleClaims.Contains(adminAppRole, StringComparer.OrdinalIgnoreCase);
+                var isAdminByAppRole = appRoleClaims.Contains(adminAppRole, StringComparer.OrdinalIgnoreCase);
                 var isReaderByGroup = !string.IsNullOrWhiteSpace(readerGroupId) &&
                                       groupClaims.Contains(readerGroupId, StringComparer.OrdinalIgnoreCase);
-                var isReaderByAppRole = !string.IsNullOrWhiteSpace(readerAppRole) &&
-                                        appRoleClaims.Contains(readerAppRole, StringComparer.OrdinalIgnoreCase);
+                var isReaderByAppRole = appRoleClaims.Contains(readerAppRole, StringComparer.OrdinalIgnoreCase);
 
                 var isAdmin = isAdminByGroup || isAdminByAppRole;
                 var isReader = isReaderByGroup || isReaderByAppRole;
