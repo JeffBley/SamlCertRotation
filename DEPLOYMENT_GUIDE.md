@@ -1102,6 +1102,13 @@ az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAM
 
 > **Important**: Avoid `az functionapp deployment source config-zip` for this project. Use `func azure functionapp publish --dotnet-isolated` to prevent recurring 404 regressions.
 
+### 6.5 Repeatable One-Command Redeploy (Recommended for Ongoing Updates)
+
+```powershell
+Set-Location "$HOME/SamlCertRotation"
+pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName $FUNCTION_APP_NAME -ResourceGroup $RESOURCE_GROUP
+```
+
 ### Dashboard shows no data
 
 1. Check browser console (F12) for errors

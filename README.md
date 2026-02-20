@@ -79,6 +79,12 @@ func azure functionapp publish <FUNCTION_APP_NAME> --dotnet-isolated
 
 Avoid `az functionapp deployment source config-zip` for this project. It can publish artifacts that intermittently fail function indexing, which surfaces as `/api/*` returning `404` after redeploy.
 
+Cloud Shell helper script:
+
+```powershell
+pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName <FUNCTION_APP_NAME> -ResourceGroup <RESOURCE_GROUP>
+```
+
 ### Prerequisites
 
 - Azure Subscription with Owner or Contributor access
