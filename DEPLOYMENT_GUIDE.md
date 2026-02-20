@@ -249,8 +249,6 @@ Write-Host "Log Analytics Workspace: $LOG_ANALYTICS_NAME"
 Write-Host "Logic App: $LOGIC_APP_NAME"
 ```
 
-> **Important**: Save these values! If your Cloud Shell session times out, you'll need to re-run the variable assignment commands or retrieve values from the Azure Portal.
-
 ---
 
 ## Step 5: Grant Microsoft Graph Permissions
