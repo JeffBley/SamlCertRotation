@@ -1121,114 +1121,215 @@ public class DashboardFunctions
     private RequestIdentity? ParseClientPrincipal(HttpRequestData req)
     {
         var encodedPrincipal = GetHeaderValue(req, "x-ms-client-principal");
-        if (string.IsNullOrWhiteSpace(encodedPrincipal))
+        if (!string.IsNullOrWhiteSpace(encodedPrincipal))
+        {
+            try
+            {
+                var json = DecodePrincipalPayload(encodedPrincipal);
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    using var document = JsonDocument.Parse(json);
+                    var root = document.RootElement;
+                    if (root.TryGetProperty("clientPrincipal", out var wrappedPrincipal) && wrappedPrincipal.ValueKind == JsonValueKind.Object)
+                    {
+                        root = wrappedPrincipal;
+                    }
+
+                    var userId = TryGetString(root, "userId");
+                    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var claimRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var claimGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                    if (root.TryGetProperty("userRoles", out var userRolesElement) && userRolesElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var roleElement in userRolesElement.EnumerateArray())
+                        {
+                            var role = roleElement.GetString();
+                            if (!string.IsNullOrWhiteSpace(role))
+                            {
+                                roles.Add(role);
+                            }
+                        }
+                    }
+
+                    if (root.TryGetProperty("claims", out var claimsElement) && claimsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var claimElement in claimsElement.EnumerateArray())
+                        {
+                            if (claimElement.ValueKind != JsonValueKind.Object)
+                            {
+                                continue;
+                            }
+
+                            var claimType = TryGetString(claimElement, "typ") ?? TryGetString(claimElement, "type");
+                            var claimValue = TryGetString(claimElement, "val") ?? TryGetString(claimElement, "value");
+
+                            if (string.IsNullOrWhiteSpace(claimType) || string.IsNullOrWhiteSpace(claimValue))
+                            {
+                                continue;
+                            }
+
+                            if (string.Equals(claimType, "roles", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
+                            {
+                                claimRoleValues.Add(claimValue);
+                            }
+
+                            if (string.Equals(claimType, "groups", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
+                            {
+                                claimGroupValues.Add(claimValue);
+                            }
+                        }
+                    }
+
+                    ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
+
+                    if (roles.Count > 0)
+                    {
+                        return new RequestIdentity
+                        {
+                            UserId = userId,
+                            IsAuthenticated = roles.Contains("authenticated") || !string.IsNullOrWhiteSpace(userId),
+                            Roles = roles
+                        };
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return ParseClientPrincipalFromFallbackHeaders(req);
+    }
+
+    private RequestIdentity? ParseClientPrincipalFromFallbackHeaders(HttpRequestData req)
+    {
+        var userId = GetHeaderValue(req, "x-ms-client-principal-id")
+                     ?? GetHeaderValue(req, "x-ms-client-principal-name")
+                     ?? GetHeaderValue(req, "x-ms-client-principal-userid");
+
+        var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var claimRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var claimGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var role in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-user-roles")))
+        {
+            roles.Add(role);
+            claimRoleValues.Add(role);
+        }
+
+        foreach (var role in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-roles")))
+        {
+            roles.Add(role);
+            claimRoleValues.Add(role);
+        }
+
+        foreach (var role in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-role")))
+        {
+            roles.Add(role);
+            claimRoleValues.Add(role);
+        }
+
+        foreach (var group in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-groups")))
+        {
+            claimGroupValues.Add(group);
+        }
+
+        ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
+
+        if (roles.Count == 0)
         {
             return null;
         }
 
-        try
+        return new RequestIdentity
         {
-            var json = DecodePrincipalPayload(encodedPrincipal);
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                return null;
-            }
+            UserId = userId,
+            IsAuthenticated = roles.Contains("authenticated") || !string.IsNullOrWhiteSpace(userId),
+            Roles = roles
+        };
+    }
 
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-            if (root.TryGetProperty("clientPrincipal", out var wrappedPrincipal) && wrappedPrincipal.ValueKind == JsonValueKind.Object)
-            {
-                root = wrappedPrincipal;
-            }
+    private void ApplyConfiguredRoleMappings(HashSet<string> roles, IEnumerable<string> claimRoleValues, IEnumerable<string> claimGroupValues)
+    {
+        var configuredAdminAppRole = _configuration["SWA_ADMIN_APP_ROLE"] ?? "SamlCertRotation.Admin";
+        var configuredReaderAppRole = _configuration["SWA_READER_APP_ROLE"] ?? "SamlCertRotation.Reader";
+        var configuredAdminGroup = _configuration["SWA_ADMIN_GROUP_ID"];
+        var configuredReaderGroup = _configuration["SWA_READER_GROUP_ID"];
 
-            var userId = TryGetString(root, "userId");
-            var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var claimRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var claimGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var roleSet = claimRoleValues is HashSet<string> roleHash
+            ? roleHash
+            : new HashSet<string>(claimRoleValues.Where(v => !string.IsNullOrWhiteSpace(v)), StringComparer.OrdinalIgnoreCase);
 
-            if (root.TryGetProperty("userRoles", out var userRolesElement) && userRolesElement.ValueKind == JsonValueKind.Array)
+        var groupSet = claimGroupValues is HashSet<string> groupHash
+            ? groupHash
+            : new HashSet<string>(claimGroupValues.Where(v => !string.IsNullOrWhiteSpace(v)), StringComparer.OrdinalIgnoreCase);
+
+        var isAdminByClaimRole = !string.IsNullOrWhiteSpace(configuredAdminAppRole) && roleSet.Contains(configuredAdminAppRole);
+        var isReaderByClaimRole = !string.IsNullOrWhiteSpace(configuredReaderAppRole) && roleSet.Contains(configuredReaderAppRole);
+        var isAdminByClaimGroup = !string.IsNullOrWhiteSpace(configuredAdminGroup) && groupSet.Contains(configuredAdminGroup);
+        var isReaderByClaimGroup = !string.IsNullOrWhiteSpace(configuredReaderGroup) && groupSet.Contains(configuredReaderGroup);
+
+        if (isAdminByClaimRole || isAdminByClaimGroup || roles.Contains("admin"))
+        {
+            roles.Add("admin");
+            roles.Add("reader");
+        }
+        else if (isReaderByClaimRole || isReaderByClaimGroup || roles.Contains("reader"))
+        {
+            roles.Add("reader");
+        }
+    }
+
+    private static IEnumerable<string> ParseHeaderList(string? headerValue)
+    {
+        var results = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(headerValue))
+        {
+            return results;
+        }
+
+        var raw = headerValue.Trim();
+
+        if (raw.StartsWith("[", StringComparison.Ordinal))
+        {
+            try
             {
-                foreach (var roleElement in userRolesElement.EnumerateArray())
+                using var doc = JsonDocument.Parse(raw);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array)
                 {
-                    var role = roleElement.GetString();
-                    if (!string.IsNullOrWhiteSpace(role))
+                    foreach (var element in doc.RootElement.EnumerateArray())
                     {
-                        roles.Add(role);
+                        if (element.ValueKind == JsonValueKind.String)
+                        {
+                            var value = element.GetString();
+                            if (!string.IsNullOrWhiteSpace(value))
+                            {
+                                results.Add(value);
+                            }
+                        }
                     }
                 }
+
+                return results;
             }
-
-            if (root.TryGetProperty("claims", out var claimsElement) && claimsElement.ValueKind == JsonValueKind.Array)
+            catch
             {
-                foreach (var claimElement in claimsElement.EnumerateArray())
-                {
-                    if (claimElement.ValueKind != JsonValueKind.Object)
-                    {
-                        continue;
-                    }
-
-                    var claimType = TryGetString(claimElement, "typ") ?? TryGetString(claimElement, "type");
-                    var claimValue = TryGetString(claimElement, "val") ?? TryGetString(claimElement, "value");
-
-                    if (string.IsNullOrWhiteSpace(claimType) || string.IsNullOrWhiteSpace(claimValue))
-                    {
-                        continue;
-                    }
-
-                    if (string.Equals(claimType, "roles", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
-                    {
-                        claimRoleValues.Add(claimValue);
-                    }
-
-                    if (string.Equals(claimType, "groups", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
-                    {
-                        claimGroupValues.Add(claimValue);
-                    }
-                }
             }
-
-            var configuredAdminAppRole = _configuration["SWA_ADMIN_APP_ROLE"] ?? "SamlCertRotation.Admin";
-            var configuredReaderAppRole = _configuration["SWA_READER_APP_ROLE"] ?? "SamlCertRotation.Reader";
-            var configuredAdminGroup = _configuration["SWA_ADMIN_GROUP_ID"];
-            var configuredReaderGroup = _configuration["SWA_READER_GROUP_ID"];
-
-            var isAdminByClaimRole = !string.IsNullOrWhiteSpace(configuredAdminAppRole) &&
-                                     claimRoleValues.Contains(configuredAdminAppRole);
-            var isReaderByClaimRole = !string.IsNullOrWhiteSpace(configuredReaderAppRole) &&
-                                      claimRoleValues.Contains(configuredReaderAppRole);
-            var isAdminByClaimGroup = !string.IsNullOrWhiteSpace(configuredAdminGroup) &&
-                                      claimGroupValues.Contains(configuredAdminGroup);
-            var isReaderByClaimGroup = !string.IsNullOrWhiteSpace(configuredReaderGroup) &&
-                                       claimGroupValues.Contains(configuredReaderGroup);
-
-            if (isAdminByClaimRole || isAdminByClaimGroup)
-            {
-                roles.Add("admin");
-                roles.Add("reader");
-            }
-            else if (isReaderByClaimRole || isReaderByClaimGroup)
-            {
-                roles.Add("reader");
-            }
-
-            if (roles.Count == 0)
-            {
-                return null;
-            }
-
-            return new RequestIdentity
-            {
-                UserId = userId,
-                IsAuthenticated = roles.Contains("authenticated") || !string.IsNullOrWhiteSpace(userId),
-                Roles = roles
-            };
         }
-        catch
+
+        foreach (var token in raw.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            return null;
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                results.Add(token);
+            }
         }
+
+        return results;
     }
 
     private static string? GetHeaderValue(HttpRequestData req, string headerName)
