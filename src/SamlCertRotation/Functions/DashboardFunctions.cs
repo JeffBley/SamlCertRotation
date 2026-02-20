@@ -1179,6 +1179,17 @@ public class DashboardFunctions
             using var payloadDocument = JsonDocument.Parse(jwtPayloadJson);
             var payloadRoot = payloadDocument.RootElement;
 
+            var jwtUserId = TryGetString(payloadRoot, "oid")
+                            ?? TryGetString(payloadRoot, "sub")
+                            ?? TryGetString(payloadRoot, "nameid");
+            var jwtRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var jwtGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddJwtClaimValues(payloadRoot, "roles", jwtRoleValues);
+            AddJwtClaimValues(payloadRoot, "role", jwtRoleValues);
+            AddJwtClaimValues(payloadRoot, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", jwtRoleValues);
+            AddJwtClaimValues(payloadRoot, "groups", jwtGroupValues);
+            AddJwtClaimValues(payloadRoot, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", jwtGroupValues);
+
             if (payloadRoot.TryGetProperty("prn", out var prnElement) && prnElement.ValueKind == JsonValueKind.String)
             {
                 var prnValue = prnElement.GetString();
@@ -1197,10 +1208,30 @@ public class DashboardFunctions
                         var identity = BuildIdentityFromPrincipalRoot(principalRoot);
                         if (identity != null)
                         {
+                            if (string.IsNullOrWhiteSpace(identity.UserId))
+                            {
+                                identity.UserId = jwtUserId;
+                            }
+
+                            ApplyConfiguredRoleMappings(identity.Roles, jwtRoleValues, jwtGroupValues);
+                            identity.IsAuthenticated = IsAuthenticatedPrincipal(identity.UserId, identity.Roles);
+
                             return identity;
                         }
                     }
                 }
+            }
+
+            var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            ApplyConfiguredRoleMappings(roles, jwtRoleValues, jwtGroupValues);
+            if (roles.Count > 0)
+            {
+                return new RequestIdentity
+                {
+                    UserId = jwtUserId,
+                    IsAuthenticated = IsAuthenticatedPrincipal(jwtUserId, roles),
+                    Roles = roles
+                };
             }
         }
         catch
@@ -1208,6 +1239,44 @@ public class DashboardFunctions
         }
 
         return null;
+    }
+
+    private static void AddJwtClaimValues(JsonElement payloadRoot, string claimName, HashSet<string> destination)
+    {
+        if (!payloadRoot.TryGetProperty(claimName, out var claimElement))
+        {
+            return;
+        }
+
+        if (claimElement.ValueKind == JsonValueKind.String)
+        {
+            var value = claimElement.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                destination.Add(value);
+            }
+
+            return;
+        }
+
+        if (claimElement.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var element in claimElement.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = element.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                destination.Add(value);
+            }
+        }
     }
 
     private RequestIdentity? BuildIdentityFromPrincipalRoot(JsonElement root)
