@@ -129,7 +129,7 @@ Custom Security Attributes allow you to tag which SAML apps should be auto-rotat
    - **Description**: `Enable automatic SAML certificate rotation`
    - **Data type**: String
    - **Allow only predefined values**: Yes
-   - **Predefined values**: `on`, `off`
+    - **Predefined values**: `on`, `notify`, `off`
 7. Click **Save**
 
 ---
@@ -151,7 +151,7 @@ Update these values:
 - `notificationSenderEmail`: Your notification sender email
 - `adminNotificationEmails`: Admin emails (semicolon-separated)
 
-Save the file (Ctrl+S) and close the editor.
+Save the file (Ctrl+S), then close the editor (Ctrl+Q).
 
 ### 4.2 Deploy Infrastructure with Bicep
 
