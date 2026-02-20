@@ -80,6 +80,17 @@ Get-ChildItem
 # - DEPLOYMENT_GUIDE.md
 ```
 
+### Sync to the Latest Repository Version (Required)
+
+Cloud Shell storage persists between sessions. Always sync to the latest `v2/main` before building or deploying to avoid stale UI/API regressions.
+
+```powershell
+Set-Location "$HOME/SamlCertRotation"
+git fetch origin
+git checkout v2/main
+git reset --hard origin/v2/main
+```
+
 ---
 
 ## Step 2: Prepare Your Environment
@@ -350,6 +361,8 @@ You should see `Attribute Assignment Reader` in the output.
 ---
 
 ## Step 6: Deploy the Function App Code
+
+> **Required deployment order**: Deploy Function App code first (Step 6), then configure access/auth (Step 7), then deploy dashboard static files (Step 8).
 
 ### 6.1 Build the Project
 
@@ -778,6 +791,22 @@ $dashboardUrl = az staticwebapp show `
 Write-Host "Dashboard URL: https://$dashboardUrl"
 ```
 
+### 8.5 Verify Deployed Dashboard Content (Pre-Login Check)
+
+Before testing sign-in, verify that the latest dashboard content is live.
+
+```powershell
+# Confirm deployed HTML contains expected feature markers
+$SWA_HOST = az staticwebapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "defaultHostname" -o tsv
+
+(Invoke-WebRequest "https://$SWA_HOST/index.html" -UseBasicParsing).Content | Select-String "Notify Only|Run - Report-only|Notification Settings"
+```
+
+If no matches are returned, re-run Step 8.3 before continuing.
+
 ---
 
 ## Step 9: Configure Email Notifications
@@ -1108,6 +1137,43 @@ Copy-Item staticwebapp.config.json dist/
 
 Warnings like "inflight@1.0.6 deprecated" come from the SWA CLI's dependencies.
 These are safe to ignore - they don't affect functionality.
+
+### Dashboard is missing expected controls or filters after deploy
+
+This usually indicates stale source in Cloud Shell or a partial deployment.
+
+```powershell
+# 1) Sync Cloud Shell repo to the latest committed code
+Set-Location "$HOME/SamlCertRotation"
+git fetch origin
+git checkout v2/main
+git reset --hard origin/v2/main
+
+# 2) Force redeploy Function App
+Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
+func azure functionapp publish $FUNCTION_APP_NAME --dotnet-isolated --force
+
+# 3) Rebuild and redeploy dashboard static content
+Set-Location "$HOME/SamlCertRotation/dashboard"
+Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path dist -Force | Out-Null
+Copy-Item index.html dist/
+Copy-Item unauthorized.html dist/
+Copy-Item staticwebapp.config.json dist/
+
+$SWA_TOKEN = az staticwebapp secrets list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "properties.apiKey" -o tsv
+
+npx -y @azure/static-web-apps-cli deploy ./dist `
+    --deployment-token $SWA_TOKEN `
+    --env production
+
+# 4) Validate latest content is served
+$SWA_HOST = az staticwebapp show --resource-group $RESOURCE_GROUP --name $STATIC_WEB_APP_NAME --query "defaultHostname" -o tsv
+(Invoke-WebRequest "https://$SWA_HOST/index.html" -UseBasicParsing).Content | Select-String "Notify Only|Run - Report-only|Notification Settings"
+```
 
 ### "Permission denied" or "Insufficient privileges"
 
