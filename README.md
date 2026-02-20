@@ -124,19 +124,19 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName <FUNCTION_APP_NAME> -Reso
 | `/api/dashboard/stats` | GET | Dashboard statistics (total apps, expiring certs, etc.) |
 | `/api/applications` | GET | List all SAML applications with certificate details |
 | `/api/applications/{id}` | GET | Get specific application details |
-| `/api/applications/{id}/certificates` | POST | Create new certificate for application |
-| `/api/applications/{id}/activate-newest` | POST | Activate the newest certificate |
+| `/api/applications/{id}/certificate` | POST | Create new certificate for application |
+| `/api/applications/{id}/certificate/activate` | POST | Activate the newest certificate |
 | `/api/policy` | GET | Get global rotation policy |
 | `/api/policy` | PUT | Update global rotation policy |
-| `/api/applications/{id}/policy` | GET | Get app-specific policy |
-| `/api/applications/{id}/policy` | PUT | Update app-specific policy |
+| `/api/policy/app/{id}` | GET | Get app-specific policy |
+| `/api/policy/app/{id}` | PUT | Update app-specific policy |
 | `/api/audit` | GET | Get audit logs |
-| `/api/applications/{id}/audit` | GET | Get audit logs for specific app |
+| `/api/audit/app/{id}` | GET | Get audit logs for specific app |
 | `/api/settings` | GET | Get settings (including rotation schedule) |
 | `/api/settings` | PUT | Update settings |
 | `/api/settings/rotate-secret` | POST | Rotate dashboard client secret |
 | `/api/admin/trigger-rotation` | POST | Manually trigger rotation check |
-| `/api/roles` | GET | Get current user's roles |
+| `/api/GetRoles` | GET/POST | Get current user's roles (SWA roles source) |
 
 ## Configuration
 

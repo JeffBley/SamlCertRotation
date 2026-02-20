@@ -887,6 +887,16 @@ $response | ConvertTo-Json -Depth 5
 2. Sign in with an account that is assigned to the Enterprise Application
 3. Verify you can see the dashboard with application statistics
 
+### 11.4 Verify SWA Role Enrichment
+
+After sign-in, verify SWA is enriching roles via the role source endpoint:
+
+1. Open `https://<your-static-web-app-name>.azurestaticapps.net/.auth/me`
+2. Open `https://<your-static-web-app-name>.azurestaticapps.net/api/GetRoles`
+3. Confirm role data includes `admin` and/or `reader` as expected
+
+If `/api/GetRoles` returns 404, verify your deployed Function App includes the `GetRoles` function and route casing exactly as `GetRoles`.
+
 
 ### Dashboard shows 404 Not Found
 
@@ -920,7 +930,7 @@ If you still see 404, check the Azure Portal:
 1. Go to your Static Web App resource
 2. Click **Environment** in the left menu
 3. Verify there's a deployment under "Production"
-### 11.4 Access the Dashboard
+### 11.5 Access the Dashboard
 
 Open your browser and navigate to:
 ```
@@ -1115,6 +1125,26 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName $FUNCTION_APP_NAME -Resou
 2. Verify the SWA backend link was configured (Step 7.7)
 3. Check that Easy Auth is disabled on the Function App (Step 7.8)
 4. Ensure API_BASE_URL in index.html is empty (SWA backend handles routing)
+
+### Dashboard shows `API error: 403`
+
+This usually means SWA role enrichment is not reaching the API.
+
+```powershell
+# Verify GetRoles is reachable through SWA (must not be 404)
+# Replace <SWA_HOST> with your Static Web App hostname
+Invoke-WebRequest "https://<SWA_HOST>/api/GetRoles" -UseBasicParsing
+
+# Verify role mapping app settings on Function App
+az functionapp config appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "[?name=='SWA_ADMIN_APP_ROLE' || name=='SWA_READER_APP_ROLE'].[name,value]" -o table
+```
+
+Expected values:
+- `SWA_ADMIN_APP_ROLE = SamlCertRotation.Admin`
+- `SWA_READER_APP_ROLE = SamlCertRotation.Reader`
 
 ### API returns 400 Bad Request
 
