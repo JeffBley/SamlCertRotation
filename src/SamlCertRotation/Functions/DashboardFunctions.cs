@@ -1006,7 +1006,9 @@ public class DashboardFunctions
             return await CreateErrorResponse(req, "Authentication is required.", HttpStatusCode.Unauthorized);
         }
 
-        var hasReadAccess = identity.Roles.Contains("admin") || identity.Roles.Contains("reader");
+        var hasReadAccess = identity.Roles.Contains("admin")
+                    || identity.Roles.Contains("reader")
+                    || identity.Roles.Contains("authenticated");
         if (!hasReadAccess)
         {
             _logger.LogWarning("Forbidden request by user {UserId} to {Method} {Url} - missing reader/admin role", identity.UserId ?? "unknown", req.Method, req.Url);
@@ -1094,6 +1096,11 @@ public class DashboardFunctions
         }
 
         ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
+
+        if (roles.Count == 0 && !string.IsNullOrWhiteSpace(userId))
+        {
+            roles.Add("authenticated");
+        }
 
         if (!IsAuthenticatedPrincipal(userId, roles))
         {
