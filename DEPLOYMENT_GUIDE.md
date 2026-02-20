@@ -248,8 +248,8 @@ Write-Host "Key Vault URI: $KEY_VAULT_URI"
 Write-Host "Log Analytics Workspace: $LOG_ANALYTICS_NAME"
 Write-Host "Logic App: $LOGIC_APP_NAME"
 
-#Save this value for step 5.1
-MANAGED_IDENTITY_PRINCIPAL_ID = $MANAGED_IDENTITY_PRINCIPAL_ID
+# Save this value for step 5.1
+"MANAGED_IDENTITY_PRINCIPAL_ID=$MANAGED_IDENTITY_PRINCIPAL_ID"
 ```
 
 ---
