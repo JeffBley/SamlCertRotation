@@ -1321,17 +1321,64 @@ public class DashboardFunctions
                          ?? jwt.Claims.FirstOrDefault(c => c.Type == "stable_sid")?.Value;
 
             var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var claimRoleValues = jwt.Claims
+            var claimRoleValues = new List<string>();
+            var claimGroupValues = new List<string>();
+
+            // SWA embeds the full client principal (including userRoles) in the "prn" claim as base64 JSON
+            var prnClaim = jwt.Claims.FirstOrDefault(c => string.Equals(c.Type, "prn", StringComparison.OrdinalIgnoreCase))?.Value;
+            if (!string.IsNullOrWhiteSpace(prnClaim))
+            {
+                try
+                {
+                    var prnJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(prnClaim));
+                    using var prnDoc = JsonDocument.Parse(prnJson);
+                    var prnRoot = prnDoc.RootElement;
+
+                    // Extract userId from prn if not already found
+                    if (string.IsNullOrWhiteSpace(userId))
+                    {
+                        userId = TryGetString(prnRoot, "userId");
+                    }
+
+                    // Extract userRoles from prn — these are the roles assigned by SWA (including custom roles from GetRoles)
+                    if (prnRoot.TryGetProperty("userRoles", out var prnRoles) && prnRoles.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var roleEl in prnRoles.EnumerateArray())
+                        {
+                            var role = roleEl.GetString();
+                            if (!string.IsNullOrWhiteSpace(role))
+                            {
+                                roles.Add(role);
+                            }
+                        }
+                    }
+
+                    _logger.LogInformation("Extracted {RoleCount} roles from SWA prn claim: {Roles}", roles.Count, string.Join(", ", roles));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to decode prn claim from SWA token");
+                }
+            }
+
+            // Also check standard JWT role/group claims as fallback
+            foreach (var rv in jwt.Claims
                 .Where(c => string.Equals(c.Type, "roles", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
                 .Select(c => c.Value)
-                .Where(v => !string.IsNullOrWhiteSpace(v));
+                .Where(v => !string.IsNullOrWhiteSpace(v)))
+            {
+                claimRoleValues.Add(rv);
+            }
 
-            var claimGroupValues = jwt.Claims
+            foreach (var gv in jwt.Claims
                 .Where(c => string.Equals(c.Type, "groups", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
                 .Select(c => c.Value)
-                .Where(v => !string.IsNullOrWhiteSpace(v));
+                .Where(v => !string.IsNullOrWhiteSpace(v)))
+            {
+                claimGroupValues.Add(gv);
+            }
 
             ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
 
