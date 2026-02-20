@@ -16,6 +16,7 @@
     }
   },
   "auth": {
+    "rolesSource": "/api/GetRoles",
     "identityProviders": {
       "azureActiveDirectory": {
         "registration": {

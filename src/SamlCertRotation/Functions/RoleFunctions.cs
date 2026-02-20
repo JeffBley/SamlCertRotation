@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SamlCertRotation.Functions;
 
@@ -65,13 +66,15 @@ public class RoleFunctions
             if (clientPrincipal.Claims != null)
             {
                 var groupClaims = clientPrincipal.Claims
-                    .Where(c => c.Type == "groups" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups")
-                    .Select(c => c.Value)
+                    .Where(c => c.ClaimType == "groups" || c.ClaimType == "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups")
+                    .Select(c => c.ClaimValue)
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
                     .ToList();
 
                 var appRoleClaims = clientPrincipal.Claims
-                    .Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
-                    .Select(c => c.Value)
+                    .Where(c => c.ClaimType == "roles" || c.ClaimType == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+                    .Select(c => c.ClaimValue)
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
                     .ToList();
 
                 var isAdminByGroup = !string.IsNullOrWhiteSpace(adminGroupId) &&
@@ -134,6 +137,18 @@ public class ClientPrincipal
 
 public class ClientPrincipalClaim
 {
-    public string Type { get; set; } = string.Empty;
-    public string Value { get; set; } = string.Empty;
+    [JsonPropertyName("typ")]
+    public string? Typ { get; set; }
+
+    [JsonPropertyName("val")]
+    public string? Val { get; set; }
+
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
+
+    [JsonPropertyName("value")]
+    public string? Value { get; set; }
+
+    public string ClaimType => !string.IsNullOrWhiteSpace(Type) ? Type : Typ ?? string.Empty;
+    public string ClaimValue => !string.IsNullOrWhiteSpace(Value) ? Value : Val ?? string.Empty;
 }
