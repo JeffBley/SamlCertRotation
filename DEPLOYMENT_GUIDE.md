@@ -630,6 +630,18 @@ az staticwebapp appsettings list `
 
 Write-Host "App settings configured"
 Write-Host "NOTE: Dashboard secret remains in Key Vault; SWA reads it via Key Vault reference."
+
+# Configure Function App role mapping used by GetRoles
+az functionapp config appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --settings "SWA_ADMIN_APP_ROLE=SamlCertRotation.Admin" "SWA_READER_APP_ROLE=SamlCertRotation.Reader"
+
+# Verify role mapping settings exist on Function App
+az functionapp config appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "[?name=='SWA_ADMIN_APP_ROLE' || name=='SWA_READER_APP_ROLE'].[name,value]" -o table
 ```
 
 > **Important**: The `az staticwebapp appsettings set` command may display `null` for values due to security redaction. Use the `list` command to verify the settings were applied correctly.
@@ -951,6 +963,8 @@ After sign-in, verify SWA is enriching roles via the role source endpoint:
 1. Open `https://<your-static-web-app-name>.azurestaticapps.net/.auth/me`
 2. Open `https://<your-static-web-app-name>.azurestaticapps.net/api/GetRoles`
 3. Confirm role data includes `admin` and/or `reader` as expected
+
+> **Note**: Check these in your browser after sign-in. Running these endpoints from Cloud Shell is unauthenticated and will not show your app roles.
 
 If `/api/GetRoles` returns 404, verify your deployed Function App includes the `GetRoles` function and route casing exactly as `GetRoles`.
 
@@ -1282,6 +1296,26 @@ az functionapp config appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
     --query "[?name=='SWA_ADMIN_APP_ROLE' || name=='SWA_READER_APP_ROLE'].[name,value]" -o table
+
+# Assign current signed-in user to Reader app role (PowerShell-safe JSON body)
+$CLIENT_ID = az staticwebapp appsettings list --resource-group $RESOURCE_GROUP --name $STATIC_WEB_APP_NAME --query "properties.AAD_CLIENT_ID" -o tsv
+$SP_ID = az ad sp show --id $CLIENT_ID --query id -o tsv
+$USER_ID = az ad signed-in-user show --query id -o tsv
+$READER_ROLE_ID = az ad app show --id $CLIENT_ID --query "appRoles[?value=='SamlCertRotation.Reader'].id | [0]" -o tsv
+
+$body = @{
+    principalId = $USER_ID
+    resourceId = $SP_ID
+    appRoleId = $READER_ROLE_ID
+} | ConvertTo-Json -Compress
+
+az rest --method POST `
+    --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID/appRoleAssignedTo" `
+    --headers "Content-Type=application/json" `
+    --body $body
+
+# Sign out and sign back in so SWA receives updated role claims
+# https://<SWA_HOST>/.auth/logout
 ```
 
 Expected values:
