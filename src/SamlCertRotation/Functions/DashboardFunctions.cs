@@ -30,7 +30,7 @@ public class DashboardFunctions
     private readonly IConfiguration _configuration;
     private readonly ILogger<DashboardFunctions> _logger;
     private readonly string? _tenantId;
-    private readonly string? _swaClientId;
+    private readonly HashSet<string> _allowedAudiences;
     private readonly IConfigurationManager<OpenIdConnectConfiguration>? _oidcConfigurationManager;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -57,7 +57,19 @@ public class DashboardFunctions
         _logger = logger;
 
         _tenantId = _configuration["TenantId"];
-        _swaClientId = _configuration["SWA_AAD_CLIENT_ID"] ?? _configuration["AAD_CLIENT_ID"];
+        _allowedAudiences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddAudienceIfPresent(_allowedAudiences, _configuration["SWA_AAD_CLIENT_ID"]);
+        AddAudienceIfPresent(_allowedAudiences, _configuration["AAD_CLIENT_ID"]);
+
+        var configuredAudiences = _configuration["SWA_ALLOWED_AUDIENCES"];
+        if (!string.IsNullOrWhiteSpace(configuredAudiences))
+        {
+            foreach (var audience in configuredAudiences.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                AddAudienceIfPresent(_allowedAudiences, audience);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(_tenantId))
         {
@@ -1163,8 +1175,8 @@ public class DashboardFunctions
                 $"https://login.microsoftonline.com/{_tenantId}/v2.0",
                 $"https://sts.windows.net/{_tenantId}/"
             },
-            ValidateAudience = !string.IsNullOrWhiteSpace(_swaClientId),
-            ValidAudience = _swaClientId,
+            ValidateAudience = _allowedAudiences.Count > 0,
+            ValidAudiences = _allowedAudiences,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(5)
         };
@@ -1257,6 +1269,14 @@ public class DashboardFunctions
         }
 
         candidates.Add((source, token));
+    }
+
+    private static void AddAudienceIfPresent(HashSet<string> audiences, string? audience)
+    {
+        if (!string.IsNullOrWhiteSpace(audience))
+        {
+            audiences.Add(audience.Trim());
+        }
     }
 
     /// <summary>
