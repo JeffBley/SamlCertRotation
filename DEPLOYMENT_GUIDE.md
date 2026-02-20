@@ -261,6 +261,9 @@ The managed identity needs Microsoft Graph API permissions.
 ### 5.1 Grant Permissions via PowerShell
 
 ```powershell
+# Set variable
+$MANAGED_IDENTITY_PRINCIPAL_ID = "<Insert MANAGED_IDENTITY_PRINCIPAL_ID from step 4.3>"
+
 # Install Microsoft Graph module if needed
 Install-Module Microsoft.Graph -Scope CurrentUser -Force
 
