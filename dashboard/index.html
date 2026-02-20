@@ -952,6 +952,22 @@
             return div.innerHTML;
         }
 
+        function toSafeClassToken(value, fallback = 'unknown') {
+            const token = String(value ?? '')
+                .toLowerCase()
+                .replace(/[^a-z0-9_-]/g, '');
+            return token || fallback;
+        }
+
+        function toDomIdToken(value, fallback = 'item') {
+            const token = String(value ?? '').replace(/[^A-Za-z0-9_-]/g, '_');
+            return token || fallback;
+        }
+
+        function toJsStringLiteral(value) {
+            return JSON.stringify(String(value ?? ''));
+        }
+
         // Sign Out function - kills app session only (not global SSO logout)
         function signOut() {
             window.location.href = '/.auth/logout?post_logout_redirect_uri=/';
@@ -1512,35 +1528,38 @@
                     <tbody>
                         ${apps.map(app => {
                             const computedStatus = getComputedAppStatus(app);
+                            const appIdToken = toDomIdToken(app.id, 'app');
+                            const autoRotateStatusClass = toSafeClassToken(app.autoRotateStatus || 'null', 'null');
+                            const computedStatusClass = toSafeClassToken(computedStatus, 'ok');
                             return `
                             <tr>
                                 <td>${escapeHtml(app.displayName)}</td>
                                 <td>${escapeHtml(app.sponsor) || 'Not Set'}</td>
                                 <td>
-                                    <span class="status-badge status-${(app.autoRotateStatus || 'null').toLowerCase()}">
+                                    <span class="status-badge status-${autoRotateStatusClass}">
                                         ${((app.autoRotateStatus || '').toLowerCase() === 'notify') ? 'Notify Only' : (escapeHtml(app.autoRotateStatus) || 'Not Set')}
                                     </span>
                                 </td>
                                 <td>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
                                 <td>${app.daysUntilExpiry ?? 'N/A'}</td>
                                 <td>
-                                    <span class="expiry-badge expiry-${computedStatus}">
+                                    <span class="expiry-badge expiry-${computedStatusClass}">
                                         ${formatComputedStatus(computedStatus)}
                                     </span>
                                 </td>
                                 <td class="actions-cell">
-                                    <button class="actions-btn" onclick="toggleActionsMenu(event, '${escapeHtml(app.id)}')">⋮</button>
-                                    <div id="actions-menu-${escapeHtml(app.id)}" class="dropdown-menu">
-                                        <button class="dropdown-item" onclick="createNewCert('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}')">
+                                    <button class="actions-btn" onclick='toggleActionsMenu(event, ${toJsStringLiteral(appIdToken)})'>⋮</button>
+                                    <div id="actions-menu-${appIdToken}" class="dropdown-menu">
+                                        <button class="dropdown-item" onclick='createNewCert(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
                                             Create new SAML certificate
                                         </button>
-                                        <button class="dropdown-item" onclick="activateNewestCert('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}')">
+                                        <button class="dropdown-item" onclick='activateNewestCert(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
                                             Make newest cert active
                                         </button>
-                                        <button class="dropdown-item" onclick="editSponsor('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}', '${escapeHtml(app.sponsor || '').replace(/'/g, "\\'")}')">
+                                        <button class="dropdown-item" onclick='editSponsor(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)}, ${toJsStringLiteral(app.sponsor || '')})'>
                                             Edit Sponsor
                                         </button>
-                                        <button class="dropdown-item ${computedStatus === 'ok' ? 'disabled' : ''}" ${computedStatus === 'ok' ? 'disabled' : ''} onclick="resendReminderEmail('${escapeHtml(app.id)}', '${escapeHtml(app.displayName).replace(/'/g, "\\'")}')">
+                                        <button class="dropdown-item ${computedStatus === 'ok' ? 'disabled' : ''}" ${computedStatus === 'ok' ? 'disabled' : ''} onclick='resendReminderEmail(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
                                             Resend Reminder Email
                                         </button>
                                     </div>
