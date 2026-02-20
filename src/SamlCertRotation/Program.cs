@@ -47,7 +47,6 @@ var host = new HostBuilder()
         services.AddSingleton<INotificationService, NotificationService>();
         services.AddSingleton<IAuditService, AuditService>();
         services.AddSingleton<ICertificateRotationService, CertificateRotationService>();
-        services.AddSingleton<ISwaSettingsService, SwaSettingsService>();
 
         // Register HttpClient for any external calls
         services.AddHttpClient();

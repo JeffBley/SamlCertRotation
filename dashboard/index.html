@@ -888,21 +888,6 @@
                 </div>
             </div>
 
-            <div class="section" style="margin-top: 24px;">
-                <div class="section-header">
-                    <h2>Dashboard Security</h2>
-                </div>
-                <div class="policy-form">
-                    <div class="form-group">
-                        <label>Dashboard Client Secret</label>
-                        <p style="font-size:12px;color:#666;margin-bottom:12px;">Rotate the client secret used for dashboard authentication. The new secret will be stored in Key Vault and the SWA app settings will be updated automatically.</p>
-                        <button class="btn btn-secondary" id="rotateSecretBtn" onclick="rotateDashboardSecret()">
-                            Rotate Dashboard Client Secret
-                        </button>
-                        <p id="rotateSecretStatus" style="font-size:12px;margin-top:8px;display:none;"></p>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -1296,20 +1281,7 @@
             document.getElementById('confirmModalMessage').textContent = 'Are you sure you want to proceed?';
             document.getElementById('modalConfirmBtn').textContent = 'Confirm';
             
-            if (action.type === 'rotateDashboardSecret') {
-                try {
-                    showLoading('Rotating dashboard client secret...');
-                    const result = await apiCall('settings/rotate-secret', { method: 'POST' });
-                    const expiryDate = new Date(result.expiresAt).toLocaleDateString();
-                    if (result.swaUpdated) {
-                        showSuccess(`Client secret rotated successfully. SWA updated. Expires: ${expiryDate}`);
-                    } else {
-                        showSuccess(`Client secret rotated and stored in Key Vault. SWA update failed - manual configuration may be required. Expires: ${expiryDate}`);
-                    }
-                } catch (error) {
-                    showError(`Failed to rotate secret: ${error.message}`);
-                }
-            } else if (action.type === 'triggerRotation') {
+            if (action.type === 'triggerRotation') {
                 try {
                     const isReportOnly = action.mode === 'report-only';
                     showLoading(isReportOnly ? 'Running report-only evaluation...' : 'Running production rotation...');
@@ -1328,16 +1300,6 @@
                     showError(`Failed to run rotation: ${error.message}`);
                 }
             }
-        }
-
-        // Rotate the dashboard application's client secret
-        function rotateDashboardSecret() {
-            pendingAction = { type: 'rotateDashboardSecret' };
-            document.getElementById('modalTitle').textContent = 'Rotate Client Secret';
-            document.getElementById('confirmModalMessage').textContent = 
-                'This will create a new client secret for the dashboard app registration and store it in Azure Key Vault. The SWA uses a Key Vault reference for authentication, so no manual configuration is needed. Continue?';
-            document.getElementById('modalConfirmBtn').textContent = 'Rotate';
-            document.getElementById('confirmModal').classList.add('show');
         }
 
         function triggerReportOnlyRun() {

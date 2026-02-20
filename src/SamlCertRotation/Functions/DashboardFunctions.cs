@@ -2,8 +2,6 @@ using System.Net;
 using System.Net.Mail;
 using System.Text;
 using System.Text.Json;
-using Azure.Identity;
-using Azure.Security.KeyVault.Secrets;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
@@ -23,12 +21,8 @@ public class DashboardFunctions
     private readonly IPolicyService _policyService;
     private readonly IAuditService _auditService;
     private readonly INotificationService _notificationService;
-    private readonly ISwaSettingsService _swaSettingsService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<DashboardFunctions> _logger;
-    private readonly SecretClient? _secretClient;
-
-    private const string SwaClientSecretName = "SwaClientSecret";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -42,7 +36,6 @@ public class DashboardFunctions
         IPolicyService policyService,
         IAuditService auditService,
         INotificationService notificationService,
-        ISwaSettingsService swaSettingsService,
         IConfiguration configuration,
         ILogger<DashboardFunctions> logger)
     {
@@ -51,20 +44,8 @@ public class DashboardFunctions
         _policyService = policyService;
         _auditService = auditService;
         _notificationService = notificationService;
-        _swaSettingsService = swaSettingsService;
         _configuration = configuration;
         _logger = logger;
-
-        // Initialize Key Vault client
-        var keyVaultUri = configuration["KeyVaultUri"];
-        if (!string.IsNullOrEmpty(keyVaultUri))
-        {
-            var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
-            {
-                ManagedIdentityClientId = configuration["AZURE_CLIENT_ID"]
-            });
-            _secretClient = new SecretClient(new Uri(keyVaultUri), credential);
-        }
     }
 
     /// <summary>
@@ -961,95 +942,6 @@ public class DashboardFunctions
                 "Error updating sponsor",
                 ex.Message);
 
-            return await CreateErrorResponse(req, ex.Message);
-        }
-    }
-
-    /// <summary>
-    /// Rotate the dashboard application client secret and store in Key Vault
-    /// </summary>
-    [Function("RotateDashboardSecret")]
-    public async Task<HttpResponseData> RotateDashboardSecret(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "settings/rotate-secret")] HttpRequestData req)
-    {
-        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
-        if (authError != null)
-        {
-            return authError;
-        }
-
-        _logger.LogInformation("Rotating dashboard client secret");
-
-        try
-        {
-            if (_secretClient == null)
-            {
-                return await CreateErrorResponse(req, "Key Vault not configured - cannot store rotated secret", HttpStatusCode.BadRequest);
-            }
-
-            var clientId = _configuration["SWA_CLIENT_ID"];
-            if (string.IsNullOrEmpty(clientId))
-            {
-                return await CreateErrorResponse(req, "SWA_CLIENT_ID not configured in Function App settings", HttpStatusCode.BadRequest);
-            }
-
-            var result = await _graphService.RotateAppClientSecretAsync(clientId);
-            if (result == null)
-            {
-                return await CreateErrorResponse(req, "Failed to rotate client secret");
-            }
-
-            if (string.IsNullOrEmpty(result.SecretValue))
-            {
-                return await CreateErrorResponse(req, "New secret was created but value was not returned");
-            }
-
-            // Store the new secret in Key Vault
-            var secret = new KeyVaultSecret(SwaClientSecretName, result.SecretValue)
-            {
-                Properties =
-                {
-                    ExpiresOn = result.EndDateTime,
-                    ContentType = "application/x-password",
-                    Tags =
-                    {
-                        ["AppClientId"] = clientId,
-                        ["CreatedBy"] = "SamlCertRotation-ManualRotate",
-                        ["RotatedAt"] = DateTime.UtcNow.ToString("o")
-                    }
-                }
-            };
-
-            await _secretClient.SetSecretAsync(secret);
-            _logger.LogInformation("New client secret stored in Key Vault as '{SecretName}'", SwaClientSecretName);
-
-            // Update the SWA app settings with the new secret
-            var swaUpdated = await _swaSettingsService.UpdateClientSecretAsync(result.SecretValue);
-            if (!swaUpdated)
-            {
-                _logger.LogWarning("Failed to update SWA app settings - manual update may be required");
-            }
-
-            await _auditService.LogSuccessAsync(
-                clientId,
-                "Dashboard Application",
-                "Client Secret Rotated",
-                $"Dashboard client secret was rotated and stored in Key Vault. SWA updated: {swaUpdated}. Expires: {result.EndDateTime:yyyy-MM-dd}");
-
-            return await CreateJsonResponse(req, new
-            {
-                message = swaUpdated 
-                    ? "Client secret rotated, stored in Key Vault, and SWA updated successfully." 
-                    : "Client secret rotated and stored in Key Vault. SWA update failed - manual configuration may be required.",
-                secretHint = result.Hint,
-                expiresAt = result.EndDateTime,
-                keyVaultSecretName = SwaClientSecretName,
-                swaUpdated = swaUpdated
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error rotating dashboard client secret");
             return await CreateErrorResponse(req, ex.Message);
         }
     }

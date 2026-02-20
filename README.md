@@ -17,11 +17,11 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 - **Export to CSV**: Export application lists and cleanup reports
 - **Policy Management**: Configure global rotation thresholds
 - **Audit Logs**: Complete audit trail of all certificate operations
-- **Settings**: View rotation schedule and rotate dashboard client secret
+- **Settings**: View rotation schedule and retention policy
 
 ### Security & Integration
 - **Managed Identity Authentication**: Function App uses managed identity for Microsoft Graph API access
-- **Key Vault Integration**: Dashboard client secrets stored in Key Vault and auto-synced to SWA settings
+- **Key Vault Integration**: Dashboard client secret stored in Key Vault and referenced from SWA settings
 - **Entra ID SSO**: Dashboard protected with Microsoft Entra ID authentication
 - **Role-Based Access**: Control dashboard access via Entra ID app assignment
 - **Email Notifications**: Logic App integration for certificate operation alerts
@@ -115,7 +115,6 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName <FUNCTION_APP_NAME> -Reso
 | Function | Schedule | Description |
 |----------|----------|-------------|
 | `CertificateChecker` | Configurable (default: 6 AM UTC) | Checks all SAML apps and rotates certificates as needed |
-| `RotateSwaClientSecret` | Daily at 3 AM UTC | Auto-rotates dashboard client secret when near expiry |
 
 ### HTTP API Endpoints
 
@@ -134,7 +133,6 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName <FUNCTION_APP_NAME> -Reso
 | `/api/audit/app/{id}` | GET | Get audit logs for specific app |
 | `/api/settings` | GET | Get settings (including rotation schedule) |
 | `/api/settings` | PUT | Update settings |
-| `/api/settings/rotate-secret` | POST | Rotate dashboard client secret |
 | `/api/admin/trigger-rotation` | POST | Manually trigger rotation check |
 | `/api/GetRoles` | GET/POST | Get current user's roles (SWA roles source) |
 
@@ -152,11 +150,7 @@ Create in Microsoft Entra Admin Center:
 | Setting | Required | Description |
 |---------|----------|-------------|
 | `KeyVaultUri` | Yes | Key Vault URI for secrets |
-| `SWA_CLIENT_ID` | Yes | Dashboard app registration client ID |
 | `RotationSchedule` | No | CRON expression (default: `0 0 6 * * *`) |
-| `SubscriptionId` | Yes | Azure Subscription ID (for SWA updates) |
-| `SwaResourceGroup` | Yes | Resource group containing SWA |
-| `SwaName` | Yes | Static Web App resource name |
 | `AZURE_CLIENT_ID` | Auto | Managed identity client ID |
 
 ### Policy Settings
@@ -172,7 +166,6 @@ Create in Microsoft Entra Admin Center:
 ├── src/SamlCertRotation/
 │   ├── Functions/
 │   │   ├── CertificateCheckerFunction.cs    # Timer-triggered rotation
-│   │   ├── ClientSecretRotationFunction.cs  # Dashboard secret rotation
 │   │   ├── DashboardFunctions.cs            # HTTP API endpoints
 │   │   └── RoleFunctions.cs                 # Role/auth endpoints
 │   ├── Services/
@@ -220,12 +213,12 @@ Create in Microsoft Entra Admin Center:
 
 ### Settings Tab
 - View current rotation schedule (CRON format)
-- Rotate dashboard client secret (stored in Key Vault)
+- View retention policy and run mode settings
 
 ## Security
 
 - **No stored credentials**: Uses Azure Managed Identity for Graph API
-- **Key Vault for secrets**: Dashboard client secret stored securely
+- **Key Vault for secrets**: Dashboard client secret stored only in Key Vault
 - **Entra ID authentication**: Dashboard requires authenticated users
 - **App assignment required**: Only assigned users can access dashboard
 - **Audit trail**: All operations logged for compliance

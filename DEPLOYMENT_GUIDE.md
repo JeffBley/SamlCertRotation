@@ -377,7 +377,7 @@ try {
 }
 ```
 
-You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, `RotateSwaClientSecret`, etc. The route check should return `401` or `403`.
+You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` or `403`.
 
 ### 6.4 Recovery Command (If Functions List Is Empty)
 
@@ -512,8 +512,7 @@ Write-Host "User assigned to Enterprise Application"
 
 ### 7.5 Store Client Secret in Key Vault
 
-The client secret is stored in Azure Key Vault for security. The managed identity has permissions to rotate
-it automatically when it's within 30 days of expiration.
+Store the dashboard client secret in Azure Key Vault. This project does not auto-rotate dashboard secrets.
 
 ```powershell
 # Get Key Vault name from deployment outputs
@@ -548,12 +547,12 @@ Write-Host "Client secret stored in Key Vault as 'SwaClientSecret'"
 # Get your tenant ID
 $TENANT_ID = az account show --query "tenantId" -o tsv
 
-# Configure SWA with the app registration credentials
-# Note: SWA custom auth requires the actual secret value, not Key Vault references
+# Configure SWA with app registration client ID and Key Vault secret reference
+# Requires SWA Standard plan with managed identity enabled and Key Vault access granted
 az staticwebapp appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
-    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=$CLIENT_SECRET"
+    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=$KEY_VAULT_NAME;SecretName=SwaClientSecret)"
 
 # Verify settings were applied (the 'set' command may show null due to redaction)
 az staticwebapp appsettings list `
@@ -561,15 +560,8 @@ az staticwebapp appsettings list `
     --name $STATIC_WEB_APP_NAME `
     --query "properties" -o json
 
-# Configure the Function App with the SWA client ID for auto-rotation
-az functionapp config appsettings set `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --settings "SWA_CLIENT_ID=$CLIENT_ID"
-
 Write-Host "App settings configured"
-Write-Host ""
-Write-Host "NOTE: The client secret is also stored in Key Vault for backup/rotation purposes."
+Write-Host "NOTE: Dashboard secret remains in Key Vault; SWA reads it via Key Vault reference."
 ```
 
 > **Important**: The `az staticwebapp appsettings set` command may display `null` for values due to security redaction. Use the `list` command to verify the settings were applied correctly.
@@ -647,14 +639,10 @@ Write-Host "Access control configuration saved to access-control-config.json"
 | Setting | Location | Value |
 |---------|----------|-------|
 | `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
-| `AAD_CLIENT_SECRET` | SWA App Settings | Client secret (auto-synced from Key Vault) |
+| `AAD_CLIENT_SECRET` | SWA App Settings | Key Vault reference string (`@Microsoft.KeyVault(...)`) |
 | `SwaClientSecret` | Key Vault | Primary storage for the client secret |
-| `SWA_CLIENT_ID` | Function App Settings | App Registration Client ID (for auto-rotation) |
 | `KeyVaultUri` | Function App Settings | Key Vault URI (set by Bicep) |
 | `RotationSchedule` | Function App Settings | CRON expression for rotation checks (default: `0 0 6 * * *` = 6 AM UTC daily) |
-| `SubscriptionId` | Function App Settings | Azure Subscription ID (set by Bicep) |
-| `SwaResourceGroup` | Function App Settings | Resource Group containing SWA (set by Bicep) |
-| `SwaName` | Function App Settings | Static Web App name (set by Bicep) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
 | Easy Auth | Function App | Disabled (Step 7.8) |
 | Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
@@ -666,12 +654,7 @@ Write-Host "Access control configuration saved to access-control-config.json"
 > - `0 0 */12 * * *` - Every 12 hours
 > - `0 0 6 * * 1` - Every Monday at 6:00 AM UTC
 
-> **Auto-Rotation**: The `RotateSwaClientSecret` function runs daily and will automatically:
-> 1. Create a new client secret when the current one is within 30 days of expiration
-> 2. Store the new secret in Key Vault (`SwaClientSecret`)
-> 3. Update the SWA's `AAD_CLIENT_SECRET` app setting automatically
-> 
-> This ensures seamless authentication without manual intervention.
+> **Manual secret management**: This solution does not rotate dashboard client secrets automatically. Rotate in Entra ID on your schedule, update `SwaClientSecret` in Key Vault, and keep the SWA app setting as a Key Vault reference.
 
 ---
 
@@ -943,6 +926,54 @@ https://<your-static-web-app-name>.azurestaticapps.net
 
 Now that deployment is complete, consider these optional enhancements:
 
+### Manual Dashboard Secret Rotation Runbook
+
+Use this runbook whenever you need to rotate the Microsoft Entra client secret for dashboard sign-in.
+
+```powershell
+# Prerequisites (from earlier steps)
+# $RESOURCE_GROUP
+# $STATIC_WEB_APP_NAME
+# $KEY_VAULT_NAME
+
+# 1) Get dashboard app registration client ID from SWA settings
+$CLIENT_ID = az staticwebapp appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "properties.AAD_CLIENT_ID" -o tsv
+
+Write-Host "Dashboard App Client ID: $CLIENT_ID"
+
+# 2) Create a new Entra client secret (valid 2 years)
+$NEW_CLIENT_SECRET = az ad app credential reset `
+    --id $CLIENT_ID `
+    --display-name "SWA Auth Secret" `
+    --years 2 `
+    --query "password" -o tsv
+
+# 3) Store the new secret in Key Vault under the expected name
+az keyvault secret set `
+    --vault-name $KEY_VAULT_NAME `
+    --name "SwaClientSecret" `
+    --value $NEW_CLIENT_SECRET `
+    --expires (Get-Date).AddYears(2).ToString("yyyy-MM-ddTHH:mm:ssZ") `
+    --tags "CreatedBy=ManualRotation"
+
+# 4) Verify SWA still points to Key Vault reference (not plaintext)
+az staticwebapp appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "properties.AAD_CLIENT_SECRET" -o tsv
+```
+
+Expected result for step 4:
+- `AAD_CLIENT_SECRET` should be an `@Microsoft.KeyVault(...)` reference string.
+- It should not be a plaintext secret value.
+
+Recommended cadence:
+- Rotate every 90-180 days, or per your security policy.
+- Keep the previous secret briefly during cutover, then remove old credentials from the app registration after validation.
+
 ### Configure a Custom Domain
 
 By default, your dashboard URL is auto-generated (e.g., `happy-island-01f529a0f.azurestaticapps.net`). To use a custom domain like `saml-dashboard.yourcompany.com`:
@@ -1054,7 +1085,7 @@ $MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
 $KEY_VAULT_NAME = $outputs.keyVaultName.value
 ```
 
-### Recover CLIENT_ID and CLIENT_SECRET
+### Recover CLIENT_ID and Key Vault secret
 
 If you lose these variables during Step 7:
 
@@ -1064,12 +1095,12 @@ $APP_NAME = "SAML Certificate Rotation Dashboard"
 $CLIENT_ID = az ad app list --filter "displayName eq '$APP_NAME'" --query "[0].appId" -o tsv
 Write-Host "CLIENT_ID: $CLIENT_ID"
 
-# Recover CLIENT_SECRET from Key Vault (if Step 7.5 was completed)
-$CLIENT_SECRET = az keyvault secret show --vault-name $KEY_VAULT_NAME --name "SwaClientSecret" --query "value" -o tsv
-Write-Host "CLIENT_SECRET length: $($CLIENT_SECRET.Length)"
+# Verify secret exists in Key Vault (value is redacted in command output)
+az keyvault secret show --vault-name $KEY_VAULT_NAME --name "SwaClientSecret" --query "{name:name, expires:attributes.expires}" -o table
 
-# If the secret is not in Key Vault, generate a new one:
-# $CLIENT_SECRET = az ad app credential reset --id $CLIENT_ID --display-name "SWA Auth Secret" --years 2 --query "password" -o tsv
+# If the secret is not in Key Vault, generate and store a new one:
+# $NEW_CLIENT_SECRET = az ad app credential reset --id $CLIENT_ID --display-name "SWA Auth Secret" --years 2 --query "password" -o tsv
+# az keyvault secret set --vault-name $KEY_VAULT_NAME --name "SwaClientSecret" --value $NEW_CLIENT_SECRET
 ```
 
 ### Function not triggering
