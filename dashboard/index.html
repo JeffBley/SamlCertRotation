@@ -1474,7 +1474,7 @@
 
             } catch (error) {
                 document.getElementById('apps-table-container').innerHTML = 
-                    `<div class="error">Failed to load data: ${error.message}</div>`;
+                    `<div class="error">Failed to load data: ${escapeHtml(error.message)}</div>`;
             }
         }
 
@@ -1690,7 +1690,7 @@
 
             } catch (error) {
                 document.getElementById('audit-table-container').innerHTML = 
-                    `<div class="error">Failed to load audit log: ${error.message}</div>`;
+                    `<div class="error">Failed to load audit log: ${escapeHtml(error.message)}</div>`;
             }
         }
 
@@ -1922,14 +1922,14 @@
                         ${entries.map(entry => `
                             <tr>
                                 <td>${new Date(entry.timestamp).toLocaleString()}</td>
-                                <td>${entry.appDisplayName}</td>
-                                <td>${entry.actionType}</td>
+                                <td>${escapeHtml(entry.appDisplayName)}</td>
+                                <td>${escapeHtml(entry.actionType)}</td>
                                 <td>
                                     <span class="status-badge ${entry.isSuccess ? 'status-on' : 'status-off'}">
                                         ${entry.isSuccess ? 'Success' : 'Failed'}
                                     </span>
                                 </td>
-                                <td>${entry.description}${entry.errorMessage ? ` - ${entry.errorMessage}` : ''}</td>
+                                <td>${escapeHtml(entry.description)}${entry.errorMessage ? ` - ${escapeHtml(entry.errorMessage)}` : ''}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -1978,7 +1978,7 @@
                 
             } catch (error) {
                 document.getElementById('cleanup-table-container').innerHTML = 
-                    `<div class="error">Failed to load cleanup data: ${error.message}</div>`;
+                    `<div class="error">Failed to load cleanup data: ${escapeHtml(error.message)}</div>`;
             }
         }
 

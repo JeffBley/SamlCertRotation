@@ -440,7 +440,7 @@ $CLIENT_SECRET = az ad app credential reset `
     --years 2 `
     --query "password" -o tsv
 
-Write-Host "Client Secret: $CLIENT_SECRET"
+Write-Host "Client secret generated successfully. Length: $($CLIENT_SECRET.Length)"
 Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!"
 ```
 
