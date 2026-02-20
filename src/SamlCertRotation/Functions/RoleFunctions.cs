@@ -129,7 +129,7 @@ public class RoleFunctions
             return headerPrincipal;
         }
 
-        return ParsePrincipalFromAuthToken(req);
+        return null;
     }
 
     private static async Task<ClientPrincipal?> ParsePrincipalFromBodyAsync(HttpRequestData req)
@@ -176,78 +176,6 @@ public class RoleFunctions
         }
 
         return DeserializePrincipal(root.GetRawText());
-    }
-
-    private static ClientPrincipal? ParsePrincipalFromAuthToken(HttpRequestData req)
-    {
-        var authTokenHeader = GetHeaderValue(req, "x-ms-auth-token");
-        if (string.IsNullOrWhiteSpace(authTokenHeader))
-        {
-            return null;
-        }
-
-        var token = authTokenHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-            ? authTokenHeader.Substring("Bearer ".Length).Trim()
-            : authTokenHeader.Trim();
-
-        var payloadJson = DecodeJwtPayload(token);
-        if (string.IsNullOrWhiteSpace(payloadJson))
-        {
-            return null;
-        }
-
-        using var payloadDocument = JsonDocument.Parse(payloadJson);
-        var payloadRoot = payloadDocument.RootElement;
-
-        var claims = new List<ClientPrincipalClaim>();
-        AddClaimsFromJwtProperty(payloadRoot, "roles", claims);
-        AddClaimsFromJwtProperty(payloadRoot, "role", claims);
-        AddClaimsFromJwtProperty(payloadRoot, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", claims);
-        AddClaimsFromJwtProperty(payloadRoot, "groups", claims);
-        AddClaimsFromJwtProperty(payloadRoot, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", claims);
-
-        if (payloadRoot.TryGetProperty("prn", out var prnElement) && prnElement.ValueKind == JsonValueKind.String)
-        {
-            var prnValue = prnElement.GetString();
-            if (!string.IsNullOrWhiteSpace(prnValue))
-            {
-                var principalJson = DecodePrincipalPayload(prnValue) ?? Uri.UnescapeDataString(prnValue);
-                if (!string.IsNullOrWhiteSpace(principalJson))
-                {
-                    using var principalDocument = JsonDocument.Parse(principalJson);
-                    var principalRoot = principalDocument.RootElement;
-                    if (principalRoot.TryGetProperty("clientPrincipal", out var wrappedPrincipal) && wrappedPrincipal.ValueKind == JsonValueKind.Object)
-                    {
-                        principalRoot = wrappedPrincipal;
-                    }
-
-                    var principalFromPrn = DeserializePrincipal(principalRoot.GetRawText());
-                    if (principalFromPrn != null)
-                    {
-                        var existingClaims = principalFromPrn.Claims ?? new List<ClientPrincipalClaim>();
-                        existingClaims.AddRange(claims);
-                        principalFromPrn.Claims = existingClaims;
-                        return principalFromPrn;
-                    }
-                }
-            }
-        }
-
-        var userId = TryGetString(payloadRoot, "oid")
-                     ?? TryGetString(payloadRoot, "sub")
-                     ?? TryGetString(payloadRoot, "nameid");
-
-        if (string.IsNullOrWhiteSpace(userId) && claims.Count == 0)
-        {
-            return null;
-        }
-
-        return new ClientPrincipal
-        {
-            IdentityProvider = "aad",
-            UserId = userId,
-            Claims = claims
-        };
     }
 
     private static ClientPrincipal? DeserializePrincipal(string json)
@@ -309,29 +237,6 @@ public class RoleFunctions
         }
     }
 
-    private static string? DecodeJwtPayload(string jwt)
-    {
-        if (string.IsNullOrWhiteSpace(jwt))
-        {
-            return null;
-        }
-
-        var parts = jwt.Split('.');
-        if (parts.Length < 2)
-        {
-            return null;
-        }
-
-        try
-        {
-            return Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(parts[1])));
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     private static string NormalizeBase64(string value)
     {
         var normalized = value.Replace('-', '+').Replace('_', '/');
@@ -342,54 +247,6 @@ public class RoleFunctions
         }
 
         return normalized;
-    }
-
-    private static string? TryGetString(JsonElement element, string propertyName)
-    {
-        if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.String)
-        {
-            return null;
-        }
-
-        return value.GetString();
-    }
-
-    private static void AddClaimsFromJwtProperty(JsonElement payloadRoot, string propertyName, List<ClientPrincipalClaim> destination)
-    {
-        if (!payloadRoot.TryGetProperty(propertyName, out var element))
-        {
-            return;
-        }
-
-        if (element.ValueKind == JsonValueKind.String)
-        {
-            var value = element.GetString();
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                destination.Add(new ClientPrincipalClaim { Type = propertyName, Value = value });
-            }
-
-            return;
-        }
-
-        if (element.ValueKind != JsonValueKind.Array)
-        {
-            return;
-        }
-
-        foreach (var item in element.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.String)
-            {
-                continue;
-            }
-
-            var value = item.GetString();
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                destination.Add(new ClientPrincipalClaim { Type = propertyName, Value = value });
-            }
-        }
     }
 
     private static async Task<HttpResponseData> CreateJsonResponse<T>(HttpRequestData req, T data)
