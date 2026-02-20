@@ -4,21 +4,21 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 
 ## Table of Contents
 
-1. [Prerequisites](#prerequisites)
-2. [Step 1: Upload Project to Cloud Shell](#step-1-upload-project-to-cloud-shell)
-3. [Step 2: Prepare Your Environment](#step-2-prepare-your-environment)
-4. [Step 3: Create Custom Security Attributes](#step-3-create-custom-security-attributes)
-5. [Step 4: Deploy Azure Infrastructure](#step-4-deploy-azure-infrastructure)
-6. [Step 5: Grant Microsoft Graph Permissions](#step-5-grant-microsoft-graph-permissions)
-7. [Step 6: Deploy the Function App Code](#step-6-deploy-the-function-app-code)
-8. [Step 7: Configure Dashboard Access Control](#step-7-configure-dashboard-access-control)
-9. [Step 8: Deploy the Dashboard](#step-8-deploy-the-dashboard)
-10. [Step 9: Configure Email Notifications](#step-9-configure-email-notifications)
-11. [Step 10: Tag Applications for Auto-Rotation](#step-10-tag-applications-for-auto-rotation)
-12. [Step 11: Verify the Deployment](#step-11-verify-the-deployment)
-13. [Next Steps](#next-steps)
-14. [Troubleshooting](#troubleshooting)
-15. [Cleanup / Teardown](#cleanup--teardown)
+[Prerequisites](#prerequisites)
+[Step 1: Upload Project to Cloud Shell](#step-1-upload-project-to-cloud-shell)
+[Step 2: Prepare Your Environment](#step-2-prepare-your-environment)
+[Step 3: Create Custom Security Attributes](#step-3-create-custom-security-attributes)
+[Step 4: Deploy Azure Infrastructure](#step-4-deploy-azure-infrastructure)
+[Step 5: Grant Microsoft Graph Permissions](#step-5-grant-microsoft-graph-permissions)
+[Step 6: Deploy the Function App Code](#step-6-deploy-the-function-app-code)
+[Step 7: Configure Dashboard Access Control](#step-7-configure-dashboard-access-control)
+[Step 8: Deploy the Dashboard](#step-8-deploy-the-dashboard)
+[Step 9: Configure Email Notifications](#step-9-configure-email-notifications)
+[Step 10: Tag Applications for Auto-Rotation](#step-10-tag-applications-for-auto-rotation)
+[Step 11: Verify the Deployment](#step-11-verify-the-deployment)
+[Next Steps](#next-steps)
+[Troubleshooting](#troubleshooting)
+[Cleanup / Teardown](#cleanup--teardown)
 
 ---
 
@@ -532,40 +532,19 @@ az rest --method PATCH `
 Write-Host "Assignment required enabled"
 ```
 
-Now assign users or groups to the application. **Choose at least one option below:**
+Now assign users or groups to the application in the Entra Portal (assumes your group already exists):
 
-**Option A: Assign a Security Group** (Recommended for production)
+1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
+2. Navigate to **Applications** → **Enterprise applications**
+3. Open your enterprise app (`SAML Certificate Rotation Dashboard`)
+4. Go to **Users and groups** → **Add user/group**
+5. Under **Users and groups**, select the existing user or group you want to grant access
+6. Under **Select a role**, choose one:
+   - `SAML Cert Rotation Admin` (`SamlCertRotation.Admin`) for full access
+   - `SAML Cert Rotation Reader` (`SamlCertRotation.Reader`) for read-only access
+7. Click **Assign**
 
-```powershell
-# First, create a security group if one doesn't exist
-# az ad group create --display-name "SAML Dashboard Users" --mail-nickname "saml-dashboard-users"
-
-# Get the security group ID
-$GROUP_ID = az ad group show --group "SAML Dashboard Users" --query id -o tsv
-
-# Assign the group to the Enterprise Application (Reader role)
-az rest --method POST `
-    --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID/appRoleAssignedTo" `
-    --body "{\"principalId\":\"$GROUP_ID\",\"resourceId\":\"$SP_ID\",\"appRoleId\":\"$READER_APP_ROLE_ID\"}"
-
-Write-Host "Group assigned to Enterprise Application"
-```
-
-**Option B: Assign Individual User** (Quick setup for testing)
-
-```powershell
-# Get your user ID
-$USER_ID = az ad signed-in-user show --query id -o tsv
-
-# Assign yourself to the Enterprise Application (Reader role)
-az rest --method POST `
-    --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID/appRoleAssignedTo" `
-    --body "{\"principalId\":\"$USER_ID\",\"resourceId\":\"$SP_ID\",\"appRoleId\":\"$READER_APP_ROLE_ID\"}"
-
-Write-Host "User assigned to Enterprise Application"
-```
-
-> **Important**: Users who are not assigned to the Enterprise Application will receive an "Access Denied" error when trying to access the dashboard. You can also manage assignments in the Azure Portal under **Enterprise Applications** → **Users and groups**.
+> **Important**: Users who are not assigned to the Enterprise Application will receive an "Access Denied" error when trying to access the dashboard.
 
 ### 7.6 Store Client Secret in Key Vault
 
