@@ -143,6 +143,41 @@ public class DashboardFunctions
         }
         debugInfo["headers"] = headers;
 
+        // Decode JWT claims from x-ms-auth-token
+        var rawAuthToken = GetHeaderValue(req, "x-ms-auth-token");
+        if (!string.IsNullOrWhiteSpace(rawAuthToken))
+        {
+            var tokenStr = rawAuthToken.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                ? rawAuthToken.Substring("Bearer ".Length).Trim()
+                : rawAuthToken.Trim();
+
+            try
+            {
+                var jwtHandler = new JwtSecurityTokenHandler();
+                var jwt = jwtHandler.ReadJwtToken(tokenStr);
+                debugInfo["jwtIssuer"] = jwt.Issuer;
+                debugInfo["jwtAudience"] = jwt.Audiences?.ToArray();
+                debugInfo["jwtClaims"] = jwt.Claims
+                    .Select(c => new { c.Type, c.Value })
+                    .ToArray();
+            }
+            catch (Exception ex)
+            {
+                debugInfo["jwtError"] = ex.Message;
+            }
+        }
+
+        // Show config values used for role mapping
+        debugInfo["config"] = new {
+            AAD_CLIENT_ID = _configuration["AAD_CLIENT_ID"],
+            SWA_AAD_CLIENT_ID = _configuration["SWA_AAD_CLIENT_ID"],
+            SWA_HOSTNAME = _configuration["SWA_HOSTNAME"],
+            SWA_ADMIN_APP_ROLE = _configuration["SWA_ADMIN_APP_ROLE"] ?? "(default: SamlCertRotation.Admin)",
+            SWA_ADMIN_GROUP_ID = _configuration["SWA_ADMIN_GROUP_ID"],
+            TrustedSwaIssuers = _trustedSwaIssuers.ToArray(),
+            AllowedAudiences = _allowedAudiences.ToArray()
+        };
+
         // Parse identity through the normal flow
         var identity = await ParseClientPrincipalAsync(req);
         if (identity != null)
