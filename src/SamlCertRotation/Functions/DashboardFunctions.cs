@@ -1054,7 +1054,58 @@ public class DashboardFunctions
             }
         }
 
+        var headerIdentity = ParseClientPrincipalFromSwaHeaders(req);
+        if (headerIdentity != null)
+        {
+            return headerIdentity;
+        }
+
         return null;
+    }
+
+    /// <summary>
+    /// Parses SWA forwarded principal headers when x-ms-client-principal payload is unavailable.
+    /// </summary>
+    private RequestIdentity? ParseClientPrincipalFromSwaHeaders(HttpRequestData req)
+    {
+        var userId = GetHeaderValue(req, "x-ms-client-principal-id")
+                     ?? GetHeaderValue(req, "x-ms-client-principal-userid")
+                     ?? GetHeaderValue(req, "x-ms-client-principal-name");
+
+        var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var claimRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var claimGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var role in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-user-roles")))
+        {
+            roles.Add(role);
+            claimRoleValues.Add(role);
+        }
+
+        foreach (var role in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-roles")))
+        {
+            roles.Add(role);
+            claimRoleValues.Add(role);
+        }
+
+        foreach (var group in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-groups")))
+        {
+            claimGroupValues.Add(group);
+        }
+
+        ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
+
+        if (!IsAuthenticatedPrincipal(userId, roles))
+        {
+            return null;
+        }
+
+        return new RequestIdentity
+        {
+            UserId = userId,
+            IsAuthenticated = true,
+            Roles = roles
+        };
     }
 
     /// <summary>
@@ -1278,6 +1329,54 @@ public class DashboardFunctions
         }
 
         return normalized;
+    }
+
+    private static IEnumerable<string> ParseHeaderList(string? headerValue)
+    {
+        var values = new List<string>();
+        if (string.IsNullOrWhiteSpace(headerValue))
+        {
+            return values;
+        }
+
+        var raw = headerValue.Trim();
+
+        if (raw.StartsWith("[", StringComparison.Ordinal))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(raw);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in doc.RootElement.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.String)
+                        {
+                            var value = item.GetString();
+                            if (!string.IsNullOrWhiteSpace(value))
+                            {
+                                values.Add(value);
+                            }
+                        }
+                    }
+                }
+
+                return values;
+            }
+            catch
+            {
+            }
+        }
+
+        foreach (var token in raw.Split(new[] { ',', ';', ' ', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                values.Add(token);
+            }
+        }
+
+        return values;
     }
 
     private static string? TryGetString(JsonElement element, string propertyName)
