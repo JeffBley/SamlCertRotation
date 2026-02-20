@@ -249,7 +249,7 @@ Write-Host "Log Analytics Workspace: $LOG_ANALYTICS_NAME"
 Write-Host "Logic App: $LOGIC_APP_NAME"
 
 # Save this value for step 5.1
-"MANAGED_IDENTITY_PRINCIPAL_ID=$MANAGED_IDENTITY_PRINCIPAL_ID"
+"MANAGED_IDENTITY_PRINCIPAL_ID: $MANAGED_IDENTITY_PRINCIPAL_ID"
 ```
 
 ---
@@ -332,8 +332,6 @@ az rest --method POST `
     --uri "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments" `
     --headers "Content-Type=application/json" `
     --body "{`"principalId`":`"$MANAGED_IDENTITY_PRINCIPAL_ID`",`"roleDefinitionId`":`"ffd52fa5-98dc-465c-991d-fc073eb59f8f`",`"directoryScopeId`":`"/`"}"
-
-Write-Host "Attribute Assignment Reader role assigned"
 ```
 
 ### 5.4 Verify Role Assignment
@@ -408,7 +406,7 @@ try {
 
 You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` or `403`.
 
-### 6.4 Recovery Command (If Functions List Is Empty)
+### 6.4 Recovery Command (Only run if Functions List Is Empty is empty from Step 6.3)
 
 ```powershell
 # Re-publish and force host refresh
@@ -470,10 +468,40 @@ $CLIENT_SECRET = az ad app credential reset `
     --query "password" -o tsv
 
 Write-Host "Client secret generated successfully. Length: $($CLIENT_SECRET.Length)"
-Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!"
+Write-Host "Client Secret: $CLIENT_SECRET"
+Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!" -ForegroundColor Red
 ```
 
-### 7.3 Create Service Principal (Enterprise App)
+### 7.3 Configure App Roles in the App Registration
+
+Configure the two app roles used by dashboard authorization.
+
+1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
+2. Navigate to **Applications** → **App registrations**
+3. Open the app registration created in Step 7.1 (`SAML Certificate Rotation Dashboard`)
+4. Open **App roles** → **Create app role** and add:
+    - **Display name**: `SAML Cert Rotation Admin`
+    - **Allowed member types**: `Users/Groups`
+    - **Value**: `SamlCertRotation.Admin`
+    - **Description**: `Full dashboard access`
+5. Create a second role:
+    - **Display name**: `SAML Cert Rotation Reader`
+    - **Allowed member types**: `Users/Groups`
+    - **Value**: `SamlCertRotation.Reader`
+    - **Description**: `Read-only dashboard access`
+
+Back in Cloud Shell, load the role IDs for assignment in the next step:
+
+```powershell
+$ADMIN_APP_ROLE_ID = az ad app show --id $CLIENT_ID --query "appRoles[?value=='SamlCertRotation.Admin' && isEnabled==\`true\`].id | [0]" -o tsv
+$READER_APP_ROLE_ID = az ad app show --id $CLIENT_ID --query "appRoles[?value=='SamlCertRotation.Reader' && isEnabled==\`true\`].id | [0]" -o tsv
+
+Write-Host "Admin app role ID: $ADMIN_APP_ROLE_ID"
+Write-Host "Reader app role ID: $READER_APP_ROLE_ID"
+```
+
+### 7.4 Create Service Principal (Enterprise App)
+This will create the Enterprise App that will control who has access to the app's portal.
 
 ```powershell
 # Create service principal for the app
@@ -483,7 +511,7 @@ az ad sp create --id $CLIENT_ID
 $SP_ID = az ad sp list --filter "appId eq '$CLIENT_ID'" --query "[0].id" -o tsv
 Write-Host "Service Principal ID: $SP_ID"
 
-# Add the integrated app tag (shows as "Integrated Application" in Azure Portal)
+# Add the enterprise app tag (app will show up as "Enterprise Application" in the Entra Portal)
 az rest --method PATCH `
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID" `
     --body '{"tags": ["WindowsAzureActiveDirectoryIntegratedApp"]}'
@@ -491,7 +519,7 @@ az rest --method PATCH `
 Write-Host "Service Principal created with integrated app tag"
 ```
 
-### 7.4 Configure User/Group Assignment
+### 7.5 Configure User/Group Assignment
 
 This step restricts dashboard access to specific users or groups. **You must assign at least one user or group** for authentication to work.
 
@@ -515,10 +543,10 @@ Now assign users or groups to the application. **Choose at least one option belo
 # Get the security group ID
 $GROUP_ID = az ad group show --group "SAML Dashboard Users" --query id -o tsv
 
-# Assign the group to the Enterprise Application
+# Assign the group to the Enterprise Application (Reader role)
 az rest --method POST `
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID/appRoleAssignedTo" `
-    --body "{\"principalId\":\"$GROUP_ID\",\"resourceId\":\"$SP_ID\",\"appRoleId\":\"00000000-0000-0000-0000-000000000000\"}"
+    --body "{\"principalId\":\"$GROUP_ID\",\"resourceId\":\"$SP_ID\",\"appRoleId\":\"$READER_APP_ROLE_ID\"}"
 
 Write-Host "Group assigned to Enterprise Application"
 ```
@@ -529,17 +557,17 @@ Write-Host "Group assigned to Enterprise Application"
 # Get your user ID
 $USER_ID = az ad signed-in-user show --query id -o tsv
 
-# Assign yourself to the Enterprise Application
+# Assign yourself to the Enterprise Application (Reader role)
 az rest --method POST `
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID/appRoleAssignedTo" `
-    --body "{\"principalId\":\"$USER_ID\",\"resourceId\":\"$SP_ID\",\"appRoleId\":\"00000000-0000-0000-0000-000000000000\"}"
+    --body "{\"principalId\":\"$USER_ID\",\"resourceId\":\"$SP_ID\",\"appRoleId\":\"$READER_APP_ROLE_ID\"}"
 
 Write-Host "User assigned to Enterprise Application"
 ```
 
 > **Important**: Users who are not assigned to the Enterprise Application will receive an "Access Denied" error when trying to access the dashboard. You can also manage assignments in the Azure Portal under **Enterprise Applications** → **Users and groups**.
 
-### 7.5 Store Client Secret in Key Vault
+### 7.6 Store Client Secret in Key Vault
 
 Store the dashboard client secret in Azure Key Vault. This project does not auto-rotate dashboard secrets.
 
@@ -570,7 +598,7 @@ az keyvault secret set `
 Write-Host "Client secret stored in Key Vault as 'SwaClientSecret'"
 ```
 
-### 7.6 Configure Static Web App and Function App Settings
+### 7.7 Configure Static Web App and Function App Settings
 
 ```powershell
 # Get your tenant ID
@@ -595,7 +623,7 @@ Write-Host "NOTE: Dashboard secret remains in Key Vault; SWA reads it via Key Va
 
 > **Important**: The `az staticwebapp appsettings set` command may display `null` for values due to security redaction. Use the `list` command to verify the settings were applied correctly.
 
-### 7.7 Link Function App to Static Web App
+### 7.8 Link Function App to Static Web App
 
 ```powershell
 # Get the Function App resource ID
@@ -620,11 +648,11 @@ az staticwebapp backends link `
 Write-Host "Function App linked as SWA backend"
 ```
 
-### 7.8 Disable Easy Auth on Function App
+### 7.9 Disable Easy Auth on Function App
 
 The `backends link` command above enables Easy Auth on the Function App. We need to **disable it** because authentication is handled by the Static Web App, not the Function App.
 
-> **Important**: This step MUST run AFTER 7.7 (backend linking), otherwise the link command will re-enable Easy Auth.
+> **Important**: This step MUST run AFTER 7.8 (backend linking), otherwise the link command will re-enable Easy Auth.
 
 ```powershell
 # Disable Easy Auth on the Function App
@@ -646,7 +674,7 @@ if ($easyAuthStatus -eq "false") {
 }
 ```
 
-### 7.9 Save Access Control Configuration
+### 7.10 Save Access Control Configuration
 
 ```powershell
 # Save configuration for reference
@@ -673,7 +701,7 @@ Write-Host "Access control configuration saved to access-control-config.json"
 | `KeyVaultUri` | Function App Settings | Key Vault URI (set by Bicep) |
 | `RotationSchedule` | Function App Settings | CRON expression for rotation checks (default: `0 0 6 * * *` = 6 AM UTC daily) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
-| Easy Auth | Function App | Disabled (Step 7.8) |
+| Easy Auth | Function App | Disabled (Step 7.9) |
 | Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
 
 > **Note**: Only users or groups assigned to the Enterprise Application can access the dashboard. Users not assigned will see "Access Denied" from Azure AD before reaching the application.
@@ -876,14 +904,14 @@ Write-Host "Tagged: $appDisplayName"
 
 ```powershell
 # Test dashboard stats endpoint (no function key needed - endpoints are anonymous)
-# Note: Easy Auth must be disabled on Function App for this to work (Step 7.8)
+# Note: Easy Auth must be disabled on Function App for this to work (Step 7.9)
 $response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats" -Method Get
 $response | ConvertTo-Json -Depth 5
 
 # Expected output: JSON with totalSamlApps, appsExpiringIn30Days, etc.
 ```
 
-If you get `400 Bad Request`, Easy Auth is still enabled on the Function App. Run Step 7.8 to disable it.
+If you get `400 Bad Request`, Easy Auth is still enabled on the Function App. Run Step 7.9 to disable it.
 
 ### 11.2 Manually Trigger Rotation
 
@@ -1074,7 +1102,7 @@ If you see "permission denied" when running npm commands:
 # Don't use global installs in Cloud Shell. Instead use npx with -y flag:
 npx -y @azure/static-web-apps-cli deploy ./dist --deployment-token $SWA_TOKEN --env production
 
-# Or deploy via Azure Portal instead (see Step 7.3 Option A)
+# Or deploy via Azure Portal instead (see Step 8.3 Option A)
 ```
 
 ### SWA CLI "folder not found" error
@@ -1182,8 +1210,8 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName $FUNCTION_APP_NAME -Resou
 ### Dashboard shows no data
 
 1. Check browser console (F12) for errors
-2. Verify the SWA backend link was configured (Step 7.7)
-3. Check that Easy Auth is disabled on the Function App (Step 7.8)
+2. Verify the SWA backend link was configured (Step 7.8)
+3. Check that Easy Auth is disabled on the Function App (Step 7.9)
 4. Ensure API_BASE_URL in index.html is empty (SWA backend handles routing)
 
 ### Dashboard shows `API error: 403`
@@ -1223,21 +1251,21 @@ az rest --method PUT `
     --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"unauthenticatedClientAction":"AllowAnonymous"}}}'
 ```
 
-> **Note**: The `az staticwebapp backends link` command (Step 7.7) enables Easy Auth on the Function App. Step 7.8 must run AFTER to disable it.
+> **Note**: The `az staticwebapp backends link` command (Step 7.8) enables Easy Auth on the Function App. Step 7.9 must run AFTER to disable it.
 
 ### Dashboard shows "Unexpected token '<'" error
 
 This typically means the API is returning HTML instead of JSON. Common causes:
 
-1. **Easy Auth is enabled on Function App** - Disable it via Step 7.8
-2. **SWA backend link not configured** - Run Step 7.7
+1. **Easy Auth is enabled on Function App** - Disable it via Step 7.9
+2. **SWA backend link not configured** - Run Step 7.8
 3. **Missing exclude patterns in staticwebapp.config.json** - Ensure `/api/*` is in exclude list
 
 ### Dashboard shows "Access Denied" / User shows as "anonymous"
 
-1. **Enterprise App assignment not configured** - Run Step 7.3 through 7.4
+1. **Enterprise App assignment not configured** - Run Step 7.4 through 7.5
 2. **User not assigned to the Enterprise App** - Add user/group via Azure Portal
-3. **SWA app settings not configured** - Run Step 7.6
+3. **SWA app settings not configured** - Run Step 7.7
 
 ### Auto-rotate status shows as "Not Set" (null) for all apps
 
