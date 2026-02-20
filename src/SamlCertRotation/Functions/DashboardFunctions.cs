@@ -97,7 +97,9 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Get dashboard statistics
+    /// Get dashboard statistics.
+    /// Supports optional server-side pagination via ?page=1&amp;pageSize=50 query parameters.
+    /// When omitted, all apps are returned (backward compatible).
     /// </summary>
     [Function("GetDashboardStats")]
     public async Task<HttpResponseData> GetDashboardStats(
@@ -114,6 +116,38 @@ public class DashboardFunctions
         try
         {
             var stats = await _rotationService.GetDashboardStatsAsync();
+
+            // Support optional server-side pagination for the apps list
+            var queryParams = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            if (int.TryParse(queryParams["page"], out var page) && int.TryParse(queryParams["pageSize"], out var pageSize))
+            {
+                page = Math.Max(1, page);
+                pageSize = Math.Clamp(pageSize, 1, 500);
+                var totalApps = stats.Apps.Count;
+                var totalPages = (int)Math.Ceiling((double)totalApps / pageSize);
+
+                stats.Apps = stats.Apps
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+
+                return await CreateJsonResponse(req, new
+                {
+                    stats.TotalSamlApps,
+                    stats.AppsWithAutoRotateOn,
+                    stats.AppsWithAutoRotateOff,
+                    stats.AppsWithAutoRotateNull,
+                    stats.AppsExpiringIn30Days,
+                    stats.ExpiringSoonThresholdDays,
+                    stats.AppsExpiringIn60Days,
+                    stats.AppsExpiringIn90Days,
+                    stats.AppsWithExpiredCerts,
+                    stats.GeneratedAt,
+                    apps = stats.Apps,
+                    pagination = new { page, pageSize, totalApps, totalPages }
+                });
+            }
+
             return await CreateJsonResponse(req, stats);
         }
         catch (Exception ex)

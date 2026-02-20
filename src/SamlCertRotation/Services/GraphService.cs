@@ -70,24 +70,11 @@ public class GraphService : IGraphService
                 return samlApps;
             }
 
+            // Phase 1: Collect all service principals across pages
+            var allServicePrincipals = new List<ServicePrincipal>();
             while (servicePrincipals?.Value != null)
             {
-                foreach (var sp in servicePrincipals.Value)
-                {
-                    var samlApp = MapToSamlApplication(sp);
-
-                    // In some Graph responses, customSecurityAttributes can be omitted or partially populated
-                    // for collection queries even when requested in $select. Fallback to per-object read.
-                    if (string.IsNullOrWhiteSpace(samlApp.AutoRotateStatus) && !string.IsNullOrWhiteSpace(sp.Id))
-                    {
-                        samlApp.AutoRotateStatus = await GetCustomSecurityAttributeAsync(
-                            sp.Id,
-                            _customAttributeSet,
-                            _customAttributeName);
-                    }
-
-                    samlApps.Add(samlApp);
-                }
+                allServicePrincipals.AddRange(servicePrincipals.Value);
 
                 if (string.IsNullOrWhiteSpace(servicePrincipals.OdataNextLink))
                 {
@@ -96,6 +83,44 @@ public class GraphService : IGraphService
 
                 servicePrincipals = await new ServicePrincipalsRequestBuilder(servicePrincipals.OdataNextLink, _graphClient.RequestAdapter)
                     .GetAsync();
+            }
+
+            // Phase 2: Map all service principals to SamlApplication objects
+            foreach (var sp in allServicePrincipals)
+            {
+                samlApps.Add(MapToSamlApplication(sp));
+            }
+
+            // Phase 3: Parallelize custom security attribute fallback lookups
+            // Graph API returns CSA inconsistently in collection queries, so many apps need a per-object read.
+            // Use SemaphoreSlim to limit concurrency and avoid Graph API throttling (429s).
+            var appsNeedingCsaFallback = samlApps
+                .Where(a => string.IsNullOrWhiteSpace(a.AutoRotateStatus) && !string.IsNullOrWhiteSpace(a.Id))
+                .ToList();
+
+            if (appsNeedingCsaFallback.Count > 0)
+            {
+                _logger.LogInformation("Fetching custom security attributes for {Count} apps in parallel", appsNeedingCsaFallback.Count);
+                const int maxConcurrency = 20;
+                using var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+
+                var tasks = appsNeedingCsaFallback.Select(async app =>
+                {
+                    await semaphore.WaitAsync();
+                    try
+                    {
+                        app.AutoRotateStatus = await GetCustomSecurityAttributeAsync(
+                            app.Id,
+                            _customAttributeSet,
+                            _customAttributeName);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
+
+                await Task.WhenAll(tasks);
             }
 
             _logger.LogInformation("Found {Count} SAML applications", samlApps.Count);
@@ -440,9 +465,11 @@ public class GraphService : IGraphService
                         using var x509Cert = new X509Certificate2(keyCredential.Key);
                         thumbprint = x509Cert.Thumbprint; // SHA-1 hex string (uppercase)
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // If we can't parse the cert, fall back to empty thumbprint
+                        // Log and fall back to empty thumbprint if cert can't be parsed
+                        _logger.LogWarning(ex, "Failed to parse certificate key for service principal {Id}, keyId {KeyId}",
+                            sp.Id, keyCredential.KeyId);
                         thumbprint = string.Empty;
                     }
                 }
@@ -621,7 +648,7 @@ public class GraphService : IGraphService
             using var httpClient = _httpClientFactory.CreateClient();
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
-            var requestUrl = $"https://graph.microsoft.com/v1.0/servicePrincipals/{servicePrincipalId}?$select=customSecurityAttributes";
+            var requestUrl = $"https://graph.microsoft.com/v1.0/servicePrincipals/{Uri.EscapeDataString(servicePrincipalId)}?$select=customSecurityAttributes";
             var response = await httpClient.GetAsync(requestUrl);
 
             if (!response.IsSuccessStatusCode)

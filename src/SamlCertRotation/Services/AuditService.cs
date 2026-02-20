@@ -12,14 +12,21 @@ public class AuditService : IAuditService
 {
     private readonly TableClient _auditTable;
     private readonly ILogger<AuditService> _logger;
+    private bool _tableInitialized;
 
     private const string AuditTableName = "AuditLog";
 
     public AuditService(TableServiceClient tableServiceClient, ILogger<AuditService> logger)
     {
         _auditTable = tableServiceClient.GetTableClient(AuditTableName);
-        _auditTable.CreateIfNotExists();
         _logger = logger;
+    }
+
+    private async Task EnsureTableExistsAsync()
+    {
+        if (_tableInitialized) return;
+        await _auditTable.CreateIfNotExistsAsync();
+        _tableInitialized = true;
     }
 
     /// <inheritdoc />
@@ -27,6 +34,7 @@ public class AuditService : IAuditService
     {
         try
         {
+            await EnsureTableExistsAsync();
             await _auditTable.AddEntityAsync(entry);
             _logger.LogInformation("Audit entry created: {ActionType} for {AppName}", 
                 entry.ActionType, entry.AppDisplayName);
@@ -79,14 +87,15 @@ public class AuditService : IAuditService
 
         try
         {
-            // Partition keys are dates in yyyy-MM-dd format
-            for (var date = startDate.Date; date <= endDate.Date; date = date.AddDays(1))
+            // Use a range filter instead of querying day by day
+            await EnsureTableExistsAsync();
+            var startPartitionKey = startDate.Date.ToString("yyyy-MM-dd");
+            var endPartitionKey = endDate.Date.ToString("yyyy-MM-dd");
+            var filter = $"PartitionKey ge '{startPartitionKey}' and PartitionKey le '{endPartitionKey}'";
+
+            await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(filter: filter))
             {
-                var partitionKey = date.ToString("yyyy-MM-dd");
-                await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(e => e.PartitionKey == partitionKey))
-                {
-                    entries.Add(entry);
-                }
+                entries.Add(entry);
             }
         }
         catch (Exception ex)
@@ -104,19 +113,18 @@ public class AuditService : IAuditService
 
         try
         {
-            // Query last 30 days for the specific app
+            // Query last 30 days for the specific app using a range filter
+            await EnsureTableExistsAsync();
             var endDate = DateTime.UtcNow.Date;
             var startDate = endDate.AddDays(-30);
+            var startPartitionKey = startDate.ToString("yyyy-MM-dd");
+            var endPartitionKey = endDate.ToString("yyyy-MM-dd");
+            var filter = $"PartitionKey ge '{startPartitionKey}' and PartitionKey le '{endPartitionKey}' and ServicePrincipalId eq '{servicePrincipalId}'";
 
-            for (var date = endDate; date >= startDate && entries.Count < maxResults; date = date.AddDays(-1))
+            await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(filter: filter, maxPerPage: maxResults))
             {
-                var partitionKey = date.ToString("yyyy-MM-dd");
-                await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(
-                    e => e.PartitionKey == partitionKey && e.ServicePrincipalId == servicePrincipalId))
-                {
-                    entries.Add(entry);
-                    if (entries.Count >= maxResults) break;
-                }
+                entries.Add(entry);
+                if (entries.Count >= maxResults) break;
             }
         }
         catch (Exception ex)
@@ -124,7 +132,54 @@ public class AuditService : IAuditService
             _logger.LogError(ex, "Error retrieving audit entries for app {Id}", servicePrincipalId);
         }
 
-        return entries;
+        return entries.OrderByDescending(e => e.Timestamp).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<Dictionary<string, List<AuditEntry>>> GetRecentEntriesForAppsAsync(IEnumerable<string> servicePrincipalIds, int daysBack = 30)
+    {
+        var result = new Dictionary<string, List<AuditEntry>>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            await EnsureTableExistsAsync();
+            var endDate = DateTime.UtcNow.Date;
+            var startDate = endDate.AddDays(-daysBack);
+            var startPartitionKey = startDate.ToString("yyyy-MM-dd");
+            var endPartitionKey = endDate.ToString("yyyy-MM-dd");
+
+            // Build a filter for the requested service principal IDs
+            var idSet = servicePrincipalIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (idSet.Count == 0) return result;
+
+            var filter = $"PartitionKey ge '{startPartitionKey}' and PartitionKey le '{endPartitionKey}'";
+
+            // If only a small number of IDs, add them to the server-side filter
+            if (idSet.Count <= 15)
+            {
+                var idFilters = string.Join(" or ", idSet.Select(id => $"ServicePrincipalId eq '{id}'"));
+                filter += $" and ({idFilters})";
+            }
+
+            var idLookup = new HashSet<string>(idSet, StringComparer.OrdinalIgnoreCase);
+            await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(filter: filter))
+            {
+                if (!idLookup.Contains(entry.ServicePrincipalId)) continue;
+
+                if (!result.TryGetValue(entry.ServicePrincipalId, out var list))
+                {
+                    list = new List<AuditEntry>();
+                    result[entry.ServicePrincipalId] = list;
+                }
+                list.Add(entry);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving bulk audit entries for {Count} apps", servicePrincipalIds.Count());
+        }
+
+        return result;
     }
 
     /// <inheritdoc />
@@ -141,10 +196,25 @@ public class AuditService : IAuditService
 
         try
         {
+            // Group deletes by partition key and batch them (max 100 per batch in Table Storage)
+            await EnsureTableExistsAsync();
+            var entriesToDelete = new List<(string PartitionKey, string RowKey)>();
             await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(filter: $"PartitionKey lt '{cutoffPartitionKey}'"))
             {
-                await _auditTable.DeleteEntityAsync(entry.PartitionKey, entry.RowKey, ETag.All);
-                deletedCount++;
+                entriesToDelete.Add((entry.PartitionKey, entry.RowKey));
+            }
+
+            var grouped = entriesToDelete.GroupBy(e => e.PartitionKey);
+            foreach (var group in grouped)
+            {
+                foreach (var batch in group.Chunk(100))
+                {
+                    var transactionActions = batch.Select(e =>
+                        new TableTransactionAction(TableTransactionActionType.Delete,
+                            new TableEntity(e.PartitionKey, e.RowKey), ETag.All));
+                    await _auditTable.SubmitTransactionAsync(transactionActions);
+                    deletedCount += batch.Length;
+                }
             }
 
             _logger.LogInformation(

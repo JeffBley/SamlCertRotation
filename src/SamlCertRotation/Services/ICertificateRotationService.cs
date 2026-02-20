@@ -13,9 +13,14 @@ public interface ICertificateRotationService
     Task<List<RotationResult>> RunRotationAsync(bool? forceReportOnlyMode = null);
 
     /// <summary>
-    /// Get dashboard statistics
+    /// Get dashboard statistics (fetches apps from Graph)
     /// </summary>
     Task<DashboardStats> GetDashboardStatsAsync();
+
+    /// <summary>
+    /// Get dashboard statistics using a pre-fetched apps list (avoids redundant Graph calls)
+    /// </summary>
+    Task<DashboardStats> GetDashboardStatsAsync(List<SamlApplication> apps);
 
     /// <summary>
     /// Process a single application

@@ -15,6 +15,7 @@ public class PolicyService : IPolicyService
     private readonly ILogger<PolicyService> _logger;
     private readonly int _defaultCreateDays;
     private readonly int _defaultActivateDays;
+    private bool _tableInitialized;
 
     private const string PolicyTableName = "RotationPolicies";
     private const int DefaultRetentionPolicyDays = 180;
@@ -30,7 +31,6 @@ public class PolicyService : IPolicyService
         IConfiguration configuration)
     {
         _policyTable = tableServiceClient.GetTableClient(PolicyTableName);
-        _policyTable.CreateIfNotExists();
         _logger = logger;
         _defaultCreateDays = int.TryParse(configuration["DefaultCreateCertDaysBeforeExpiry"], out var createDays)
             ? createDays
@@ -40,11 +40,19 @@ public class PolicyService : IPolicyService
             : 30;
     }
 
+    private async Task EnsureTableExistsAsync()
+    {
+        if (_tableInitialized) return;
+        await _policyTable.CreateIfNotExistsAsync();
+        _tableInitialized = true;
+    }
+
     /// <inheritdoc />
     public async Task<RotationPolicy> GetGlobalPolicyAsync()
     {
         try
         {
+            await EnsureTableExistsAsync();
             var response = await _policyTable.GetEntityIfExistsAsync<RotationPolicy>("GlobalPolicy", "Default");
             
             if (response.HasValue && response.Value != null)
@@ -79,8 +87,16 @@ public class PolicyService : IPolicyService
     /// <inheritdoc />
     public async Task<bool> UpdateGlobalPolicyAsync(RotationPolicy policy)
     {
+        if (policy.CreateCertDaysBeforeExpiry < 1)
+            throw new ArgumentException("CreateCertDaysBeforeExpiry must be at least 1.", nameof(policy));
+        if (policy.ActivateCertDaysBeforeExpiry < 1)
+            throw new ArgumentException("ActivateCertDaysBeforeExpiry must be at least 1.", nameof(policy));
+        if (policy.ActivateCertDaysBeforeExpiry >= policy.CreateCertDaysBeforeExpiry)
+            throw new ArgumentException("ActivateCertDaysBeforeExpiry must be less than CreateCertDaysBeforeExpiry.", nameof(policy));
+
         try
         {
+            await EnsureTableExistsAsync();
             policy.PartitionKey = "GlobalPolicy";
             policy.RowKey = "Default";
 
@@ -100,6 +116,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var response = await _policyTable.GetEntityIfExistsAsync<AppPolicy>("AppPolicy", servicePrincipalId);
             return response.HasValue ? response.Value : null;
         }
@@ -115,6 +132,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             policy.PartitionKey = "AppPolicy";
             await _policyTable.UpsertEntityAsync(policy, TableUpdateMode.Replace);
             _logger.LogInformation("Updated app policy for {Id}", policy.RowKey);
@@ -130,6 +148,7 @@ public class PolicyService : IPolicyService
     /// <inheritdoc />
     public async Task<RotationPolicy> GetEffectivePolicyAsync(string servicePrincipalId)
     {
+        await EnsureTableExistsAsync();
         var globalPolicy = await GetGlobalPolicyAsync();
         var appPolicy = await GetAppPolicyAsync(servicePrincipalId);
 
@@ -157,6 +176,7 @@ public class PolicyService : IPolicyService
 
         try
         {
+            await EnsureTableExistsAsync();
             await foreach (var policy in _policyTable.QueryAsync<AppPolicy>(p => p.PartitionKey == "AppPolicy"))
             {
                 policies.Add(policy);
@@ -175,6 +195,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "NotificationEmails");
             if (response.HasValue && response.Value != null)
             {
@@ -193,6 +214,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var entity = new TableEntity("Settings", "NotificationEmails")
             {
                 { "Emails", emails }
@@ -212,6 +234,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "ReportOnlyMode");
             if (response.HasValue && response.Value != null)
             {
@@ -235,6 +258,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var entity = new TableEntity("Settings", "ReportOnlyMode")
             {
                 { "Enabled", enabled.ToString() }
@@ -255,6 +279,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "RetentionPolicyDays");
             if (response.HasValue && response.Value != null)
             {
@@ -283,6 +308,7 @@ public class PolicyService : IPolicyService
 
         try
         {
+            await EnsureTableExistsAsync();
             var entity = new TableEntity("Settings", "RetentionPolicyDays")
             {
                 { "Days", days.ToString() }
@@ -303,6 +329,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorsReceiveNotifications");
             if (response.HasValue && response.Value != null)
             {
@@ -326,6 +353,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var entity = new TableEntity("Settings", "SponsorsReceiveNotifications")
             {
                 { "Enabled", enabled.ToString() }
@@ -346,6 +374,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "NotifySponsorsOnExpiration");
             if (response.HasValue && response.Value != null)
             {
@@ -369,6 +398,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var entity = new TableEntity("Settings", "NotifySponsorsOnExpiration")
             {
                 { "Enabled", enabled.ToString() }
@@ -389,6 +419,7 @@ public class PolicyService : IPolicyService
     {
         try
         {
+            await EnsureTableExistsAsync();
             var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorReminderDays");
             if (response.HasValue && response.Value != null)
             {
@@ -415,6 +446,7 @@ public class PolicyService : IPolicyService
 
         try
         {
+            await EnsureTableExistsAsync();
             var entity = new TableEntity("Settings", "SponsorReminderDays")
             {
                 { "FirstReminderDays", firstReminderDays.ToString() },

@@ -1,4 +1,10 @@
 {
+  "globalHeaders": {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.azurewebsites.net; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin"
+  },
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["*.{js,css,ico,png,jpg,svg,json}", "/api/*", "/.auth/*"]

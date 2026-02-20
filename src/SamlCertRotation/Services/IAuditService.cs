@@ -35,6 +35,12 @@ public interface IAuditService
     Task<List<AuditEntry>> GetEntriesForAppAsync(string servicePrincipalId, int maxResults = 100);
 
     /// <summary>
+    /// Get recent audit entries for multiple applications in a single query.
+    /// Returns a dictionary keyed by ServicePrincipalId.
+    /// </summary>
+    Task<Dictionary<string, List<AuditEntry>>> GetRecentEntriesForAppsAsync(IEnumerable<string> servicePrincipalIds, int daysBack = 30);
+
+    /// <summary>
     /// Purge audit entries older than the specified retention in days
     /// </summary>
     Task<int> PurgeEntriesOlderThanAsync(int retentionDays);

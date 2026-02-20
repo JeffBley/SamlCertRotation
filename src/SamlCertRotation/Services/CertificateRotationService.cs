@@ -56,11 +56,24 @@ public class CertificateRotationService : ICertificateRotationService
 
             _logger.LogInformation("Processing {Count} applications with AutoRotate=on", appsToProcess.Count);
 
+            // Pre-fetch audit entries for all apps that will need milestone checks.
+            // This replaces N individual audit queries with a single bulk query.
+            var appIdsNeedingAudit = apps
+                .Where(a =>
+                {
+                    var mode = a.AutoRotateStatus?.Trim().ToLowerInvariant();
+                    return mode == AutoRotateOn || mode == AutoRotateNotify || mode == "off" || mode == null;
+                })
+                .Select(a => a.Id)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToList();
+            var auditCache = await _auditService.GetRecentEntriesForAppsAsync(appIdsNeedingAudit);
+
             foreach (var app in appsToProcess)
             {
                 try
                 {
-                    var result = await ProcessApplicationAsync(app, reportOnlyMode);
+                    var result = await ProcessApplicationAsync(app, reportOnlyMode, auditCache);
                     results.Add(result);
                 }
                 catch (Exception ex)
@@ -77,7 +90,7 @@ public class CertificateRotationService : ICertificateRotationService
                 }
             }
 
-            await SendAutomaticExpirationNotificationsAsync(apps);
+            await SendAutomaticExpirationNotificationsAsync(apps, auditCache);
 
             // Log completion
             var reportOnlyCreateCount = results.Count(r => string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase));
@@ -101,8 +114,8 @@ public class CertificateRotationService : ICertificateRotationService
                 reportOnlyMode ? AuditActionType.ScanCompletedReportOnly : AuditActionType.ScanCompleted,
                 completionDescription);
 
-            // Send daily summary
-            var stats = await GetDashboardStatsAsync();
+            // Send daily summary — reuse the apps list we already fetched to avoid another Graph round-trip
+            var stats = await GetDashboardStatsAsync(apps);
             await _notificationService.SendDailySummaryAsync(stats, results);
 
             _logger.LogInformation("Certificate rotation run completed");
@@ -118,6 +131,11 @@ public class CertificateRotationService : ICertificateRotationService
 
     /// <inheritdoc />
     public async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode = false)
+    {
+        return await ProcessApplicationAsync(app, reportOnlyMode, null);
+    }
+
+    private async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode, Dictionary<string, List<AuditEntry>>? auditCache)
     {
         var result = new RotationResult
         {
@@ -150,7 +168,7 @@ public class CertificateRotationService : ICertificateRotationService
             if (autoRotateMode == AutoRotateNotify)
             {
                 var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
-                var notifyMilestone = await GetNotifyMilestoneToSendAsync(app, activeCert, daysUntilExpiry, sponsorReminderDays);
+                var notifyMilestone = GetNotifyMilestoneToSend(app, activeCert, daysUntilExpiry, sponsorReminderDays, auditCache);
                 if (notifyMilestone == null)
                 {
                     result.Action = "None";
@@ -359,7 +377,7 @@ public class CertificateRotationService : ICertificateRotationService
         return result;
     }
 
-    private async Task SendAutomaticExpirationNotificationsAsync(List<SamlApplication> apps)
+    private async Task SendAutomaticExpirationNotificationsAsync(List<SamlApplication> apps, Dictionary<string, List<AuditEntry>>? auditCache)
     {
         var notifyOnExpirationEnabled = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
         if (!notifyOnExpirationEnabled)
@@ -386,7 +404,7 @@ public class CertificateRotationService : ICertificateRotationService
                 }
 
                 var milestoneLabel = $"Expiration-{status}";
-                var alreadySent = await HasExpirationMilestoneBeenSentAsync(app.Id, activeCert.Thumbprint, milestoneLabel);
+                var alreadySent = HasExpirationMilestoneBeenSent(GetCachedEntries(app.Id, auditCache), activeCert.Thumbprint, milestoneLabel);
                 if (alreadySent)
                 {
                     continue;
@@ -423,6 +441,13 @@ public class CertificateRotationService : ICertificateRotationService
     /// <inheritdoc />
     public async Task<DashboardStats> GetDashboardStatsAsync()
     {
+        var apps = await _graphService.GetSamlApplicationsAsync();
+        return await GetDashboardStatsAsync(apps);
+    }
+
+    /// <inheritdoc />
+    public async Task<DashboardStats> GetDashboardStatsAsync(List<SamlApplication> apps)
+    {
         var stats = new DashboardStats();
 
         try
@@ -431,7 +456,6 @@ public class CertificateRotationService : ICertificateRotationService
             var expiringSoonThresholdDays = Math.Max(1, globalPolicy.CreateCertDaysBeforeExpiry);
             stats.ExpiringSoonThresholdDays = expiringSoonThresholdDays;
 
-            var apps = await _graphService.GetSamlApplicationsAsync();
             stats.TotalSamlApps = apps.Count;
 
             foreach (var app in apps)
@@ -514,11 +538,12 @@ public class CertificateRotationService : ICertificateRotationService
         return $"https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/SignOn/objectId/{Uri.EscapeDataString(servicePrincipalObjectId)}/appId/{Uri.EscapeDataString(appId)}/preferredSingleSignOnMode/saml/servicePrincipalType/Application/fromNav/";
     }
 
-    private async Task<string?> GetNotifyMilestoneToSendAsync(
+    private static string? GetNotifyMilestoneToSend(
         SamlApplication app,
         SamlCertificate activeCert,
         int daysUntilExpiry,
-        (int firstReminderDays, int secondReminderDays, int thirdReminderDays) sponsorReminderDays)
+        (int firstReminderDays, int secondReminderDays, int thirdReminderDays) sponsorReminderDays,
+        Dictionary<string, List<AuditEntry>>? auditCache)
     {
         if (daysUntilExpiry < 0)
         {
@@ -532,6 +557,8 @@ public class CertificateRotationService : ICertificateRotationService
             ($"3rd-{sponsorReminderDays.thirdReminderDays}", sponsorReminderDays.thirdReminderDays)
         };
 
+        var entries = GetCachedEntries(app.Id, auditCache);
+
         foreach (var milestone in milestones.OrderBy(m => m.TriggerDays))
         {
             if (daysUntilExpiry > milestone.TriggerDays)
@@ -539,7 +566,7 @@ public class CertificateRotationService : ICertificateRotationService
                 continue;
             }
 
-            var alreadySent = await HasNotifyMilestoneBeenSentAsync(app.Id, activeCert.Thumbprint, milestone.Label);
+            var alreadySent = HasNotifyMilestoneBeenSent(entries, activeCert.Thumbprint, milestone.Label);
             if (!alreadySent)
             {
                 return milestone.Label;
@@ -549,10 +576,21 @@ public class CertificateRotationService : ICertificateRotationService
         return null;
     }
 
-    private async Task<bool> HasNotifyMilestoneBeenSentAsync(string servicePrincipalId, string activeThumbprint, string milestoneLabel)
+    /// <summary>
+    /// Returns cached audit entries synchronously — returns empty list if not found in cache.
+    /// Used by methods that already have a cache and don't need individual query fallback.
+    /// </summary>
+    private static List<AuditEntry> GetCachedEntries(string servicePrincipalId, Dictionary<string, List<AuditEntry>>? auditCache)
     {
-        var entries = await _auditService.GetEntriesForAppAsync(servicePrincipalId, 500);
+        if (auditCache != null && auditCache.TryGetValue(servicePrincipalId, out var cached))
+        {
+            return cached;
+        }
+        return new List<AuditEntry>();
+    }
 
+    private static bool HasNotifyMilestoneBeenSent(List<AuditEntry> entries, string activeThumbprint, string milestoneLabel)
+    {
         return entries.Any(entry =>
             entry.IsSuccess &&
             string.Equals(entry.ActionType, AuditActionType.CertificateExpiringSoon, StringComparison.OrdinalIgnoreCase) &&
@@ -560,10 +598,8 @@ public class CertificateRotationService : ICertificateRotationService
             (entry.Description?.Contains($"Milestone: {milestoneLabel}", StringComparison.OrdinalIgnoreCase) ?? false));
     }
 
-    private async Task<bool> HasExpirationMilestoneBeenSentAsync(string servicePrincipalId, string activeThumbprint, string milestoneLabel)
+    private static bool HasExpirationMilestoneBeenSent(List<AuditEntry> entries, string activeThumbprint, string milestoneLabel)
     {
-        var entries = await _auditService.GetEntriesForAppAsync(servicePrincipalId, 500);
-
         return entries.Any(entry =>
             entry.IsSuccess &&
             string.Equals(entry.ActionType, AuditActionType.SponsorExpirationReminderSent, StringComparison.OrdinalIgnoreCase) &&

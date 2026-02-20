@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using SamlCertRotation.Models;
@@ -207,6 +208,11 @@ public class NotificationService : INotificationService
             .ToList();
     }
 
+    /// <summary>
+    /// HTML-encode a value so it is safe to interpolate into HTML templates.
+    /// </summary>
+    private static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+
     private string GenerateCertificateCreatedEmail(SamlApplication app, SamlCertificate newCert)
     {
         return $@"
@@ -234,9 +240,9 @@ public class NotificationService : INotificationService
                 <strong>A new SAML signing certificate has been created for your application.</strong>
             </div>
             <div class='details'>
-                <p><span class='label'>Application:</span> {app.DisplayName}</p>
-                <p><span class='label'>App ID:</span> {app.AppId}</p>
-                <p><span class='label'>New Certificate Thumbprint:</span> {newCert.Thumbprint}</p>
+                <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
+                <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
+                <p><span class='label'>New Certificate Thumbprint:</span> {H(newCert.Thumbprint)}</p>
                 <p><span class='label'>Valid From:</span> {newCert.StartDateTime:yyyy-MM-dd HH:mm} UTC</p>
                 <p><span class='label'>Valid Until:</span> {newCert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
             </div>
@@ -281,9 +287,9 @@ public class NotificationService : INotificationService
                 <strong>A new SAML signing certificate has been activated for your application.</strong>
             </div>
             <div class='details'>
-                <p><span class='label'>Application:</span> {app.DisplayName}</p>
-                <p><span class='label'>App ID:</span> {app.AppId}</p>
-                <p><span class='label'>Activated Certificate Thumbprint:</span> {activatedCert.Thumbprint}</p>
+                <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
+                <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
+                <p><span class='label'>Activated Certificate Thumbprint:</span> {H(activatedCert.Thumbprint)}</p>
                 <p><span class='label'>Valid Until:</span> {activatedCert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
             </div>
             <div class='action-required'>
@@ -324,12 +330,12 @@ public class NotificationService : INotificationService
         </div>
         <div class='content'>
             <div class='details'>
-                <p><span class='label'>Application:</span> {app.DisplayName}</p>
-                <p><span class='label'>App ID:</span> {app.AppId}</p>
-                <p><span class='label'>Operation:</span> {operation}</p>
+                <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
+                <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
+                <p><span class='label'>Operation:</span> {H(operation)}</p>
                 <p><span class='label'>Time:</span> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>
             </div>
-            <div class='error'>{errorMessage}</div>
+            <div class='error'>{H(errorMessage)}</div>
             <p>Please investigate this error and take appropriate action.</p>
         </div>
         <div class='footer'>
@@ -353,8 +359,8 @@ public class NotificationService : INotificationService
 
         var resultsHtml = string.Join("", results.Select(r => $@"
             <tr>
-                <td style='padding: 8px; border-bottom: 1px solid #eee;'>{r.AppDisplayName}</td>
-                <td style='padding: 8px; border-bottom: 1px solid #eee;'>{r.Action}</td>
+                <td style='padding: 8px; border-bottom: 1px solid #eee;'>{H(r.AppDisplayName)}</td>
+                <td style='padding: 8px; border-bottom: 1px solid #eee;'>{H(r.Action)}</td>
                 <td style='padding: 8px; border-bottom: 1px solid #eee;'>
                     <span style='color: {(!r.Success ? "#d13438" : (string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase) ? "#107c10" : "#797775"))}'>{(!r.Success ? "✗ Failed" : (string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase) ? "✓ Success" : "↷ Skipped"))}</span>
                 </td>
@@ -464,13 +470,13 @@ public class NotificationService : INotificationService
                 The current signing certificate expires in <strong>{daysUntilExpiry} day(s)</strong>.
             </div>
             <div class='details'>
-                <p><span class='label'>Reminder milestone:</span> {milestoneLabel}</p>
-                <p><span class='label'>Application:</span> {app.DisplayName}</p>
-                <p><span class='label'>Service Principal Object ID:</span> {app.Id}</p>
-                <p><span class='label'>App ID:</span> {app.AppId}</p>
-                <p><span class='label'>Certificate Thumbprint:</span> {cert.Thumbprint}</p>
+                <p><span class='label'>Reminder milestone:</span> {H(milestoneLabel)}</p>
+                <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
+                <p><span class='label'>Service Principal Object ID:</span> {H(app.Id)}</p>
+                <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
+                <p><span class='label'>Certificate Thumbprint:</span> {H(cert.Thumbprint)}</p>
                 <p><span class='label'>Expires On:</span> {cert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
-                <a class='button' href='{appPortalUrl}'>Open Enterprise Application</a>
+                <a class='button' href='{H(appPortalUrl)}'>Open Enterprise Application</a>
             </div>
             <p style='margin-top:16px;'>No automatic rotation will occur while Auto-Rotate is set to Notify Only.</p>
         </div>
@@ -492,9 +498,7 @@ public class NotificationService : INotificationService
             ? "The signing certificate for this SAML application has expired. Please remediate this as quickly as possible to avoid or resolve sign-in impact."
             : $"The signing certificate for this SAML application is in {statusText} state and requires attention.";
 
-        var dateText = isExpired
-            ? cert.EndDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC"
-            : cert.EndDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC";
+        var dateText = cert.EndDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC";
 
         var modeText = manualSend ? "Manual resend requested from dashboard." : "Automatically generated notification.";
 
@@ -521,18 +525,18 @@ public class NotificationService : INotificationService
         </div>
         <div class='content'>
             <div class='notice'>
-                <strong>{introText}</strong>
+                <strong>{H(introText)}</strong>
             </div>
             <div class='details'>
-                <p><span class='label'>Status:</span> {statusText}</p>
-                <p><span class='label'>Application:</span> {app.DisplayName}</p>
-                <p><span class='label'>Service Principal Object ID:</span> {app.Id}</p>
-                <p><span class='label'>App ID:</span> {app.AppId}</p>
-                <p><span class='label'>Certificate Thumbprint:</span> {cert.Thumbprint}</p>
-                <p><span class='label'>{(isExpired ? "Expired On" : "Expires On")}:</span> {dateText}</p>
+                <p><span class='label'>Status:</span> {H(statusText)}</p>
+                <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
+                <p><span class='label'>Service Principal Object ID:</span> {H(app.Id)}</p>
+                <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
+                <p><span class='label'>Certificate Thumbprint:</span> {H(cert.Thumbprint)}</p>
+                <p><span class='label'>{(isExpired ? "Expired On" : "Expires On")}:</span> {H(dateText)}</p>
                 <p><span class='label'>Days Remaining:</span> {daysUntilExpiry}</p>
-                <p><span class='label'>Notification:</span> {modeText}</p>
-                <a class='button' href='{appPortalUrl}'>Open Enterprise Application</a>
+                <p><span class='label'>Notification:</span> {H(modeText)}</p>
+                <a class='button' href='{H(appPortalUrl)}'>Open Enterprise Application</a>
             </div>
             <p style='margin-top:16px;'>Please review and remediate this application promptly.</p>
         </div>
