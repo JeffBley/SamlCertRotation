@@ -1190,7 +1190,7 @@ public class DashboardFunctions
                         return new RequestIdentity
                         {
                             UserId = userId,
-                            IsAuthenticated = roles.Contains("authenticated") || !string.IsNullOrWhiteSpace(userId),
+                            IsAuthenticated = IsAuthenticatedPrincipal(userId, roles),
                             Roles = roles
                         };
                     }
@@ -1247,9 +1247,17 @@ public class DashboardFunctions
         return new RequestIdentity
         {
             UserId = userId,
-            IsAuthenticated = roles.Contains("authenticated") || !string.IsNullOrWhiteSpace(userId),
+            IsAuthenticated = IsAuthenticatedPrincipal(userId, roles),
             Roles = roles
         };
+    }
+
+    private static bool IsAuthenticatedPrincipal(string? userId, HashSet<string> roles)
+    {
+        return !string.IsNullOrWhiteSpace(userId)
+               || roles.Contains("authenticated")
+               || roles.Contains("admin")
+               || roles.Contains("reader");
     }
 
     private void ApplyConfiguredRoleMappings(HashSet<string> roles, IEnumerable<string> claimRoleValues, IEnumerable<string> claimGroupValues)
