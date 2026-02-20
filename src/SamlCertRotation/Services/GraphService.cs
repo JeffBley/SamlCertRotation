@@ -91,6 +91,9 @@ public class GraphService : IGraphService
                 samlApps.Add(MapToSamlApplication(sp));
             }
 
+            var appsWithCsaFromQuery = samlApps.Count(a => !string.IsNullOrWhiteSpace(a.AutoRotateStatus));
+            _logger.LogInformation("Phase 2: {WithCsa}/{Total} apps got CSA from initial query", appsWithCsaFromQuery, samlApps.Count);
+
             // Phase 3: Parallelize custom security attribute fallback lookups
             // Graph API returns CSA inconsistently in collection queries, so many apps need a per-object read.
             // Use SemaphoreSlim to limit concurrency and avoid Graph API throttling (429s).
@@ -103,16 +106,26 @@ public class GraphService : IGraphService
                 _logger.LogInformation("Fetching custom security attributes for {Count} apps in parallel", appsNeedingCsaFallback.Count);
                 const int maxConcurrency = 20;
                 using var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+                var csaSuccessCount = 0;
 
                 var tasks = appsNeedingCsaFallback.Select(async app =>
                 {
                     await semaphore.WaitAsync();
                     try
                     {
-                        app.AutoRotateStatus = await GetCustomSecurityAttributeAsync(
+                        var csaValue = await GetCustomSecurityAttributeAsync(
                             app.Id,
                             _customAttributeSet,
                             _customAttributeName);
+                        if (!string.IsNullOrWhiteSpace(csaValue))
+                        {
+                            app.AutoRotateStatus = csaValue;
+                            Interlocked.Increment(ref csaSuccessCount);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "CSA fallback failed for app {AppId} ({AppName})", app.Id, app.DisplayName);
                     }
                     finally
                     {
@@ -121,6 +134,7 @@ public class GraphService : IGraphService
                 });
 
                 await Task.WhenAll(tasks);
+                _logger.LogInformation("Phase 3: CSA fallback resolved {Success}/{Total} apps", csaSuccessCount, appsNeedingCsaFallback.Count);
             }
 
             _logger.LogInformation("Found {Count} SAML applications", samlApps.Count);
