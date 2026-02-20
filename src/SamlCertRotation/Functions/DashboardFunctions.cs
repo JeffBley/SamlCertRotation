@@ -1120,12 +1120,7 @@ public class DashboardFunctions
 
     private RequestIdentity? ParseClientPrincipal(HttpRequestData req)
     {
-        if (!req.Headers.TryGetValues("x-ms-client-principal", out var headerValues))
-        {
-            return null;
-        }
-
-        var encodedPrincipal = headerValues.FirstOrDefault();
+        var encodedPrincipal = GetHeaderValue(req, "x-ms-client-principal");
         if (string.IsNullOrWhiteSpace(encodedPrincipal))
         {
             return null;
@@ -1234,6 +1229,34 @@ public class DashboardFunctions
         {
             return null;
         }
+    }
+
+    private static string? GetHeaderValue(HttpRequestData req, string headerName)
+    {
+        if (req.Headers.TryGetValues(headerName, out var values))
+        {
+            var direct = values.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(direct))
+            {
+                return direct;
+            }
+        }
+
+        foreach (var header in req.Headers)
+        {
+            if (!string.Equals(header.Key, headerName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var value = header.Value?.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     private static string? DecodePrincipalPayload(string payload)
