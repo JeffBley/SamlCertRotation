@@ -999,6 +999,19 @@
             }
         }
 
+        function hasDashboardAccess() {
+            return currentUserRoles.includes('admin') || currentUserRoles.includes('reader');
+        }
+
+        function enforceRoleAccessOrRedirect() {
+            if (!hasDashboardAccess()) {
+                window.location.href = '/unauthorized.html';
+                return false;
+            }
+
+            return true;
+        }
+
         // Close all dropdown menus
         function closeAllDropdowns() {
             document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
@@ -2083,6 +2096,9 @@
         updateAppStatusFilterLabel();
         setDefaultAuditDateRange();
         await loadCurrentUserRoles();
+        if (!enforceRoleAccessOrRedirect()) {
+            return;
+        }
         loadData();
     </script>
 </body>
