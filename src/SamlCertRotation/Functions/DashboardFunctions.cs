@@ -1170,6 +1170,11 @@ public class DashboardFunctions
 
         ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
 
+        if (roles.Count == 0 && !string.IsNullOrWhiteSpace(userId))
+        {
+            roles.Add("authenticated");
+        }
+
         if (roles.Count == 0)
         {
             return null;
