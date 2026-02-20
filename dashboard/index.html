@@ -908,7 +908,8 @@
     </footer>
 
     <script>
-        // Configuration - Update this with your Function App URL
+        // Configuration
+        // Leave empty for same-origin (SWA linked backend), set for standalone API testing.
         const API_BASE_URL = ''; // Leave empty for same-origin, or set to your Function App URL
 
         // Store apps data for filtering
@@ -953,6 +954,7 @@
             return JSON.stringify(String(value ?? ''));
         }
 
+        // Authentication and role helpers
         // Sign Out function - kills app session only (not global SSO logout)
         function signOut() {
             window.location.href = '/.auth/logout?post_logout_redirect_uri=/';
@@ -1013,6 +1015,7 @@
             return true;
         }
 
+        // Dashboard filter controls
         // Close all dropdown menus
         function closeAllDropdowns() {
             document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
@@ -1373,6 +1376,7 @@
             });
         });
 
+        // API and state-loading helpers
         // API helper
         async function apiCall(endpoint, options = {}) {
             try {
@@ -1655,6 +1659,7 @@
             reminderContainer.style.display = select.value === 'enabled' ? 'block' : 'none';
         }
 
+        // Audit log filters and rendering
         // Load audit log
         async function loadAuditLog() {
             try {
@@ -1959,6 +1964,7 @@
             document.getElementById('audit-table-container').innerHTML = tableHtml;
         }
 
+        // Cleanup/export helpers
         // Store cleanup data for export
         let cleanupApps = [];
 

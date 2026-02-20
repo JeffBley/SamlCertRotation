@@ -115,6 +115,9 @@ public class RoleFunctions
         }
     }
 
+    /// <summary>
+    /// Resolves the client principal from request body (SWA roles source payload) or SWA header.
+    /// </summary>
     private async Task<ClientPrincipal?> ResolveClientPrincipalAsync(HttpRequestData req)
     {
         var bodyPrincipal = await ParsePrincipalFromBodyAsync(req);
@@ -132,6 +135,9 @@ public class RoleFunctions
         return null;
     }
 
+    /// <summary>
+    /// Parses client principal from JSON request body posted by SWA roles source.
+    /// </summary>
     private static async Task<ClientPrincipal?> ParsePrincipalFromBodyAsync(HttpRequestData req)
     {
         string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
@@ -154,6 +160,9 @@ public class RoleFunctions
         return DeserializePrincipal(principalElement.GetRawText());
     }
 
+    /// <summary>
+    /// Parses client principal from the x-ms-client-principal header.
+    /// </summary>
     private static ClientPrincipal? ParsePrincipalFromClientPrincipalHeader(HttpRequestData req)
     {
         var encodedPrincipal = GetHeaderValue(req, "x-ms-client-principal");
@@ -178,6 +187,9 @@ public class RoleFunctions
         return DeserializePrincipal(root.GetRawText());
     }
 
+    /// <summary>
+    /// Deserializes SWA principal payload using case-insensitive JSON matching.
+    /// </summary>
     private static ClientPrincipal? DeserializePrincipal(string json)
     {
         return JsonSerializer.Deserialize<ClientPrincipal>(json, new JsonSerializerOptions
@@ -186,6 +198,9 @@ public class RoleFunctions
         });
     }
 
+    /// <summary>
+    /// Reads header values with a case-insensitive fallback scan.
+    /// </summary>
     private static string? GetHeaderValue(HttpRequestData req, string headerName)
     {
         if (req.Headers.TryGetValues(headerName, out var values))
@@ -214,6 +229,9 @@ public class RoleFunctions
         return null;
     }
 
+    /// <summary>
+    /// Decodes URL-safe base64 principal payloads and returns JSON text when valid.
+    /// </summary>
     private static string? DecodePrincipalPayload(string payload)
     {
         if (string.IsNullOrWhiteSpace(payload))
@@ -237,6 +255,9 @@ public class RoleFunctions
         }
     }
 
+    /// <summary>
+    /// Normalizes URL-safe base64 into standard padded base64.
+    /// </summary>
     private static string NormalizeBase64(string value)
     {
         var normalized = value.Replace('-', '+').Replace('_', '/');
@@ -249,6 +270,9 @@ public class RoleFunctions
         return normalized;
     }
 
+    /// <summary>
+    /// Writes a JSON response with UTF-8 content type.
+    /// </summary>
     private static async Task<HttpResponseData> CreateJsonResponse<T>(HttpRequestData req, T data)
     {
         var response = req.CreateResponse(HttpStatusCode.OK);
@@ -260,9 +284,13 @@ public class RoleFunctions
 
 public class ClientPrincipal
 {
+    /// <summary>Identity provider from SWA principal payload.</summary>
     public string? IdentityProvider { get; set; }
+    /// <summary>Unique user identifier.</summary>
     public string? UserId { get; set; }
+    /// <summary>Display-friendly user details.</summary>
     public string? UserDetails { get; set; }
+    /// <summary>Claims emitted by SWA/AAD for authorization mapping.</summary>
     public List<ClientPrincipalClaim>? Claims { get; set; }
 }
 
@@ -280,6 +308,8 @@ public class ClientPrincipalClaim
     [JsonPropertyName("value")]
     public string? Value { get; set; }
 
+    /// <summary>Normalized claim type across short/full field names.</summary>
     public string ClaimType => !string.IsNullOrWhiteSpace(Type) ? Type : Typ ?? string.Empty;
+    /// <summary>Normalized claim value across short/full field names.</summary>
     public string ClaimValue => !string.IsNullOrWhiteSpace(Value) ? Value : Val ?? string.Empty;
 }

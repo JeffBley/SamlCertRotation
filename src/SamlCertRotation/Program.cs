@@ -7,6 +7,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Graph;
 using SamlCertRotation.Services;
 
+// Application entry point: configures dependency injection for Functions runtime,
+// Graph access, storage clients, and domain services.
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
     .ConfigureServices((context, services) =>

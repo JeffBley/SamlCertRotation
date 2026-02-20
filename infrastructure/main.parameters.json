@@ -8,6 +8,9 @@
     "location": {
       "value": "eastus"
     },
+    "tenantId": {
+      "value": "<insert your tenant id here>"
+    },
     "notificationSenderEmail": {
       "value": "saml-rotation@domain.com"
     },

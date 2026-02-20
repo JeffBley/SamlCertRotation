@@ -73,6 +73,7 @@
     </style>
 </head>
 <body>
+    <!-- Unauthorized landing page used when SWA role checks fail. -->
     <div class="container">
         <div class="icon">🚫</div>
         <h1>Access Denied</h1>
@@ -81,6 +82,7 @@
             Please contact your administrator to request access.
         </p>
         <div class="actions">
+            <!-- Local app sign-out and re-login flow. -->
             <a href="/.auth/logout" class="btn-secondary">Sign Out</a>
             <a href="/.auth/login/aad?post_login_redirect_uri=/" class="btn-primary">Try Different Account</a>
         </div>

@@ -946,6 +946,9 @@ public class DashboardFunctions
         }
     }
 
+    /// <summary>
+    /// Serializes a success payload using the shared JSON options and status code.
+    /// </summary>
     private async Task<HttpResponseData> CreateJsonResponse<T>(HttpRequestData req, T data, HttpStatusCode statusCode = HttpStatusCode.OK)
     {
         var response = req.CreateResponse(statusCode);
@@ -954,6 +957,9 @@ public class DashboardFunctions
         return response;
     }
 
+    /// <summary>
+    /// Returns a sanitized error payload to avoid exposing sensitive implementation details.
+    /// </summary>
     private async Task<HttpResponseData> CreateErrorResponse(HttpRequestData req, string message, HttpStatusCode statusCode = HttpStatusCode.InternalServerError)
     {
         // Sanitize error messages to avoid exposing internal details
@@ -964,6 +970,9 @@ public class DashboardFunctions
         return response;
     }
 
+    /// <summary>
+    /// Filters known sensitive patterns from error text before returning it to callers.
+    /// </summary>
     private static string SanitizeErrorMessage(string message)
     {
         // Remove potentially sensitive information from error messages
@@ -985,6 +994,9 @@ public class DashboardFunctions
         return message;
     }
 
+    /// <summary>
+    /// Validates caller identity and role requirements for dashboard endpoints.
+    /// </summary>
     private async Task<HttpResponseData?> AuthorizeRequestAsync(HttpRequestData req, bool requireAdmin = false)
     {
         var identity = ParseClientPrincipal(req);
@@ -1010,6 +1022,9 @@ public class DashboardFunctions
         return null;
     }
 
+    /// <summary>
+    /// Parses the SWA client principal from request headers.
+    /// </summary>
     private RequestIdentity? ParseClientPrincipal(HttpRequestData req)
     {
         var encodedPrincipal = GetHeaderValue(req, "x-ms-client-principal");
@@ -1042,6 +1057,9 @@ public class DashboardFunctions
         return null;
     }
 
+    /// <summary>
+    /// Builds an internal identity model from SWA principal payload fields and claims.
+    /// </summary>
     private RequestIdentity? BuildIdentityFromPrincipalRoot(JsonElement root)
     {
         var userId = TryGetString(root, "userId");
@@ -1107,6 +1125,9 @@ public class DashboardFunctions
         };
     }
 
+    /// <summary>
+    /// Treats principals with a user id or recognized roles as authenticated.
+    /// </summary>
     private static bool IsAuthenticatedPrincipal(string? userId, HashSet<string> roles)
     {
         return !string.IsNullOrWhiteSpace(userId)
@@ -1115,6 +1136,9 @@ public class DashboardFunctions
                || roles.Contains("reader");
     }
 
+    /// <summary>
+    /// Maps app-role or group claims to local admin/reader dashboard roles.
+    /// </summary>
     private void ApplyConfiguredRoleMappings(HashSet<string> roles, IEnumerable<string> claimRoleValues, IEnumerable<string> claimGroupValues)
     {
         var configuredAdminAppRole = _configuration["SWA_ADMIN_APP_ROLE"];
@@ -1156,6 +1180,9 @@ public class DashboardFunctions
         }
     }
 
+    /// <summary>
+    /// Reads a header value with case-insensitive fallback for Functions header collections.
+    /// </summary>
     private static string? GetHeaderValue(HttpRequestData req, string headerName)
     {
         if (req.Headers.TryGetValues(headerName, out var values))
@@ -1184,6 +1211,9 @@ public class DashboardFunctions
         return null;
     }
 
+    /// <summary>
+    /// Decodes URL/base64 encoded principal payloads; returns JSON when available.
+    /// </summary>
     private static string? DecodePrincipalPayload(string payload)
     {
         if (string.IsNullOrWhiteSpace(payload))
@@ -1232,6 +1262,9 @@ public class DashboardFunctions
         }
     }
 
+    /// <summary>
+    /// Converts URL-safe base64 to standard base64 and pads to valid length.
+    /// </summary>
     private static string NormalizeBase64(string value)
     {
         var normalized = value
@@ -1257,16 +1290,25 @@ public class DashboardFunctions
         return value.GetString();
     }
 
+    /// <summary>
+    /// Checks whether a string is a valid GUID.
+    /// </summary>
     private static bool IsValidGuid(string value)
     {
         return !string.IsNullOrEmpty(value) && Guid.TryParse(value, out _);
     }
 
+    /// <summary>
+    /// Builds a deep-link to the managed app SAML sign-on blade in Entra admin center.
+    /// </summary>
     private static string BuildEntraManagedAppUrl(string servicePrincipalObjectId, string appId)
     {
         return $"https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/SignOn/objectId/{Uri.EscapeDataString(servicePrincipalObjectId)}/appId/{Uri.EscapeDataString(appId)}/preferredSingleSignOnMode/saml/servicePrincipalType/Application/fromNav/";
     }
 
+    /// <summary>
+    /// Returns normalized status buckets used by the dashboard and sponsor notifications.
+    /// </summary>
     private static string GetCertificateStatus(int daysUntilExpiry, int warningThresholdDays, int criticalThresholdDays)
     {
         if (daysUntilExpiry < 0)
@@ -1287,6 +1329,9 @@ public class DashboardFunctions
         return "OK";
     }
 
+    /// <summary>
+    /// Validates email format for sponsor updates.
+    /// </summary>
     private static bool IsValidEmail(string email)
     {
         try
@@ -1312,6 +1357,9 @@ public class DashboardFunctions
         public HashSet<string> Roles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Computes successful/skipped/failed totals for rotation run summaries.
+    /// </summary>
     private static (int successful, int skipped, int failed) GetRotationOutcomeCounts(List<RotationResult> results)
     {
         var successful = results.Count(r =>

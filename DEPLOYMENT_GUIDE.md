@@ -612,8 +612,12 @@ Start-Sleep -Seconds 60
 ### 7.8 Configure Static Web App and Function App Settings
 
 ```powershell
-# Get your tenant ID
-$TENANT_ID = az account show --query "tenantId" -o tsv
+# Read tenant ID from infrastructure/main.parameters.json
+$TENANT_ID = (Get-Content "$HOME/SamlCertRotation/infrastructure/main.parameters.json" -Raw | ConvertFrom-Json).parameters.tenantId.value
+
+if ([string]::IsNullOrWhiteSpace($TENANT_ID) -or $TENANT_ID -like "<insert*") {
+    throw "Set parameters.tenantId.value in infrastructure/main.parameters.json before running this step."
+}
 
 # Configure SWA with app registration client ID and Key Vault secret reference
 # Requires SWA Standard plan with managed identity enabled and Key Vault access granted
@@ -630,6 +634,7 @@ az staticwebapp appsettings list `
 
 Write-Host "App settings configured"
 Write-Host "NOTE: Dashboard secret remains in Key Vault; SWA reads it via Key Vault reference."
+Write-Host "NOTE: staticwebapp.config.json tenant replacement is performed in Step 8.2."
 
 # Configure Function App role mapping used by GetRoles
 az functionapp config appsettings set `
@@ -733,7 +738,8 @@ Write-Host "Access control configuration saved to access-control-config.json"
 | `RotationSchedule` | Function App Settings | CRON expression for rotation checks (default: `0 0 6 * * *` = 6 AM UTC daily) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
 | Easy Auth | Function App | Disabled (Step 7.10) |
-| Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
+| `tenantId` | infrastructure/main.parameters.json | Your Azure AD Tenant ID |
+| Tenant ID | staticwebapp.config.json (`__TENANT_ID__`) | Replaced during Step 8.2 |
 
 > **Note**: Only users or groups assigned to the Enterprise Application can access the dashboard. Users not assigned will see "Access Denied" from Azure AD before reaching the application.
 
@@ -763,9 +769,9 @@ $SWA_TOKEN = az staticwebapp secrets list `
 ```powershell
 Set-Location "$HOME/SamlCertRotation/dashboard"
 
-# Update the staticwebapp.config.json with your tenant ID (if not done in Step 7)
+# Update staticwebapp.config.json with tenant ID from Step 7.8
 $configContent = Get-Content staticwebapp.config.json -Raw
-$configContent = $configContent -replace '<YOUR_TENANT_ID>', $TENANT_ID
+$configContent = $configContent -replace '__TENANT_ID__', $TENANT_ID
 Set-Content -Path staticwebapp.config.json -Value $configContent
 
 # NOTE: API_BASE_URL in index.html should remain empty - the SWA backend link handles API routing
@@ -803,34 +809,17 @@ $dashboardUrl = az staticwebapp show `
 Write-Host "Dashboard URL: https://$dashboardUrl"
 ```
 
-### 8.5 Verify Deployed Dashboard Content (Pre-Login Check)
-
-Before testing sign-in, verify that the latest dashboard content is live.
-
-```powershell
-# Confirm deployed HTML contains expected feature markers
-$SWA_HOST = az staticwebapp show `
-    --resource-group $RESOURCE_GROUP `
-    --name $STATIC_WEB_APP_NAME `
-    --query "defaultHostname" -o tsv
-
-(Invoke-WebRequest "https://$SWA_HOST/index.html" -UseBasicParsing).Content | Select-String "Notify Only|Run - Report-only|Notification Settings"
-```
-
-If no matches are returned, re-run Step 8.3 before continuing.
-
 ---
 
 ## Step 9: Configure Email Notifications
 
 The tool uses a Logic App with an Office 365 connector to send email notifications.
-This approach requires no Mail.Send Graph permission on the managed identity.
 
 ### 9.1 Configure Logic App with Office 365 Connector
 
 1. Go to [Azure Portal](https://portal.azure.com)
 2. Navigate to your resource group: `$RESOURCE_GROUP`
-3. Find and open the Logic App: `$LOGIC_APP_NAME`
+3. Find and open the Logic App: `$LOGIC_APP_NAME` (There should only be one Logic App)
 4. Click **Logic app designer**
 
 ### 9.2 Configure the Logic App Email Connection
