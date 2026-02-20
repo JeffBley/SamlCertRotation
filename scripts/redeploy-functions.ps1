@@ -15,7 +15,6 @@ Set-Location $ProjectPath
 dotnet publish -c Release
 func azure functionapp publish $FunctionAppName --dotnet-isolated --force
 
-az functionapp sync-function-triggers --resource-group $ResourceGroup --name $FunctionAppName | Out-Null
 az functionapp restart --resource-group $ResourceGroup --name $FunctionAppName | Out-Null
 Start-Sleep -Seconds 20
 
