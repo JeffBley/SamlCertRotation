@@ -69,6 +69,16 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 
 See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed step-by-step instructions.
 
+### Deployment Reliability Note
+
+For Function App deployments, use:
+
+```powershell
+func azure functionapp publish <FUNCTION_APP_NAME> --dotnet-isolated
+```
+
+Avoid `az functionapp deployment source config-zip` for this project. It can publish artifacts that intermittently fail function indexing, which surfaces as `/api/*` returning `404` after redeploy.
+
 ### Prerequisites
 
 - Azure Subscription with Owner or Contributor access

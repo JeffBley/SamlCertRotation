@@ -340,39 +340,62 @@ dotnet publish src/SamlCertRotation/SamlCertRotation.csproj `
     --output ./publish
 ```
 
-### 6.2 Create Deployment Package
+### 6.2 Deploy to Azure Function App (Recommended, Reliable)
 
 ```powershell
-# IMPORTANT: Copy functions.metadata into .azurefunctions folder
-Copy-Item "publish/functions.metadata" "publish/.azurefunctions/" -ErrorAction SilentlyContinue
+# IMPORTANT: Publish from the project directory using Functions Core Tools.
+# This avoids intermittent 404 regressions caused by config-zip package indexing issues.
+Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
 
-# Create zip using .NET (Compress-Archive doesn't properly include dot-folders)
-Remove-Item function-app.zip -Force -ErrorAction SilentlyContinue
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    "$PWD/publish",
-    "$PWD/function-app.zip"
-)
+# Ensure Functions Core Tools is available in Cloud Shell
+func --version
+
+# Deploy with explicit runtime
+func azure functionapp publish $FUNCTION_APP_NAME --dotnet-isolated
 ```
 
-### 6.3 Deploy to Azure Function App
+### 6.3 Verify Function Indexing and Route Health
 
 ```powershell
-# Deploy the zip package
-az functionapp deployment source config-zip `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --src function-app.zip
-
-# Verify deployment - list function names
+# Verify deployment - functions must be listed
 az functionapp function list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --query "[].{Name:name}" `
+    --query "[].name" `
     --output table
+
+# Quick route check (401/403 is expected without SWA auth context; 404 is not)
+$FUNCTION_HOST = az functionapp show `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "defaultHostName" -o tsv
+
+try {
+    Invoke-WebRequest "https://$FUNCTION_HOST/api/dashboard/stats" -UseBasicParsing
+} catch {
+    $_.Exception.Response.StatusCode.value__
+}
 ```
 
-You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, `RotateSwaClientSecret`, etc.
+You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, `RotateSwaClientSecret`, etc. The route check should return `401` or `403`.
+
+### 6.4 Recovery Command (If Functions List Is Empty)
+
+```powershell
+# Re-publish and force host refresh
+Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
+func azure functionapp publish $FUNCTION_APP_NAME --dotnet-isolated --force
+az functionapp sync-functions --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+Start-Sleep -Seconds 20
+
+# Re-check
+az functionapp function list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "[].name" `
+    --output table
+```
 
 ---
 
@@ -1056,6 +1079,28 @@ az functionapp config appsettings list `
     --query "[].{Name:name, Value:value}" `
     --output table
 ```
+
+### API returns 404 after redeploy
+
+This usually means functions were not indexed in the host after deployment.
+
+```powershell
+# 1) Confirm function indexing
+az functionapp function list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "[].name" -o table
+
+# 2) If empty, re-publish with Functions Core Tools (do NOT use config-zip)
+Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
+func azure functionapp publish $FUNCTION_APP_NAME --dotnet-isolated --force
+
+# 3) Refresh host triggers
+az functionapp sync-functions --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+```
+
+> **Important**: Avoid `az functionapp deployment source config-zip` for this project. Use `func azure functionapp publish --dotnet-isolated` to prevent recurring 404 regressions.
 
 ### Dashboard shows no data
 
