@@ -46,18 +46,22 @@ public class RoleFunctions
 
             _logger.LogInformation("Getting roles for user: {UserId}", clientPrincipal.UserId);
 
-            // Get the admin group ID from configuration
+            // Get role mappings from configuration
             var adminGroupId = _configuration["SWA_ADMIN_GROUP_ID"];
+            var adminAppRole = _configuration["SWA_ADMIN_APP_ROLE"];
+            var readerGroupId = _configuration["SWA_READER_GROUP_ID"];
+            var readerAppRole = _configuration["SWA_READER_APP_ROLE"];
             
-            if (string.IsNullOrEmpty(adminGroupId))
+            if (string.IsNullOrEmpty(adminGroupId) && string.IsNullOrEmpty(adminAppRole) &&
+                string.IsNullOrEmpty(readerGroupId) && string.IsNullOrEmpty(readerAppRole))
             {
-                _logger.LogWarning("SWA_ADMIN_GROUP_ID not configured - no roles assigned");
+                _logger.LogWarning("No role mappings configured. Set SWA_ADMIN_* and/or SWA_READER_* settings.");
                 return await CreateJsonResponse(req, new { roles = Array.Empty<string>() });
             }
 
             var roles = new List<string>();
 
-            // Check if user is in the admin group
+            // Check role mappings from group and app role claims
             if (clientPrincipal.Claims != null)
             {
                 var groupClaims = clientPrincipal.Claims
@@ -65,15 +69,40 @@ public class RoleFunctions
                     .Select(c => c.Value)
                     .ToList();
 
-                if (groupClaims.Contains(adminGroupId))
+                var appRoleClaims = clientPrincipal.Claims
+                    .Where(c => c.Type == "roles" || c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+                    .Select(c => c.Value)
+                    .ToList();
+
+                var isAdminByGroup = !string.IsNullOrWhiteSpace(adminGroupId) &&
+                                     groupClaims.Contains(adminGroupId, StringComparer.OrdinalIgnoreCase);
+                var isAdminByAppRole = !string.IsNullOrWhiteSpace(adminAppRole) &&
+                                       appRoleClaims.Contains(adminAppRole, StringComparer.OrdinalIgnoreCase);
+                var isReaderByGroup = !string.IsNullOrWhiteSpace(readerGroupId) &&
+                                      groupClaims.Contains(readerGroupId, StringComparer.OrdinalIgnoreCase);
+                var isReaderByAppRole = !string.IsNullOrWhiteSpace(readerAppRole) &&
+                                        appRoleClaims.Contains(readerAppRole, StringComparer.OrdinalIgnoreCase);
+
+                var isAdmin = isAdminByGroup || isAdminByAppRole;
+                var isReader = isReaderByGroup || isReaderByAppRole;
+
+                if (isAdmin)
                 {
                     roles.Add("admin");
                     _logger.LogInformation("User {UserId} assigned admin role", clientPrincipal.UserId);
                 }
-                else
+
+                if (isReader || isAdmin)
                 {
-                    _logger.LogInformation("User {UserId} not in admin group. User groups: {Groups}", 
-                        clientPrincipal.UserId, string.Join(", ", groupClaims));
+                    roles.Add("reader");
+                }
+
+                if (!isAdmin && !isReader)
+                {
+                    _logger.LogInformation("User {UserId} not mapped to admin/reader role. Groups: {Groups}. App roles: {AppRoles}",
+                        clientPrincipal.UserId,
+                        string.Join(", ", groupClaims),
+                        string.Join(", ", appRoleClaims));
                 }
             }
 

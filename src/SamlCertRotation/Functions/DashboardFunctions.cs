@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Mail;
+using System.Text;
 using System.Text.Json;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
@@ -73,6 +74,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> GetDashboardStats(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "dashboard/stats")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Getting dashboard stats");
 
         try
@@ -94,6 +101,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> GetApplications(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "applications")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Getting all SAML applications");
 
         try
@@ -116,6 +129,12 @@ public class DashboardFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "applications/{id}")] HttpRequestData req,
         string id)
     {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Getting application {Id}", id);
 
         if (!IsValidGuid(id))
@@ -147,6 +166,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> GetGlobalPolicy(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "policy")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Getting global policy");
 
         try
@@ -168,6 +193,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> UpdateGlobalPolicy(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "policy")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Updating global policy");
 
         try
@@ -209,6 +240,12 @@ public class DashboardFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "policy/app/{id}")] HttpRequestData req,
         string id)
     {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Getting app policy for {Id}", id);
 
         if (!IsValidGuid(id))
@@ -250,6 +287,12 @@ public class DashboardFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "policy/app/{id}")] HttpRequestData req,
         string id)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Updating app policy for {Id}", id);
 
         if (!IsValidGuid(id))
@@ -297,6 +340,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> GetAuditLogs(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "audit")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Getting audit logs");
 
         try
@@ -350,6 +399,12 @@ public class DashboardFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "audit/app/{id}")] HttpRequestData req,
         string id)
     {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Getting audit logs for app {Id}", id);
 
         if (!IsValidGuid(id))
@@ -376,6 +431,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> GetSettings(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "settings")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Getting settings");
 
         try
@@ -423,6 +484,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> UpdateSettings(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "settings")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Updating settings");
 
         try
@@ -518,28 +585,7 @@ public class DashboardFunctions
     public async Task<HttpResponseData> TriggerRotation(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation")] HttpRequestData req)
     {
-        _logger.LogInformation("Manual production rotation triggered via legacy endpoint");
-
-        try
-        {
-            var results = await _rotationService.RunRotationAsync(false);
-            var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
-            return await CreateJsonResponse(req, new
-            {
-                message = "Completed production rotation run",
-                mode = "prod",
-                totalProcessed = results.Count,
-                successful,
-                skipped,
-                failed,
-                results = results
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during manual production rotation");
-            return await CreateErrorResponse(req, ex.Message);
-        }
+        return await TriggerRotationProd(req);
     }
 
     /// <summary>
@@ -549,6 +595,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> TriggerRotationReportOnly(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation/report-only")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Manual report-only rotation triggered");
 
         try
@@ -590,6 +642,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> TriggerRotationProd(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation/prod")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Manual production rotation triggered");
 
         try
@@ -632,6 +690,12 @@ public class DashboardFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "applications/{id}/certificate")] HttpRequestData req,
         string id)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Creating new certificate for application {Id}", id);
 
         if (!IsValidGuid(id))
@@ -680,6 +744,12 @@ public class DashboardFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "applications/{id}/certificate/activate")] HttpRequestData req,
         string id)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Activating newest certificate for application {Id}", id);
 
         if (!IsValidGuid(id))
@@ -747,6 +817,12 @@ public class DashboardFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "applications/{id}/resend-reminder")] HttpRequestData req,
         string id)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Manual sponsor reminder email requested for application {Id}", id);
 
         if (!IsValidGuid(id))
@@ -811,6 +887,12 @@ public class DashboardFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "applications/{id}/sponsor")] HttpRequestData req,
         string id)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Updating sponsor for application {Id}", id);
 
         if (!IsValidGuid(id))
@@ -890,6 +972,12 @@ public class DashboardFunctions
     public async Task<HttpResponseData> RotateDashboardSecret(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "settings/rotate-secret")] HttpRequestData req)
     {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
         _logger.LogInformation("Rotating dashboard client secret");
 
         try
@@ -1005,6 +1093,93 @@ public class DashboardFunctions
         return message;
     }
 
+    private async Task<HttpResponseData?> AuthorizeRequestAsync(HttpRequestData req, bool requireAdmin = false)
+    {
+        var identity = ParseClientPrincipal(req);
+        if (identity == null || !identity.IsAuthenticated)
+        {
+            _logger.LogWarning("Unauthorized request to {Method} {Url}", req.Method, req.Url);
+            return await CreateErrorResponse(req, "Authentication is required.", HttpStatusCode.Unauthorized);
+        }
+
+        var hasReadAccess = identity.Roles.Contains("admin") || identity.Roles.Contains("reader");
+        if (!hasReadAccess)
+        {
+            _logger.LogWarning("Forbidden request by user {UserId} to {Method} {Url} - missing reader/admin role", identity.UserId ?? "unknown", req.Method, req.Url);
+            return await CreateErrorResponse(req, "Reader or admin role is required.", HttpStatusCode.Forbidden);
+        }
+
+        if (requireAdmin && !identity.Roles.Contains("admin"))
+        {
+            _logger.LogWarning("Forbidden request by user {UserId} to {Method} {Url}", identity.UserId ?? "unknown", req.Method, req.Url);
+            return await CreateErrorResponse(req, "Admin role is required.", HttpStatusCode.Forbidden);
+        }
+
+        return null;
+    }
+
+    private static RequestIdentity? ParseClientPrincipal(HttpRequestData req)
+    {
+        if (!req.Headers.TryGetValues("x-ms-client-principal", out var headerValues))
+        {
+            return null;
+        }
+
+        var encodedPrincipal = headerValues.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(encodedPrincipal))
+        {
+            return null;
+        }
+
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encodedPrincipal));
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+
+            var userId = TryGetString(root, "userId");
+            var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (root.TryGetProperty("userRoles", out var userRolesElement) && userRolesElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var roleElement in userRolesElement.EnumerateArray())
+                {
+                    var role = roleElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(role))
+                    {
+                        roles.Add(role);
+                    }
+                }
+            }
+
+            if (roles.Count == 0)
+            {
+                return null;
+            }
+
+            return new RequestIdentity
+            {
+                UserId = userId,
+                IsAuthenticated = roles.Contains("authenticated") || !string.IsNullOrWhiteSpace(userId),
+                Roles = roles
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? TryGetString(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        return value.GetString();
+    }
+
     private static bool IsValidGuid(string value)
     {
         return !string.IsNullOrEmpty(value) && Guid.TryParse(value, out _);
@@ -1051,6 +1226,13 @@ public class DashboardFunctions
     private sealed class SponsorUpdateRequest
     {
         public string? SponsorEmail { get; set; }
+    }
+
+    private sealed class RequestIdentity
+    {
+        public string? UserId { get; set; }
+        public bool IsAuthenticated { get; set; }
+        public HashSet<string> Roles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
     private static (int successful, int skipped, int failed) GetRotationOutcomeCounts(List<RotationResult> results)

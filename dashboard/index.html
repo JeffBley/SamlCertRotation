@@ -932,6 +932,7 @@
         let nextAuditFilterId = 1;
         let createCertDaysThreshold = 60;
         let activateCertDaysThreshold = 30;
+        let currentUserRoles = [];
         const auditFilterColumns = [
             { value: 'application', label: 'Application' },
             { value: 'result', label: 'Result' },
@@ -952,6 +953,31 @@
         // Sign Out function - kills app session only (not global SSO logout)
         function signOut() {
             window.location.href = '/.auth/logout?post_logout_redirect_uri=/';
+        }
+
+        function isAdminUser() {
+            return currentUserRoles.includes('admin');
+        }
+
+        async function loadCurrentUserRoles() {
+            try {
+                const response = await fetch('/.auth/me', { credentials: 'include' });
+                if (!response.ok) {
+                    return;
+                }
+
+                const authInfo = await response.json();
+                const principal = Array.isArray(authInfo) && authInfo.length > 0
+                    ? authInfo[0]?.clientPrincipal
+                    : null;
+
+                const roles = principal?.userRoles;
+                currentUserRoles = Array.isArray(roles)
+                    ? roles.map(role => String(role).toLowerCase())
+                    : [];
+            } catch {
+                currentUserRoles = [];
+            }
         }
 
         // Close all dropdown menus
@@ -1286,23 +1312,35 @@
 
         // Show loading message
         function showLoading(message) {
-            document.getElementById('error-container').innerHTML = `
-                <div style="padding: 15px; background: #e3f2fd; border-radius: 6px; color: #1565c0;">
-                    ${message}
-                </div>
-            `;
+            renderStatusBanner(message, {
+                background: '#e3f2fd',
+                color: '#1565c0'
+            });
         }
 
         // Show success message
         function showSuccess(message) {
-            document.getElementById('error-container').innerHTML = `
-                <div style="padding: 15px; background: #e8f5e9; border-radius: 6px; color: #2e7d32;">
-                    ${message}
-                </div>
-            `;
+            renderStatusBanner(message, {
+                background: '#e8f5e9',
+                color: '#2e7d32'
+            });
             setTimeout(() => {
                 document.getElementById('error-container').innerHTML = '';
             }, 5000);
+        }
+
+        function renderStatusBanner(message, styles = {}) {
+            const container = document.getElementById('error-container');
+            container.innerHTML = '';
+
+            const banner = document.createElement('div');
+            banner.style.padding = '15px';
+            banner.style.borderRadius = '6px';
+            banner.style.background = styles.background || '#f3f2f1';
+            banner.style.color = styles.color || '#323130';
+            banner.textContent = message || '';
+
+            container.appendChild(banner);
         }
 
         // Tab navigation
@@ -1328,6 +1366,11 @@
         // API helper
         async function apiCall(endpoint, options = {}) {
             try {
+                const method = (options.method || 'GET').toUpperCase();
+                if (method !== 'GET' && !isAdminUser()) {
+                    throw new Error('Admin role is required for this action.');
+                }
+
                 const response = await fetch(`${API_BASE_URL}/api/${endpoint}`, {
                     ...options,
                     headers: {
@@ -1347,9 +1390,14 @@
 
         // Show error message
         function showError(message) {
-            document.getElementById('error-container').innerHTML = `
-                <div class="error">${message}</div>
-            `;
+            const container = document.getElementById('error-container');
+            container.innerHTML = '';
+
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message || 'An error occurred';
+
+            container.appendChild(errorDiv);
             setTimeout(() => {
                 document.getElementById('error-container').innerHTML = '';
             }, 5000);
@@ -2015,6 +2063,7 @@
         updateAppAutoRotateFilterLabel();
         updateAppStatusFilterLabel();
         setDefaultAuditDateRange();
+        await loadCurrentUserRoles();
         loadData();
     </script>
 </body>

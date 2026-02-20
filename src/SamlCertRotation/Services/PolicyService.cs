@@ -32,8 +32,12 @@ public class PolicyService : IPolicyService
         _policyTable = tableServiceClient.GetTableClient(PolicyTableName);
         _policyTable.CreateIfNotExists();
         _logger = logger;
-        _defaultCreateDays = int.Parse(configuration["DefaultCreateCertDaysBeforeExpiry"] ?? "60");
-        _defaultActivateDays = int.Parse(configuration["DefaultActivateCertDaysBeforeExpiry"] ?? "30");
+        _defaultCreateDays = int.TryParse(configuration["DefaultCreateCertDaysBeforeExpiry"], out var createDays)
+            ? createDays
+            : 60;
+        _defaultActivateDays = int.TryParse(configuration["DefaultActivateCertDaysBeforeExpiry"], out var activateDays)
+            ? activateDays
+            : 30;
     }
 
     /// <inheritdoc />

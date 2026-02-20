@@ -18,11 +18,6 @@ public interface INotificationService
     Task<bool> SendCertificateActivatedNotificationAsync(SamlApplication app, SamlCertificate activatedCert);
 
     /// <summary>
-    /// Send notification when certificate is expiring soon (warning)
-    /// </summary>
-    Task<bool> SendExpirationWarningNotificationAsync(SamlApplication app, SamlCertificate expiringCert, int daysUntilExpiry);
-
-    /// <summary>
     /// Send notification when an error occurs
     /// </summary>
     Task<bool> SendErrorNotificationAsync(SamlApplication app, string errorMessage, string operation);

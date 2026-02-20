@@ -61,19 +61,6 @@ public class NotificationService : INotificationService
     }
 
     /// <inheritdoc />
-    public async Task<bool> SendExpirationWarningNotificationAsync(SamlApplication app, SamlCertificate expiringCert, int daysUntilExpiry)
-    {
-        var recipients = await GetSponsorRecipientsAsync(app);
-        if (!recipients.Any()) return false;
-
-        var urgency = daysUntilExpiry <= 7 ? "URGENT" : "Warning";
-        var subject = $"[SAML Cert Rotation] [{urgency}] Certificate Expiring in {daysUntilExpiry} days - {app.DisplayName}";
-        var body = GenerateExpirationWarningEmail(app, expiringCert, daysUntilExpiry);
-
-        return await _graphService.SendEmailAsync(_senderEmail, recipients, subject, body);
-    }
-
-    /// <inheritdoc />
     public async Task<bool> SendErrorNotificationAsync(SamlApplication app, string errorMessage, string operation)
     {
         var recipients = await GetRecipientsAsync(app);
@@ -303,49 +290,6 @@ public class NotificationService : INotificationService
                 <strong>⚠️ Action May Be Required:</strong><br/>
                 If your SAML Service Provider does not automatically fetch metadata updates, you may need 
                 to manually update the SP with the new certificate. Otherwise, SAML authentication may fail.
-            </div>
-        </div>
-        <div class='footer'>
-            This is an automated message from the SAML Certificate Rotation Tool.
-        </div>
-    </div>
-</body>
-</html>";
-    }
-
-    private string GenerateExpirationWarningEmail(SamlApplication app, SamlCertificate cert, int daysUntilExpiry)
-    {
-        var urgencyColor = daysUntilExpiry <= 7 ? "#d13438" : "#ffb900";
-        return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: {urgencyColor}; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
-        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
-        .warning {{ background: #fff4ce; border-left: 4px solid {urgencyColor}; padding: 15px; margin: 15px 0; }}
-        .details {{ background: white; padding: 15px; border-radius: 4px; margin-top: 15px; }}
-        .label {{ font-weight: 600; color: #666; }}
-        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h2 style='margin:0;'>⚠️ Certificate Expiring in {daysUntilExpiry} Days</h2>
-        </div>
-        <div class='content'>
-            <div class='warning'>
-                <strong>The SAML signing certificate for this application is expiring soon.</strong>
-            </div>
-            <div class='details'>
-                <p><span class='label'>Application:</span> {app.DisplayName}</p>
-                <p><span class='label'>App ID:</span> {app.AppId}</p>
-                <p><span class='label'>Certificate Thumbprint:</span> {cert.Thumbprint}</p>
-                <p><span class='label'>Expires On:</span> {cert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
-                <p><span class='label'>Days Remaining:</span> {daysUntilExpiry}</p>
             </div>
         </div>
         <div class='footer'>

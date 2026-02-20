@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
+using Microsoft.Graph.ServicePrincipals;
 using Microsoft.Graph.ServicePrincipals.Item.AddTokenSigningCertificate;
 using SamlCertRotation.Models;
 using Azure.Core;
@@ -22,6 +23,7 @@ public class GraphService : IGraphService
     private readonly ILogger<GraphService> _logger;
     private readonly IConfiguration _configuration;
     private readonly TokenCredential _tokenCredential;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _customAttributeSet;
     private readonly string _customAttributeName;
 
@@ -29,12 +31,14 @@ public class GraphService : IGraphService
         GraphServiceClient graphClient, 
         ILogger<GraphService> logger,
         IConfiguration configuration,
-        TokenCredential tokenCredential)
+        TokenCredential tokenCredential,
+        IHttpClientFactory httpClientFactory)
     {
         _graphClient = graphClient;
         _logger = logger;
         _configuration = configuration;
         _tokenCredential = tokenCredential;
+        _httpClientFactory = httpClientFactory;
         _customAttributeSet = configuration["CustomSecurityAttributeSet"] ?? "SamlCertRotation";
         _customAttributeName = configuration["CustomSecurityAttributeName"] ?? "AutoRotate";
     }
@@ -66,21 +70,32 @@ public class GraphService : IGraphService
                 return samlApps;
             }
 
-            foreach (var sp in servicePrincipals.Value)
+            while (servicePrincipals?.Value != null)
             {
-                var samlApp = MapToSamlApplication(sp);
-
-                // In some Graph responses, customSecurityAttributes can be omitted or partially populated
-                // for collection queries even when requested in $select. Fallback to per-object read.
-                if (string.IsNullOrWhiteSpace(samlApp.AutoRotateStatus) && !string.IsNullOrWhiteSpace(sp.Id))
+                foreach (var sp in servicePrincipals.Value)
                 {
-                    samlApp.AutoRotateStatus = await GetCustomSecurityAttributeAsync(
-                        sp.Id,
-                        _customAttributeSet,
-                        _customAttributeName);
+                    var samlApp = MapToSamlApplication(sp);
+
+                    // In some Graph responses, customSecurityAttributes can be omitted or partially populated
+                    // for collection queries even when requested in $select. Fallback to per-object read.
+                    if (string.IsNullOrWhiteSpace(samlApp.AutoRotateStatus) && !string.IsNullOrWhiteSpace(sp.Id))
+                    {
+                        samlApp.AutoRotateStatus = await GetCustomSecurityAttributeAsync(
+                            sp.Id,
+                            _customAttributeSet,
+                            _customAttributeName);
+                    }
+
+                    samlApps.Add(samlApp);
                 }
 
-                samlApps.Add(samlApp);
+                if (string.IsNullOrWhiteSpace(servicePrincipals.OdataNextLink))
+                {
+                    break;
+                }
+
+                servicePrincipals = await new ServicePrincipalsRequestBuilder(servicePrincipals.OdataNextLink, _graphClient.RequestAdapter)
+                    .GetAsync();
             }
 
             _logger.LogInformation("Found {Count} SAML applications", samlApps.Count);
@@ -259,7 +274,7 @@ public class GraphService : IGraphService
             }
 
             // Call Logic App to send email
-            using var httpClient = new HttpClient();
+            using var httpClient = _httpClientFactory.CreateClient();
             var payload = new
             {
                 to = string.Join(";", recipients),
@@ -603,7 +618,7 @@ public class GraphService : IGraphService
                 new TokenRequestContext(new[] { "https://graph.microsoft.com/.default" }),
                 CancellationToken.None);
 
-            using var httpClient = new HttpClient();
+            using var httpClient = _httpClientFactory.CreateClient();
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
             var requestUrl = $"https://graph.microsoft.com/v1.0/servicePrincipals/{servicePrincipalId}?$select=customSecurityAttributes";
