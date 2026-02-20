@@ -1133,9 +1133,18 @@ public class DashboardFunctions
 
         try
         {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(encodedPrincipal)));
+            var json = DecodePrincipalPayload(encodedPrincipal);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
+            if (root.TryGetProperty("clientPrincipal", out var wrappedPrincipal) && wrappedPrincipal.ValueKind == JsonValueKind.Object)
+            {
+                root = wrappedPrincipal;
+            }
 
             var userId = TryGetString(root, "userId");
             var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1223,6 +1232,30 @@ public class DashboardFunctions
         }
         catch
         {
+            return null;
+        }
+    }
+
+    private static string? DecodePrincipalPayload(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return null;
+        }
+
+        var trimmed = payload.Trim();
+
+        try
+        {
+            return Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(trimmed)));
+        }
+        catch
+        {
+            if (trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                return trimmed;
+            }
+
             return null;
         }
     }

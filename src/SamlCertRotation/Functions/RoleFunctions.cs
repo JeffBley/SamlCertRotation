@@ -34,7 +34,24 @@ public class RoleFunctions
         {
             // Read the client principal from the request body
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var clientPrincipal = JsonSerializer.Deserialize<ClientPrincipal>(requestBody, new JsonSerializerOptions
+            if (string.IsNullOrWhiteSpace(requestBody))
+            {
+                _logger.LogWarning("No client principal request body provided");
+                return await CreateJsonResponse(req, new { roles = Array.Empty<string>() });
+            }
+
+            using var payloadDocument = JsonDocument.Parse(requestBody);
+            var root = payloadDocument.RootElement;
+            var principalElement = root;
+
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("clientPrincipal", out var wrappedPrincipal) &&
+                wrappedPrincipal.ValueKind == JsonValueKind.Object)
+            {
+                principalElement = wrappedPrincipal;
+            }
+
+            var clientPrincipal = JsonSerializer.Deserialize<ClientPrincipal>(principalElement.GetRawText(), new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
             });
