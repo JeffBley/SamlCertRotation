@@ -1177,64 +1177,10 @@ public class DashboardFunctions
                         root = wrappedPrincipal;
                     }
 
-                    var userId = TryGetString(root, "userId");
-                    var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var claimRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var claimGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                    if (root.TryGetProperty("userRoles", out var userRolesElement) && userRolesElement.ValueKind == JsonValueKind.Array)
+                    var identity = BuildIdentityFromPrincipalRoot(root);
+                    if (identity != null)
                     {
-                        foreach (var roleElement in userRolesElement.EnumerateArray())
-                        {
-                            var role = roleElement.GetString();
-                            if (!string.IsNullOrWhiteSpace(role))
-                            {
-                                roles.Add(role);
-                            }
-                        }
-                    }
-
-                    if (root.TryGetProperty("claims", out var claimsElement) && claimsElement.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var claimElement in claimsElement.EnumerateArray())
-                        {
-                            if (claimElement.ValueKind != JsonValueKind.Object)
-                            {
-                                continue;
-                            }
-
-                            var claimType = TryGetString(claimElement, "typ") ?? TryGetString(claimElement, "type");
-                            var claimValue = TryGetString(claimElement, "val") ?? TryGetString(claimElement, "value");
-
-                            if (string.IsNullOrWhiteSpace(claimType) || string.IsNullOrWhiteSpace(claimValue))
-                            {
-                                continue;
-                            }
-
-                            if (string.Equals(claimType, "roles", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
-                            {
-                                claimRoleValues.Add(claimValue);
-                            }
-
-                            if (string.Equals(claimType, "groups", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
-                            {
-                                claimGroupValues.Add(claimValue);
-                            }
-                        }
-                    }
-
-                    ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
-
-                    if (roles.Count > 0)
-                    {
-                        return new RequestIdentity
-                        {
-                            UserId = userId,
-                            IsAuthenticated = IsAuthenticatedPrincipal(userId, roles),
-                            Roles = roles
-                        };
+                        return identity;
                     }
                 }
             }
@@ -1243,7 +1189,132 @@ public class DashboardFunctions
             }
         }
 
+        var tokenIdentity = ParseClientPrincipalFromAuthToken(req);
+        if (tokenIdentity != null)
+        {
+            return tokenIdentity;
+        }
+
         return ParseClientPrincipalFromFallbackHeaders(req);
+    }
+
+    private RequestIdentity? ParseClientPrincipalFromAuthToken(HttpRequestData req)
+    {
+        var authTokenHeader = GetHeaderValue(req, "x-ms-auth-token");
+        if (string.IsNullOrWhiteSpace(authTokenHeader))
+        {
+            return null;
+        }
+
+        var token = authTokenHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? authTokenHeader.Substring("Bearer ".Length).Trim()
+            : authTokenHeader.Trim();
+
+        var jwtPayloadJson = DecodeJwtPayload(token);
+        if (string.IsNullOrWhiteSpace(jwtPayloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var payloadDocument = JsonDocument.Parse(jwtPayloadJson);
+            var payloadRoot = payloadDocument.RootElement;
+
+            if (payloadRoot.TryGetProperty("prn", out var prnElement) && prnElement.ValueKind == JsonValueKind.String)
+            {
+                var prnValue = prnElement.GetString();
+                if (!string.IsNullOrWhiteSpace(prnValue))
+                {
+                    var principalJson = DecodePrincipalPayload(prnValue) ?? Uri.UnescapeDataString(prnValue);
+                    if (!string.IsNullOrWhiteSpace(principalJson))
+                    {
+                        using var principalDocument = JsonDocument.Parse(principalJson);
+                        var principalRoot = principalDocument.RootElement;
+                        if (principalRoot.TryGetProperty("clientPrincipal", out var wrappedPrincipal) && wrappedPrincipal.ValueKind == JsonValueKind.Object)
+                        {
+                            principalRoot = wrappedPrincipal;
+                        }
+
+                        var identity = BuildIdentityFromPrincipalRoot(principalRoot);
+                        if (identity != null)
+                        {
+                            return identity;
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+
+    private RequestIdentity? BuildIdentityFromPrincipalRoot(JsonElement root)
+    {
+        var userId = TryGetString(root, "userId");
+        var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var claimRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var claimGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (root.TryGetProperty("userRoles", out var userRolesElement) && userRolesElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var roleElement in userRolesElement.EnumerateArray())
+            {
+                var role = roleElement.GetString();
+                if (!string.IsNullOrWhiteSpace(role))
+                {
+                    roles.Add(role);
+                }
+            }
+        }
+
+        if (root.TryGetProperty("claims", out var claimsElement) && claimsElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var claimElement in claimsElement.EnumerateArray())
+            {
+                if (claimElement.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var claimType = TryGetString(claimElement, "typ") ?? TryGetString(claimElement, "type");
+                var claimValue = TryGetString(claimElement, "val") ?? TryGetString(claimElement, "value");
+
+                if (string.IsNullOrWhiteSpace(claimType) || string.IsNullOrWhiteSpace(claimValue))
+                {
+                    continue;
+                }
+
+                if (string.Equals(claimType, "roles", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
+                {
+                    claimRoleValues.Add(claimValue);
+                }
+
+                if (string.Equals(claimType, "groups", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
+                {
+                    claimGroupValues.Add(claimValue);
+                }
+            }
+        }
+
+        ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
+
+        if (roles.Count == 0)
+        {
+            return null;
+        }
+
+        return new RequestIdentity
+        {
+            UserId = userId,
+            IsAuthenticated = IsAuthenticatedPrincipal(userId, roles),
+            Roles = roles
+        };
     }
 
     private RequestIdentity? ParseClientPrincipalFromFallbackHeaders(HttpRequestData req)
@@ -1431,6 +1502,29 @@ public class DashboardFunctions
                 return decoded;
             }
 
+            return null;
+        }
+    }
+
+    private static string? DecodeJwtPayload(string jwt)
+    {
+        if (string.IsNullOrWhiteSpace(jwt))
+        {
+            return null;
+        }
+
+        var parts = jwt.Split('.');
+        if (parts.Length < 2)
+        {
+            return null;
+        }
+
+        try
+        {
+            return Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(parts[1])));
+        }
+        catch
+        {
             return null;
         }
     }
