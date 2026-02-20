@@ -29,7 +29,7 @@ public class RoleFunctions
     /// </summary>
     [Function("GetRoles")]
     public async Task<HttpResponseData> GetRoles(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "getroles")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "GetRoles")] HttpRequestData req)
     {
         try
         {
