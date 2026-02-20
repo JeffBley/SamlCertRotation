@@ -969,9 +969,9 @@
                 }
 
                 const authInfo = await response.json();
-                const principal = Array.isArray(authInfo) && authInfo.length > 0
-                    ? authInfo[0]?.clientPrincipal
-                    : null;
+                const principal = Array.isArray(authInfo)
+                    ? (authInfo.length > 0 ? authInfo[0]?.clientPrincipal : null)
+                    : authInfo?.clientPrincipal ?? null;
 
                 const roles = principal?.userRoles;
                 const normalizedRoles = Array.isArray(roles)
