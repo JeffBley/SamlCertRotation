@@ -490,16 +490,6 @@ Configure the two app roles used by dashboard authorization.
     - **Value**: `SamlCertRotation.Reader`
     - **Description**: `Read-only dashboard access`
 
-Back in Cloud Shell, load the role IDs for assignment in the next step:
-
-```powershell
-$ADMIN_APP_ROLE_ID = az ad app show --id $CLIENT_ID --query "appRoles[?value=='SamlCertRotation.Admin' && isEnabled==\`true\`].id | [0]" -o tsv
-$READER_APP_ROLE_ID = az ad app show --id $CLIENT_ID --query "appRoles[?value=='SamlCertRotation.Reader' && isEnabled==\`true\`].id | [0]" -o tsv
-
-Write-Host "Admin app role ID: $ADMIN_APP_ROLE_ID"
-Write-Host "Reader app role ID: $READER_APP_ROLE_ID"
-```
-
 ### 7.4 Create Service Principal (Enterprise App)
 This will create the Enterprise App that will control who has access to the app's portal.
 
@@ -569,15 +559,44 @@ Start-Sleep -Seconds 30
 # Store the client secret in Key Vault
 az keyvault secret set `
     --vault-name $KEY_VAULT_NAME `
-    --name "SwaClientSecret" `
+    --name "SamlDashboardClientSecret" `
     --value $CLIENT_SECRET `
     --expires (Get-Date).AddYears(2).ToString("yyyy-MM-ddTHH:mm:ssZ") `
     --tags "AppClientId=$CLIENT_ID" "CreatedBy=ManualDeployment"
 
-Write-Host "Client secret stored in Key Vault as 'SwaClientSecret'"
+Write-Host "Client secret stored in Key Vault as 'SamlDashboardClientSecret'"
 ```
 
-### 7.7 Configure Static Web App and Function App Settings
+> **Important**: Keep the secret name consistent across Key Vault and SWA app settings. In this guide the required name is `SamlDashboardClientSecret`.
+
+### 7.7 Enable Static Web App Managed Identity and Key Vault Access
+
+The Static Web App must use a managed identity with Key Vault read access before Key Vault references will resolve.
+
+```powershell
+# Enable system-assigned managed identity on the Static Web App
+az staticwebapp identity assign `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME
+
+# Grant Static Web App managed identity permission to read Key Vault secrets
+$KV_ID = az keyvault show --name $KEY_VAULT_NAME --query id -o tsv
+$SWA_PRINCIPAL_ID = az staticwebapp identity show `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query principalId -o tsv
+
+az role assignment create `
+    --assignee-object-id $SWA_PRINCIPAL_ID `
+    --assignee-principal-type ServicePrincipal `
+    --role "Key Vault Secrets User" `
+    --scope $KV_ID
+
+Write-Host "Waiting 60 seconds for RBAC propagation..."
+Start-Sleep -Seconds 60
+```
+
+### 7.8 Configure Static Web App and Function App Settings
 
 ```powershell
 # Get your tenant ID
@@ -588,7 +607,7 @@ $TENANT_ID = az account show --query "tenantId" -o tsv
 az staticwebapp appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
-    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=$KEY_VAULT_NAME;SecretName=SwaClientSecret)"
+    --setting-names "AAD_CLIENT_ID=$CLIENT_ID" "AAD_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=$KEY_VAULT_NAME;SecretName=SamlDashboardClientSecret)"
 
 # Verify settings were applied (the 'set' command may show null due to redaction)
 az staticwebapp appsettings list `
@@ -602,7 +621,15 @@ Write-Host "NOTE: Dashboard secret remains in Key Vault; SWA reads it via Key Va
 
 > **Important**: The `az staticwebapp appsettings set` command may display `null` for values due to security redaction. Use the `list` command to verify the settings were applied correctly.
 
-### 7.8 Link Function App to Static Web App
+```powershell
+# Validation gate: these must be set before proceeding
+az staticwebapp appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "properties.{AAD_CLIENT_ID:AAD_CLIENT_ID,AAD_CLIENT_SECRET:AAD_CLIENT_SECRET}" -o json
+```
+
+### 7.9 Link Function App to Static Web App
 
 ```powershell
 # Get the Function App resource ID
@@ -627,11 +654,11 @@ az staticwebapp backends link `
 Write-Host "Function App linked as SWA backend"
 ```
 
-### 7.9 Disable Easy Auth on Function App
+### 7.10 Disable Easy Auth on Function App
 
 The `backends link` command above enables Easy Auth on the Function App. We need to **disable it** because authentication is handled by the Static Web App, not the Function App.
 
-> **Important**: This step MUST run AFTER 7.8 (backend linking), otherwise the link command will re-enable Easy Auth.
+> **Important**: This step MUST run AFTER 7.9 (backend linking), otherwise the link command will re-enable Easy Auth.
 
 ```powershell
 # Disable Easy Auth on the Function App
@@ -653,7 +680,7 @@ if ($easyAuthStatus -eq "false") {
 }
 ```
 
-### 7.10 Save Access Control Configuration
+### 7.11 Save Access Control Configuration
 
 ```powershell
 # Save configuration for reference
@@ -676,11 +703,11 @@ Write-Host "Access control configuration saved to access-control-config.json"
 |---------|----------|-------|
 | `AAD_CLIENT_ID` | SWA App Settings | App Registration Client ID |
 | `AAD_CLIENT_SECRET` | SWA App Settings | Key Vault reference string (`@Microsoft.KeyVault(...)`) |
-| `SwaClientSecret` | Key Vault | Primary storage for the client secret |
+| `SamlDashboardClientSecret` | Key Vault | Primary storage for the client secret |
 | `KeyVaultUri` | Function App Settings | Key Vault URI (set by Bicep) |
 | `RotationSchedule` | Function App Settings | CRON expression for rotation checks (default: `0 0 6 * * *` = 6 AM UTC daily) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
-| Easy Auth | Function App | Disabled (Step 7.9) |
+| Easy Auth | Function App | Disabled (Step 7.10) |
 | Tenant ID | staticwebapp.config.json | Your Azure AD Tenant ID |
 
 > **Note**: Only users or groups assigned to the Enterprise Application can access the dashboard. Users not assigned will see "Access Denied" from Azure AD before reaching the application.
@@ -690,7 +717,7 @@ Write-Host "Access control configuration saved to access-control-config.json"
 > - `0 0 */12 * * *` - Every 12 hours
 > - `0 0 6 * * 1` - Every Monday at 6:00 AM UTC
 
-> **Manual secret management**: This solution does not rotate dashboard client secrets automatically. Rotate in Entra ID on your schedule, update `SwaClientSecret` in Key Vault, and keep the SWA app setting as a Key Vault reference.
+> **Manual secret management**: This solution does not rotate dashboard client secrets automatically. Rotate in Entra ID on your schedule, update `SamlDashboardClientSecret` in Key Vault, and keep the SWA app setting as a Key Vault reference.
 
 ---
 
@@ -704,8 +731,6 @@ $SWA_TOKEN = az staticwebapp secrets list `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
     --query "properties.apiKey" -o tsv
-
-Write-Host "Deployment token retrieved"
 ```
 
 ### 8.2 Update Dashboard Configuration
@@ -723,23 +748,7 @@ Set-Content -Path staticwebapp.config.json -Value $configContent
 
 ### 8.3 Deploy Dashboard
 
-The simplest method is to deploy via the Azure Portal:
-
-#### Option A: Azure Portal (Recommended)
-
-1. Open [Azure Portal](https://portal.azure.com)
-2. Navigate to your Static Web App: `$STATIC_WEB_APP_NAME`
-3. Go to **Overview** → Click the **URL** to open the app
-4. Go to **Settings** → **Configuration** to verify settings
-5. For manual upload, go to the **Deployment Center**
-
-**Note**: For Static Web Apps with a simple HTML file, you can also use GitHub Actions:
-- Push your dashboard folder to a GitHub repo
-- Connect the Static Web App to the repo via Deployment Center
-
-#### Option B: SWA CLI via npx
-
-If you prefer command-line deployment:
+Use SWA CLI via `npx` for deployment:
 
 ```powershell
 # Prepare dashboard files
@@ -883,14 +892,14 @@ Write-Host "Tagged: $appDisplayName"
 
 ```powershell
 # Test dashboard stats endpoint (no function key needed - endpoints are anonymous)
-# Note: Easy Auth must be disabled on Function App for this to work (Step 7.9)
+# Note: Easy Auth must be disabled on Function App for this to work (Step 7.10)
 $response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats" -Method Get
 $response | ConvertTo-Json -Depth 5
 
 # Expected output: JSON with totalSamlApps, appsExpiringIn30Days, etc.
 ```
 
-If you get `400 Bad Request`, Easy Auth is still enabled on the Function App. Run Step 7.9 to disable it.
+If you get `400 Bad Request`, Easy Auth is still enabled on the Function App. Run Step 7.10 to disable it.
 
 ### 11.2 Manually Trigger Rotation
 
@@ -990,7 +999,7 @@ $NEW_CLIENT_SECRET = az ad app credential reset `
 # 3) Store the new secret in Key Vault under the expected name
 az keyvault secret set `
     --vault-name $KEY_VAULT_NAME `
-    --name "SwaClientSecret" `
+    --name "SamlDashboardClientSecret" `
     --value $NEW_CLIENT_SECRET `
     --expires (Get-Date).AddYears(2).ToString("yyyy-MM-ddTHH:mm:ssZ") `
     --tags "CreatedBy=ManualRotation"
@@ -1081,7 +1090,7 @@ If you see "permission denied" when running npm commands:
 # Don't use global installs in Cloud Shell. Instead use npx with -y flag:
 npx -y @azure/static-web-apps-cli deploy ./dist --deployment-token $SWA_TOKEN --env production
 
-# Or deploy via Azure Portal instead (see Step 8.3 Option A)
+# If CLI still fails, verify your deployment token and rerun Step 8.3
 ```
 
 ### SWA CLI "folder not found" error
@@ -1132,11 +1141,11 @@ $CLIENT_ID = az ad app list --filter "displayName eq '$APP_NAME'" --query "[0].a
 Write-Host "CLIENT_ID: $CLIENT_ID"
 
 # Verify secret exists in Key Vault (value is redacted in command output)
-az keyvault secret show --vault-name $KEY_VAULT_NAME --name "SwaClientSecret" --query "{name:name, expires:attributes.expires}" -o table
+az keyvault secret show --vault-name $KEY_VAULT_NAME --name "SamlDashboardClientSecret" --query "{name:name, expires:attributes.expires}" -o table
 
 # If the secret is not in Key Vault, generate and store a new one:
 # $NEW_CLIENT_SECRET = az ad app credential reset --id $CLIENT_ID --display-name "SWA Auth Secret" --years 2 --query "password" -o tsv
-# az keyvault secret set --vault-name $KEY_VAULT_NAME --name "SwaClientSecret" --value $NEW_CLIENT_SECRET
+# az keyvault secret set --vault-name $KEY_VAULT_NAME --name "SamlDashboardClientSecret" --value $NEW_CLIENT_SECRET
 ```
 
 ### Function not triggering
@@ -1189,8 +1198,8 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName $FUNCTION_APP_NAME -Resou
 ### Dashboard shows no data
 
 1. Check browser console (F12) for errors
-2. Verify the SWA backend link was configured (Step 7.8)
-3. Check that Easy Auth is disabled on the Function App (Step 7.9)
+2. Verify the SWA backend link was configured (Step 7.9)
+3. Check that Easy Auth is disabled on the Function App (Step 7.10)
 4. Ensure API_BASE_URL in index.html is empty (SWA backend handles routing)
 
 ### Dashboard shows `API error: 403`
@@ -1230,21 +1239,21 @@ az rest --method PUT `
     --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"unauthenticatedClientAction":"AllowAnonymous"}}}'
 ```
 
-> **Note**: The `az staticwebapp backends link` command (Step 7.8) enables Easy Auth on the Function App. Step 7.9 must run AFTER to disable it.
+> **Note**: The `az staticwebapp backends link` command (Step 7.9) enables Easy Auth on the Function App. Step 7.10 must run AFTER to disable it.
 
 ### Dashboard shows "Unexpected token '<'" error
 
 This typically means the API is returning HTML instead of JSON. Common causes:
 
-1. **Easy Auth is enabled on Function App** - Disable it via Step 7.9
-2. **SWA backend link not configured** - Run Step 7.8
+1. **Easy Auth is enabled on Function App** - Disable it via Step 7.10
+2. **SWA backend link not configured** - Run Step 7.9
 3. **Missing exclude patterns in staticwebapp.config.json** - Ensure `/api/*` is in exclude list
 
 ### Dashboard shows "Access Denied" / User shows as "anonymous"
 
 1. **Enterprise App assignment not configured** - Run Step 7.4 through 7.5
 2. **User not assigned to the Enterprise App** - Add user/group via Azure Portal
-3. **SWA app settings not configured** - Run Step 7.7
+3. **SWA app settings not configured** - Run Step 7.8
 
 ### Auto-rotate status shows as "Not Set" (null) for all apps
 
