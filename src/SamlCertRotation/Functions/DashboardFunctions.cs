@@ -1133,7 +1133,7 @@ public class DashboardFunctions
 
         try
         {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(encodedPrincipal));
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(encodedPrincipal)));
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
 
@@ -1225,6 +1225,21 @@ public class DashboardFunctions
         {
             return null;
         }
+    }
+
+    private static string NormalizeBase64(string value)
+    {
+        var normalized = value
+            .Replace('-', '+')
+            .Replace('_', '/');
+
+        var padding = normalized.Length % 4;
+        if (padding > 0)
+        {
+            normalized = normalized.PadRight(normalized.Length + (4 - padding), '=');
+        }
+
+        return normalized;
     }
 
     private static string? TryGetString(JsonElement element, string propertyName)
