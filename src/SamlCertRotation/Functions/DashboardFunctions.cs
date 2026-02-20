@@ -1118,7 +1118,7 @@ public class DashboardFunctions
         return null;
     }
 
-    private static RequestIdentity? ParseClientPrincipal(HttpRequestData req)
+    private RequestIdentity? ParseClientPrincipal(HttpRequestData req)
     {
         if (!req.Headers.TryGetValues("x-ms-client-principal", out var headerValues))
         {
@@ -1139,6 +1139,8 @@ public class DashboardFunctions
 
             var userId = TryGetString(root, "userId");
             var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var claimRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var claimGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             if (root.TryGetProperty("userRoles", out var userRolesElement) && userRolesElement.ValueKind == JsonValueKind.Array)
             {
@@ -1150,6 +1152,61 @@ public class DashboardFunctions
                         roles.Add(role);
                     }
                 }
+            }
+
+            if (root.TryGetProperty("claims", out var claimsElement) && claimsElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var claimElement in claimsElement.EnumerateArray())
+                {
+                    if (claimElement.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    var claimType = TryGetString(claimElement, "typ") ?? TryGetString(claimElement, "type");
+                    var claimValue = TryGetString(claimElement, "val") ?? TryGetString(claimElement, "value");
+
+                    if (string.IsNullOrWhiteSpace(claimType) || string.IsNullOrWhiteSpace(claimValue))
+                    {
+                        continue;
+                    }
+
+                    if (string.Equals(claimType, "roles", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
+                    {
+                        claimRoleValues.Add(claimValue);
+                    }
+
+                    if (string.Equals(claimType, "groups", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(claimType, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
+                    {
+                        claimGroupValues.Add(claimValue);
+                    }
+                }
+            }
+
+            var configuredAdminAppRole = _configuration["SWA_ADMIN_APP_ROLE"] ?? "SamlCertRotation.Admin";
+            var configuredReaderAppRole = _configuration["SWA_READER_APP_ROLE"] ?? "SamlCertRotation.Reader";
+            var configuredAdminGroup = _configuration["SWA_ADMIN_GROUP_ID"];
+            var configuredReaderGroup = _configuration["SWA_READER_GROUP_ID"];
+
+            var isAdminByClaimRole = !string.IsNullOrWhiteSpace(configuredAdminAppRole) &&
+                                     claimRoleValues.Contains(configuredAdminAppRole);
+            var isReaderByClaimRole = !string.IsNullOrWhiteSpace(configuredReaderAppRole) &&
+                                      claimRoleValues.Contains(configuredReaderAppRole);
+            var isAdminByClaimGroup = !string.IsNullOrWhiteSpace(configuredAdminGroup) &&
+                                      claimGroupValues.Contains(configuredAdminGroup);
+            var isReaderByClaimGroup = !string.IsNullOrWhiteSpace(configuredReaderGroup) &&
+                                       claimGroupValues.Contains(configuredReaderGroup);
+
+            if (isAdminByClaimRole || isAdminByClaimGroup)
+            {
+                roles.Add("admin");
+                roles.Add("reader");
+            }
+            else if (isReaderByClaimRole || isReaderByClaimGroup)
+            {
+                roles.Add("reader");
             }
 
             if (roles.Count == 0)

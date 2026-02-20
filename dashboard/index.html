@@ -933,6 +933,8 @@
         let createCertDaysThreshold = 60;
         let activateCertDaysThreshold = 30;
         let currentUserRoles = [];
+        const ADMIN_APP_ROLE_VALUE = 'SamlCertRotation.Admin';
+        const READER_APP_ROLE_VALUE = 'SamlCertRotation.Reader';
         const auditFilterColumns = [
             { value: 'application', label: 'Application' },
             { value: 'result', label: 'Result' },
@@ -972,9 +974,26 @@
                     : null;
 
                 const roles = principal?.userRoles;
-                currentUserRoles = Array.isArray(roles)
+                const normalizedRoles = Array.isArray(roles)
                     ? roles.map(role => String(role).toLowerCase())
                     : [];
+
+                const claims = Array.isArray(principal?.claims) ? principal.claims : [];
+                const claimRoleValues = claims
+                    .filter(claim => {
+                        const claimType = String(claim?.typ || claim?.type || '').toLowerCase();
+                        return claimType === 'roles' || claimType === 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role';
+                    })
+                    .map(claim => String(claim?.val || claim?.value || '').trim())
+                    .filter(value => value.length > 0);
+
+                if (claimRoleValues.some(value => value.toLowerCase() === ADMIN_APP_ROLE_VALUE.toLowerCase())) {
+                    normalizedRoles.push('admin', 'reader');
+                } else if (claimRoleValues.some(value => value.toLowerCase() === READER_APP_ROLE_VALUE.toLowerCase())) {
+                    normalizedRoles.push('reader');
+                }
+
+                currentUserRoles = [...new Set(normalizedRoles)];
             } catch {
                 currentUserRoles = [];
             }
