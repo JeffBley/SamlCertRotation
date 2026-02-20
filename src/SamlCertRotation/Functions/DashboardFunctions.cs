@@ -122,7 +122,10 @@ public class DashboardFunctions
                 xMsClientPrincipalUserRoles = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-user-roles")),
                 xMsClientPrincipalRoles = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-roles")),
                 xMsClientPrincipalGroups = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-groups")),
-                xMsAuthToken = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-auth-token"))
+                xMsAuthToken = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-auth-token")),
+                xMsTokenAadIdToken = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-token-aad-id-token")),
+                xMsTokenAadAccessToken = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-token-aad-access-token")),
+                authorization = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "authorization"))
             },
             parsedIdentity = new
             {
@@ -1132,12 +1135,12 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Validates x-ms-auth-token against Entra signing keys/issuer, then extracts identity and role claims.
+    /// Validates forwarded identity token against Entra signing keys/issuer, then extracts identity and role claims.
     /// </summary>
     private async Task<RequestIdentity?> ParseClientPrincipalFromValidatedAuthTokenAsync(HttpRequestData req)
     {
-        var authTokenHeader = GetHeaderValue(req, "x-ms-auth-token");
-        if (string.IsNullOrWhiteSpace(authTokenHeader))
+        var candidateTokens = GetCandidateAuthTokens(req).ToList();
+        if (candidateTokens.Count == 0)
         {
             return null;
         }
@@ -1148,82 +1151,112 @@ public class DashboardFunctions
             return null;
         }
 
-        var token = authTokenHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-            ? authTokenHeader.Substring("Bearer ".Length).Trim()
-            : authTokenHeader.Trim();
+        var oidcConfig = await _oidcConfigurationManager.GetConfigurationAsync(CancellationToken.None);
 
-        try
+        var validationParameters = new TokenValidationParameters
         {
-            var oidcConfig = await _oidcConfigurationManager.GetConfigurationAsync(CancellationToken.None);
-
-            var validationParameters = new TokenValidationParameters
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKeys = oidcConfig.SigningKeys,
+            ValidateIssuer = true,
+            ValidIssuers = new[]
             {
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKeys = oidcConfig.SigningKeys,
-                ValidateIssuer = true,
-                ValidIssuers = new[]
+                $"https://login.microsoftonline.com/{_tenantId}/v2.0",
+                $"https://sts.windows.net/{_tenantId}/"
+            },
+            ValidateAudience = !string.IsNullOrWhiteSpace(_swaClientId),
+            ValidAudience = _swaClientId,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(5)
+        };
+
+        var handler = new JwtSecurityTokenHandler();
+
+        foreach (var (source, token) in candidateTokens)
+        {
+            try
+            {
+                var principal = handler.ValidateToken(token, validationParameters, out _);
+
+                var userId = principal.FindFirst("oid")?.Value
+                             ?? principal.FindFirst("sub")?.Value
+                             ?? principal.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+                             ?? principal.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+                var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var claimRoleValues = principal.Claims
+                    .Where(c =>
+                        string.Equals(c.Type, "roles", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
+                    .Select(c => c.Value)
+                    .Where(v => !string.IsNullOrWhiteSpace(v));
+
+                var claimGroupValues = principal.Claims
+                    .Where(c =>
+                        string.Equals(c.Type, "groups", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
+                    .Select(c => c.Value)
+                    .Where(v => !string.IsNullOrWhiteSpace(v));
+
+                ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
+
+                if (roles.Count == 0 && !string.IsNullOrWhiteSpace(userId))
                 {
-                    $"https://login.microsoftonline.com/{_tenantId}/v2.0",
-                    $"https://sts.windows.net/{_tenantId}/"
-                },
-                ValidateAudience = !string.IsNullOrWhiteSpace(_swaClientId),
-                ValidAudience = _swaClientId,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromMinutes(5)
-            };
+                    roles.Add("authenticated");
+                }
 
-            var handler = new JwtSecurityTokenHandler();
-            var principal = handler.ValidateToken(token, validationParameters, out _);
+                if (!IsAuthenticatedPrincipal(userId, roles))
+                {
+                    continue;
+                }
 
-            var userId = principal.FindFirst("oid")?.Value
-                         ?? principal.FindFirst("sub")?.Value
-                         ?? principal.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
-                         ?? principal.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+                _logger.LogInformation("Authenticated request identity from token source {TokenSource}", source);
 
-            var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var claimRoleValues = principal.Claims
-                .Where(c =>
-                    string.Equals(c.Type, "roles", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
-                .Select(c => c.Value)
-                .Where(v => !string.IsNullOrWhiteSpace(v));
-
-            var claimGroupValues = principal.Claims
-                .Where(c =>
-                    string.Equals(c.Type, "groups", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
-                .Select(c => c.Value)
-                .Where(v => !string.IsNullOrWhiteSpace(v));
-
-            ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
-
-            if (roles.Count == 0 && !string.IsNullOrWhiteSpace(userId))
-            {
-                roles.Add("authenticated");
+                return new RequestIdentity
+                {
+                    UserId = userId,
+                    IsAuthenticated = true,
+                    Roles = roles
+                };
             }
-
-            if (!IsAuthenticatedPrincipal(userId, roles))
+            catch (SecurityTokenException ex)
             {
-                return null;
+                _logger.LogDebug(ex, "Token from source {TokenSource} failed validation.", source);
             }
+        }
 
-            return new RequestIdentity
-            {
-                UserId = userId,
-                IsAuthenticated = true,
-                Roles = roles
-            };
-        }
-        catch (SecurityTokenException ex)
+        _logger.LogWarning("No forwarded token source produced a valid authenticated principal.");
+        return null;
+    }
+
+    private IEnumerable<(string Source, string Token)> GetCandidateAuthTokens(HttpRequestData req)
+    {
+        var candidates = new List<(string Source, string Token)>();
+
+        AddCandidate(candidates, "x-ms-auth-token", GetHeaderValue(req, "x-ms-auth-token"));
+        AddCandidate(candidates, "x-ms-token-aad-id-token", GetHeaderValue(req, "x-ms-token-aad-id-token"));
+        AddCandidate(candidates, "x-ms-token-aad-access-token", GetHeaderValue(req, "x-ms-token-aad-access-token"));
+        AddCandidate(candidates, "authorization", GetHeaderValue(req, "authorization"));
+
+        return candidates;
+    }
+
+    private static void AddCandidate(List<(string Source, string Token)> candidates, string source, string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
         {
-            _logger.LogWarning(ex, "x-ms-auth-token validation failed.");
-            return null;
+            return;
         }
-        catch (Exception ex)
+
+        var token = rawValue.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? rawValue.Substring("Bearer ".Length).Trim()
+            : rawValue.Trim();
+
+        if (string.IsNullOrWhiteSpace(token))
         {
-            _logger.LogWarning(ex, "Unable to parse validated x-ms-auth-token.");
-            return null;
+            return;
         }
+
+        candidates.Add((source, token));
     }
 
     /// <summary>
