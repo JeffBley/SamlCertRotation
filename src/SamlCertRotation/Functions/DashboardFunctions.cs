@@ -2,6 +2,12 @@ using System.Net;
 using System.Net.Mail;
 using System.Text;
 using System.Text.Json;
+using HttpRequestData = Microsoft.Azure.Functions.Worker.Http.HttpRequestData;
+using HttpResponseData = Microsoft.Azure.Functions.Worker.Http.HttpResponseData;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
@@ -23,6 +29,9 @@ public class DashboardFunctions
     private readonly INotificationService _notificationService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<DashboardFunctions> _logger;
+    private readonly string? _tenantId;
+    private readonly string? _swaClientId;
+    private readonly IConfigurationManager<OpenIdConnectConfiguration>? _oidcConfigurationManager;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -46,6 +55,18 @@ public class DashboardFunctions
         _notificationService = notificationService;
         _configuration = configuration;
         _logger = logger;
+
+        _tenantId = _configuration["TenantId"];
+        _swaClientId = _configuration["SWA_AAD_CLIENT_ID"] ?? _configuration["AAD_CLIENT_ID"];
+
+        if (!string.IsNullOrWhiteSpace(_tenantId))
+        {
+            var metadataAddress = $"https://login.microsoftonline.com/{_tenantId}/v2.0/.well-known/openid-configuration";
+            _oidcConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
+                metadataAddress,
+                new OpenIdConnectConfigurationRetriever(),
+                new HttpDocumentRetriever { RequireHttps = true });
+        }
     }
 
     /// <summary>
@@ -83,7 +104,7 @@ public class DashboardFunctions
     public async Task<HttpResponseData> DebugAuthContext(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "debug/auth")] HttpRequestData req)
     {
-        var identity = ParseClientPrincipal(req);
+        var identity = await ParseClientPrincipalAsync(req);
 
         var payload = new
         {
@@ -1038,7 +1059,7 @@ public class DashboardFunctions
     /// </summary>
     private async Task<HttpResponseData?> AuthorizeRequestAsync(HttpRequestData req, bool requireAdmin = false)
     {
-        var identity = ParseClientPrincipal(req);
+        var identity = await ParseClientPrincipalAsync(req);
         if (identity == null || !identity.IsAuthenticated)
         {
             _logger.LogWarning("Unauthorized request to {Method} {Url}", req.Method, req.Url);
@@ -1066,7 +1087,7 @@ public class DashboardFunctions
     /// <summary>
     /// Parses the SWA client principal from request headers.
     /// </summary>
-    private RequestIdentity? ParseClientPrincipal(HttpRequestData req)
+    private async Task<RequestIdentity?> ParseClientPrincipalAsync(HttpRequestData req)
     {
         var encodedPrincipal = GetHeaderValue(req, "x-ms-client-principal");
         if (!string.IsNullOrWhiteSpace(encodedPrincipal))
@@ -1101,7 +1122,108 @@ public class DashboardFunctions
             return headerIdentity;
         }
 
+        var tokenIdentity = await ParseClientPrincipalFromValidatedAuthTokenAsync(req);
+        if (tokenIdentity != null)
+        {
+            return tokenIdentity;
+        }
+
         return null;
+    }
+
+    /// <summary>
+    /// Validates x-ms-auth-token against Entra signing keys/issuer, then extracts identity and role claims.
+    /// </summary>
+    private async Task<RequestIdentity?> ParseClientPrincipalFromValidatedAuthTokenAsync(HttpRequestData req)
+    {
+        var authTokenHeader = GetHeaderValue(req, "x-ms-auth-token");
+        if (string.IsNullOrWhiteSpace(authTokenHeader))
+        {
+            return null;
+        }
+
+        if (_oidcConfigurationManager == null || string.IsNullOrWhiteSpace(_tenantId))
+        {
+            _logger.LogWarning("Cannot validate x-ms-auth-token because TenantId is not configured on Function App settings.");
+            return null;
+        }
+
+        var token = authTokenHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? authTokenHeader.Substring("Bearer ".Length).Trim()
+            : authTokenHeader.Trim();
+
+        try
+        {
+            var oidcConfig = await _oidcConfigurationManager.GetConfigurationAsync(CancellationToken.None);
+
+            var validationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKeys = oidcConfig.SigningKeys,
+                ValidateIssuer = true,
+                ValidIssuers = new[]
+                {
+                    $"https://login.microsoftonline.com/{_tenantId}/v2.0",
+                    $"https://sts.windows.net/{_tenantId}/"
+                },
+                ValidateAudience = !string.IsNullOrWhiteSpace(_swaClientId),
+                ValidAudience = _swaClientId,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromMinutes(5)
+            };
+
+            var handler = new JwtSecurityTokenHandler();
+            var principal = handler.ValidateToken(token, validationParameters, out _);
+
+            var userId = principal.FindFirst("oid")?.Value
+                         ?? principal.FindFirst("sub")?.Value
+                         ?? principal.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+                         ?? principal.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+
+            var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var claimRoleValues = principal.Claims
+                .Where(c =>
+                    string.Equals(c.Type, "roles", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.Value)
+                .Where(v => !string.IsNullOrWhiteSpace(v));
+
+            var claimGroupValues = principal.Claims
+                .Where(c =>
+                    string.Equals(c.Type, "groups", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.Value)
+                .Where(v => !string.IsNullOrWhiteSpace(v));
+
+            ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
+
+            if (roles.Count == 0 && !string.IsNullOrWhiteSpace(userId))
+            {
+                roles.Add("authenticated");
+            }
+
+            if (!IsAuthenticatedPrincipal(userId, roles))
+            {
+                return null;
+            }
+
+            return new RequestIdentity
+            {
+                UserId = userId,
+                IsAuthenticated = true,
+                Roles = roles
+            };
+        }
+        catch (SecurityTokenException ex)
+        {
+            _logger.LogWarning(ex, "x-ms-auth-token validation failed.");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Unable to parse validated x-ms-auth-token.");
+            return null;
+        }
     }
 
     /// <summary>
