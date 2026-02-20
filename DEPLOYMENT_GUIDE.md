@@ -259,6 +259,7 @@ Write-Host "Logic App: $LOGIC_APP_NAME"
 The managed identity needs Microsoft Graph API permissions.
 
 ### 5.1 Grant Permissions via PowerShell
+Switch to Windows PowerShell or Powershell 7+ and run the following:
 
 ```powershell
 # Set variable
@@ -321,7 +322,7 @@ The managed identity needs the **Attribute Assignment Reader** role to read cust
 > 1. Graph API permission (`CustomSecAttributeAssignment.Read.All`) - allows calling the API
 > 2. Directory role (Attribute Assignment Reader) - allows reading the actual values
 
-#### Via Azure CLI:
+Switch back to the Cloud Shell and run the following:
 
 ```powershell
 # Assign the Attribute Assignment Reader role to the managed identity
@@ -334,16 +335,6 @@ az rest --method POST `
 
 Write-Host "Attribute Assignment Reader role assigned"
 ```
-
-#### Via Portal (Alternative):
-
-1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
-2. Navigate to **Entra ID** → **Roles & admins**
-3. Select role: **Attribute Assignment Reader**
-4. Click **Add assignments**
-5. Under **Select member(s)** click **No member selected**
-6. Search for and select the managed identity then click **Select**
-7. Click **Next** → **Assign**
 
 ### 5.4 Verify Role Assignment
 
