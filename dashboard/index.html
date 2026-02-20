@@ -1777,8 +1777,29 @@
             return auditFilterColumns.map(column => {
                 const isSelected = column.value === selectedColumn;
                 const isDisabled = usedColumns.has(column.value) && !isSelected;
-                return `<option value="${column.value}" ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}>${column.label}</option>`;
-            }).join('');
+                return {
+                    value: column.value,
+                    label: column.label,
+                    selected: isSelected,
+                    disabled: isDisabled
+                };
+            });
+        }
+
+        function populateAuditColumnOptions(select, selectedColumn, excludeFilterId = null) {
+            if (!select) return;
+
+            const options = buildAuditColumnOptions(selectedColumn, excludeFilterId);
+            select.replaceChildren();
+
+            options.forEach(optionDef => {
+                const option = document.createElement('option');
+                option.value = optionDef.value;
+                option.textContent = optionDef.label;
+                option.selected = optionDef.selected;
+                option.disabled = optionDef.disabled;
+                select.appendChild(option);
+            });
         }
 
         function refreshAuditFilterColumnOptions() {
@@ -1788,7 +1809,7 @@
                 const select = row.querySelector('.audit-filter-column');
                 const selectedColumn = select?.value || 'application';
                 if (select) {
-                    select.innerHTML = buildAuditColumnOptions(selectedColumn, filterId);
+                    populateAuditColumnOptions(select, selectedColumn, filterId);
                 }
             });
         }
@@ -1825,13 +1846,32 @@
             row.style.gap = '8px';
             row.style.alignItems = 'center';
 
-            row.innerHTML = `
-                <select class="audit-filter-column" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="onAuditFilterColumnChanged(${filterId})">
-                    ${buildAuditColumnOptions(firstAvailableColumn.value, filterId)}
-                </select>
-                <input class="audit-filter-value" type="text" placeholder="${getAuditFilterPlaceholder(firstAvailableColumn.value)}" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:220px;" oninput="applyAuditFilters()">
-                <button class="btn btn-secondary" onclick="removeAuditFilterRow(${filterId})">Remove</button>
-            `;
+            const select = document.createElement('select');
+            select.className = 'audit-filter-column';
+            select.style.padding = '6px 10px';
+            select.style.border = '1px solid #d2d0ce';
+            select.style.borderRadius = '4px';
+            populateAuditColumnOptions(select, firstAvailableColumn.value, filterId);
+            select.addEventListener('change', () => onAuditFilterColumnChanged(filterId));
+
+            const input = document.createElement('input');
+            input.className = 'audit-filter-value';
+            input.type = 'text';
+            input.placeholder = getAuditFilterPlaceholder(firstAvailableColumn.value);
+            input.style.padding = '6px 10px';
+            input.style.border = '1px solid #d2d0ce';
+            input.style.borderRadius = '4px';
+            input.style.minWidth = '220px';
+            input.addEventListener('input', () => applyAuditFilters());
+
+            const removeButton = document.createElement('button');
+            removeButton.className = 'btn btn-secondary';
+            removeButton.textContent = 'Remove';
+            removeButton.addEventListener('click', () => removeAuditFilterRow(filterId));
+
+            row.appendChild(select);
+            row.appendChild(input);
+            row.appendChild(removeButton);
 
             document.getElementById('audit-dynamic-filters').appendChild(row);
             refreshAuditFilterColumnOptions();
