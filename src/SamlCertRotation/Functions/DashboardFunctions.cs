@@ -200,6 +200,58 @@ public class DashboardFunctions
     }
 
     /// <summary>
+    /// Diagnostic endpoint to test CSA lookup for a specific service principal.
+    /// Usage: GET /api/csa-debug/{servicePrincipalId}
+    /// </summary>
+    [Function("CsaDebug")]
+    public async Task<HttpResponseData> CsaDebug(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "csa-debug/{id}")] HttpRequestData req,
+        string id)
+    {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        var result = new Dictionary<string, object?>();
+        result["servicePrincipalId"] = id;
+        result["customAttributeSet"] = _configuration["CustomSecurityAttributeSet"] ?? "SamlCertRotation";
+        result["customAttributeName"] = _configuration["CustomSecurityAttributeName"] ?? "AutoRotate";
+
+        // Test 1: SDK call with $select=customSecurityAttributes
+        try
+        {
+            var sp = await _graphService.GetSamlApplicationAsync(id);
+            result["sdkGetApp_autoRotateStatus"] = sp?.AutoRotateStatus;
+            result["sdkGetApp_displayName"] = sp?.DisplayName;
+        }
+        catch (Exception ex)
+        {
+            result["sdkGetApp_error"] = ex.Message;
+        }
+
+        // Test 2: Direct CSA lookup (SDK + REST fallback)
+        try
+        {
+            var csaValue = await _graphService.GetCustomSecurityAttributeAsync(
+                id,
+                _configuration["CustomSecurityAttributeSet"] ?? "SamlCertRotation",
+                _configuration["CustomSecurityAttributeName"] ?? "AutoRotate");
+            result["csaLookup_value"] = csaValue;
+        }
+        catch (Exception ex)
+        {
+            result["csaLookup_error"] = ex.Message;
+        }
+
+        var response = req.CreateResponse(System.Net.HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "application/json");
+        await response.WriteStringAsync(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        return response;
+    }
+
+    /// <summary>
     /// Get dashboard statistics.
     /// Supports optional server-side pagination via ?page=1&amp;pageSize=50 query parameters.
     /// When omitted, all apps are returned (backward compatible).
