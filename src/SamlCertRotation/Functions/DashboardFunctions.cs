@@ -97,6 +97,74 @@ public class DashboardFunctions
     }
 
     /// <summary>
+    /// Diagnostic endpoint to inspect what identity the Functions backend sees.
+    /// </summary>
+    [Function("AuthDebug")]
+    public async Task<HttpResponseData> AuthDebug(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "auth-debug")] HttpRequestData req)
+    {
+        var debugInfo = new Dictionary<string, object?>();
+
+        // Capture all relevant headers
+        var headerNames = new[] {
+            "x-ms-client-principal", "x-ms-client-principal-id", "x-ms-client-principal-name",
+            "x-ms-client-principal-idp", "x-ms-client-principal-user-roles",
+            "x-ms-client-principal-roles", "x-ms-client-principal-groups",
+            "Authorization", "x-ms-token-aad-id-token", "x-ms-auth-token",
+            "x-zumo-auth", "cookie"
+        };
+
+        var headers = new Dictionary<string, string?>();
+        foreach (var name in headerNames)
+        {
+            var value = GetHeaderValue(req, name);
+            if (name.Equals("cookie", StringComparison.OrdinalIgnoreCase) && value != null)
+            {
+                // Just show cookie names, not values
+                headers[name] = string.Join(", ", value.Split(';').Select(c => c.Trim().Split('=')[0]));
+            }
+            else if (name.Equals("x-ms-client-principal", StringComparison.OrdinalIgnoreCase) && value != null)
+            {
+                // Decode the base64 payload
+                try
+                {
+                    var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value));
+                    headers[name + " (decoded)"] = decoded;
+                }
+                catch
+                {
+                    headers[name] = value;
+                }
+            }
+            else
+            {
+                headers[name] = value != null ? (value.Length > 50 ? value[..50] + "..." : value) : null;
+            }
+        }
+        debugInfo["headers"] = headers;
+
+        // Parse identity through the normal flow
+        var identity = await ParseClientPrincipalAsync(req);
+        if (identity != null)
+        {
+            debugInfo["parsedIdentity"] = new {
+                identity.UserId,
+                identity.IsAuthenticated,
+                Roles = identity.Roles.ToArray()
+            };
+        }
+        else
+        {
+            debugInfo["parsedIdentity"] = null;
+        }
+
+        var response = req.CreateResponse(System.Net.HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "application/json");
+        await response.WriteStringAsync(JsonSerializer.Serialize(debugInfo, new JsonSerializerOptions { WriteIndented = true }));
+        return response;
+    }
+
+    /// <summary>
     /// Get dashboard statistics.
     /// Supports optional server-side pagination via ?page=1&amp;pageSize=50 query parameters.
     /// When omitted, all apps are returned (backward compatible).
