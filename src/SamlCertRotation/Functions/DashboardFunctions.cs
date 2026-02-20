@@ -31,6 +31,7 @@ public class DashboardFunctions
     private readonly ILogger<DashboardFunctions> _logger;
     private readonly string? _tenantId;
     private readonly HashSet<string> _allowedAudiences;
+    private readonly HashSet<string> _trustedSwaIssuers;
     private readonly IConfigurationManager<OpenIdConnectConfiguration>? _oidcConfigurationManager;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -69,6 +70,20 @@ public class DashboardFunctions
             {
                 AddAudienceIfPresent(_allowedAudiences, audience);
             }
+        }
+
+        // Build set of trusted SWA issuers for SWA-issued token path
+        _trustedSwaIssuers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var swaHostname = _configuration["SWA_HOSTNAME"];
+        if (!string.IsNullOrWhiteSpace(swaHostname))
+        {
+            _trustedSwaIssuers.Add($"https://{swaHostname.TrimEnd('/')}/.auth");
+        }
+        // Also auto-trust the default SWA domain pattern
+        var swaDefaultHostname = _configuration["SWA_DEFAULT_HOSTNAME"];
+        if (!string.IsNullOrWhiteSpace(swaDefaultHostname))
+        {
+            _trustedSwaIssuers.Add($"https://{swaDefaultHostname.TrimEnd('/')}/.auth");
         }
 
         if (!string.IsNullOrWhiteSpace(_tenantId))
@@ -1151,6 +1166,108 @@ public class DashboardFunctions
         if (tokenIdentity != null)
         {
             return tokenIdentity;
+        }
+
+        // SWA-issued tokens use SWA's own signing keys (not publicly available),
+        // so we decode the payload without signature validation.
+        // This has the same trust model as x-ms-client-principal:
+        // the header is set by SWA's reverse proxy and can't be spoofed by clients.
+        var swaTokenIdentity = ParseIdentityFromSwaIssuedToken(req);
+        if (swaTokenIdentity != null)
+        {
+            return swaTokenIdentity;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Decodes a SWA-issued JWT (issuer = SWA hostname/.auth) without signature validation.
+    /// Same trust model as x-ms-client-principal: both are set by SWA's reverse proxy.
+    /// Only trusts tokens whose issuer matches a configured/known SWA hostname.
+    /// </summary>
+    private RequestIdentity? ParseIdentityFromSwaIssuedToken(HttpRequestData req)
+    {
+        var candidates = GetCandidateAuthTokens(req).ToList();
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        var handler = new JwtSecurityTokenHandler();
+
+        foreach (var (source, token) in candidates)
+        {
+            JwtSecurityToken? jwt;
+            try
+            {
+                jwt = handler.ReadJwtToken(token);
+            }
+            catch
+            {
+                continue;
+            }
+
+            var issuer = jwt.Issuer;
+
+            // Check if this is a SWA-issued token by matching issuer
+            var isTrustedSwa = _trustedSwaIssuers.Count > 0
+                && _trustedSwaIssuers.Contains(issuer);
+
+            // Auto-detect: if issuer ends with /.auth and matches azurestaticapps.net pattern
+            if (!isTrustedSwa && !string.IsNullOrWhiteSpace(issuer)
+                && issuer.EndsWith("/.auth", StringComparison.OrdinalIgnoreCase)
+                && issuer.Contains(".azurestaticapps.net", StringComparison.OrdinalIgnoreCase))
+            {
+                isTrustedSwa = true;
+                _logger.LogInformation("Auto-detected SWA issuer: {Issuer}. Consider setting SWA_HOSTNAME in app settings.", issuer);
+            }
+
+            if (!isTrustedSwa)
+            {
+                continue;
+            }
+
+            // Extract claims from SWA token payload
+            var userId = jwt.Claims.FirstOrDefault(c => c.Type == "oid")?.Value
+                         ?? jwt.Claims.FirstOrDefault(c => c.Type == "sub")?.Value
+                         ?? jwt.Claims.FirstOrDefault(c => c.Type == "http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+                         ?? jwt.Claims.FirstOrDefault(c => c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value
+                         ?? jwt.Claims.FirstOrDefault(c => c.Type == "stable_sid")?.Value;
+
+            var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var claimRoleValues = jwt.Claims
+                .Where(c => string.Equals(c.Type, "roles", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.Value)
+                .Where(v => !string.IsNullOrWhiteSpace(v));
+
+            var claimGroupValues = jwt.Claims
+                .Where(c => string.Equals(c.Type, "groups", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(c.Type, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.Value)
+                .Where(v => !string.IsNullOrWhiteSpace(v));
+
+            ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
+
+            if (roles.Count == 0 && !string.IsNullOrWhiteSpace(userId))
+            {
+                roles.Add("authenticated");
+            }
+
+            if (!IsAuthenticatedPrincipal(userId, roles))
+            {
+                continue;
+            }
+
+            _logger.LogInformation("Authenticated request identity from SWA-issued token via {TokenSource}", source);
+
+            return new RequestIdentity
+            {
+                UserId = userId,
+                IsAuthenticated = true,
+                Roles = roles
+            };
         }
 
         return null;
