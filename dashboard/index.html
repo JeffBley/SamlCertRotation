@@ -2091,15 +2091,17 @@
         }
 
         // Initial load
-        updateAuditActionFilterLabel();
-        updateAppAutoRotateFilterLabel();
-        updateAppStatusFilterLabel();
-        setDefaultAuditDateRange();
-        await loadCurrentUserRoles();
-        if (!enforceRoleAccessOrRedirect()) {
-            return;
-        }
-        loadData();
+        (async function initializeDashboard() {
+            updateAuditActionFilterLabel();
+            updateAppAutoRotateFilterLabel();
+            updateAppStatusFilterLabel();
+            setDefaultAuditDateRange();
+            await loadCurrentUserRoles();
+            if (!enforceRoleAccessOrRedirect()) {
+                return;
+            }
+            loadData();
+        })();
     </script>
 </body>
 </html>
