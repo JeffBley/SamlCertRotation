@@ -385,7 +385,7 @@ You should see functions listed including `CertificateChecker`, `GetDashboardSta
 # Re-publish and force host refresh
 Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
 func azure functionapp publish $FUNCTION_APP_NAME --dotnet-isolated --force
-az functionapp sync-functions --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+az functionapp sync-function-triggers --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
 az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
 Start-Sleep -Seconds 20
 
@@ -1096,7 +1096,7 @@ Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
 func azure functionapp publish $FUNCTION_APP_NAME --dotnet-isolated --force
 
 # 3) Refresh host triggers
-az functionapp sync-functions --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+az functionapp sync-function-triggers --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
 az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
 ```
 
