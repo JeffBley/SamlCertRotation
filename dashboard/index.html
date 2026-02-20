@@ -814,6 +814,9 @@
         </div>
 
         <div id="tab-settings" class="tab-content">
+            <div style="margin-bottom: 20px;">
+                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+            </div>
             <div class="section">
                 <div class="section-header">
                     <h2>Notification Settings</h2>
@@ -884,12 +887,10 @@
                         </select>
                         <p style="font-size:11px;color:#888;margin-top:4px;">Enabled (default) runs evaluation only and logs what would happen. Disabled runs production automation and can create or activate certificates.</p>
                     </div>
-                    <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
                 </div>
             </div>
 
         </div>
-    </div>
 
     <!-- Confirmation Modal -->
     <div id="confirmModal" class="modal-overlay">
