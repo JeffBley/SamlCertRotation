@@ -124,58 +124,6 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Temporary diagnostics endpoint to validate SWA auth header forwarding and identity parsing.
-    /// Remove after production issue is resolved.
-    /// </summary>
-    [Function("DebugAuthContext")]
-    public async Task<HttpResponseData> DebugAuthContext(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "debug/auth")] HttpRequestData req)
-    {
-        var identity = await ParseClientPrincipalAsync(req);
-        var tokenDiagnostics = await GetTokenValidationDiagnosticsAsync(req);
-
-        var payload = new
-        {
-            request = new
-            {
-                method = req.Method,
-                url = req.Url.ToString()
-            },
-            configuredValues = new
-            {
-                tenantIdConfigured = !string.IsNullOrWhiteSpace(_tenantId),
-                tenantIdPrefix = string.IsNullOrWhiteSpace(_tenantId) ? "(not set)" : _tenantId.Length >= 8 ? _tenantId.Substring(0, 8) + "..." : "***",
-                oidcManagerInitialized = _oidcConfigurationManager != null,
-                audienceCount = _allowedAudiences.Count,
-                audiences = _allowedAudiences.Select(a => a.Length >= 8 ? a.Substring(0, 8) + "..." : "***").ToArray()
-            },
-            headerPresence = new
-            {
-                xMsClientPrincipal = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal")),
-                xMsClientPrincipalId = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-id")),
-                xMsClientPrincipalUserId = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-userid")),
-                xMsClientPrincipalName = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-name")),
-                xMsClientPrincipalUserRoles = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-user-roles")),
-                xMsClientPrincipalRoles = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-roles")),
-                xMsClientPrincipalGroups = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-groups")),
-                xMsAuthToken = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-auth-token")),
-                xMsTokenAadIdToken = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-token-aad-id-token")),
-                xMsTokenAadAccessToken = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-token-aad-access-token")),
-                authorization = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "authorization"))
-            },
-            tokenValidation = tokenDiagnostics,
-            parsedIdentity = new
-            {
-                userId = identity?.UserId,
-                isAuthenticated = identity?.IsAuthenticated ?? false,
-                roles = identity?.Roles?.OrderBy(r => r).ToArray() ?? Array.Empty<string>()
-            }
-        };
-
-        return await CreateJsonResponse(req, payload);
-    }
-
-    /// <summary>
     /// Get all SAML applications
     /// </summary>
     [Function("GetApplications")]
@@ -1407,116 +1355,6 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Returns per-token-source validation diagnostics for the debug endpoint.
-    /// Shows the exact reason each candidate token failed or succeeded.
-    /// </summary>
-    private async Task<object> GetTokenValidationDiagnosticsAsync(HttpRequestData req)
-    {
-        var results = new List<object>();
-        var candidateTokens = GetCandidateAuthTokens(req).ToList();
-
-        if (candidateTokens.Count == 0)
-        {
-            return new { candidateSources = 0, results = results };
-        }
-
-        if (_oidcConfigurationManager == null || string.IsNullOrWhiteSpace(_tenantId))
-        {
-            return new
-            {
-                candidateSources = candidateTokens.Count,
-                error = "TenantId is not configured or OIDC manager failed to initialize.",
-                candidateSourceNames = candidateTokens.Select(c => c.Source).ToArray()
-            };
-        }
-
-        try
-        {
-            var oidcConfig = await _oidcConfigurationManager.GetConfigurationAsync(CancellationToken.None);
-            var validIssuers = new[]
-            {
-                $"https://login.microsoftonline.com/{_tenantId}/v2.0",
-                $"https://sts.windows.net/{_tenantId}/"
-            };
-
-            var validationParameters = new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKeys = oidcConfig.SigningKeys,
-                ValidateIssuer = true,
-                ValidIssuers = validIssuers,
-                ValidateAudience = _allowedAudiences.Count > 0,
-                ValidAudiences = _allowedAudiences,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromMinutes(5)
-            };
-
-            var handler = new JwtSecurityTokenHandler();
-
-            foreach (var (source, token) in candidateTokens)
-            {
-                try
-                {
-                    // Peek at token claims before validation to show mismatches
-                    string? tokenIssuer = null;
-                    string? tokenAudience = null;
-                    try
-                    {
-                        var jwt = handler.ReadJwtToken(token);
-                        tokenIssuer = jwt.Issuer;
-                        tokenAudience = jwt.Audiences?.FirstOrDefault();
-                    }
-                    catch { }
-
-                    handler.ValidateToken(token, validationParameters, out _);
-                    results.Add(new
-                    {
-                        source,
-                        success = true,
-                        tokenIssuer,
-                        tokenAudience
-                    });
-                }
-                catch (Exception ex)
-                {
-                    string? tokenIssuer = null;
-                    string? tokenAudience = null;
-                    try
-                    {
-                        var jwt = handler.ReadJwtToken(token);
-                        tokenIssuer = jwt.Issuer;
-                        tokenAudience = jwt.Audiences?.FirstOrDefault();
-                    }
-                    catch { }
-
-                    results.Add(new
-                    {
-                        source,
-                        success = false,
-                        error = ex.GetType().Name + ": " + ex.Message,
-                        tokenIssuer,
-                        tokenAudience,
-                        expectedIssuers = validIssuers,
-                        expectedAudiences = _allowedAudiences.Count > 0
-                            ? _allowedAudiences.ToArray()
-                            : new[] { "(audience validation disabled - no audiences configured)" }
-                    });
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            return new
-            {
-                candidateSources = candidateTokens.Count,
-                error = "OIDC config retrieval failed: " + ex.Message
-            };
-        }
-
-        return new { candidateSources = candidateTokens.Count, results };
-    }
-
-    /// <summary>
     /// Parses SWA forwarded principal headers when x-ms-client-principal payload is unavailable.
     /// </summary>
     private RequestIdentity? ParseClientPrincipalFromSwaHeaders(HttpRequestData req)
@@ -1759,29 +1597,6 @@ public class DashboardFunctions
                 return decoded;
             }
 
-            return null;
-        }
-    }
-
-    private static string? DecodeJwtPayload(string jwt)
-    {
-        if (string.IsNullOrWhiteSpace(jwt))
-        {
-            return null;
-        }
-
-        var parts = jwt.Split('.');
-        if (parts.Length < 2)
-        {
-            return null;
-        }
-
-        try
-        {
-            return Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(parts[1])));
-        }
-        catch
-        {
             return null;
         }
     }

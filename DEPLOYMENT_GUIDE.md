@@ -695,12 +695,12 @@ The `backends link` command above enables Easy Auth on the Function App. We need
 $SUBSCRIPTION_ID = az account show --query id -o tsv
 
 az rest --method PUT `
-    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-09-01" `
     --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"unauthenticatedClientAction":"AllowAnonymous"}}}'
 
 # Verify Easy Auth is disabled (should return "false")
 $easyAuthStatus = az rest --method GET `
-    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-09-01" `
     --query "properties.platform.enabled" -o tsv
 
 if ($easyAuthStatus -eq "false") {
@@ -735,11 +735,17 @@ Write-Host "Access control configuration saved to access-control-config.json"
 | `AAD_CLIENT_SECRET` | SWA App Settings | Key Vault reference string (`@Microsoft.KeyVault(...)`) |
 | `SamlDashboardClientSecret` | Key Vault | Primary storage for the client secret |
 | `KeyVaultUri` | Function App Settings | Key Vault URI (set by Bicep) |
+| `SWA_DEFAULT_HOSTNAME` | Function App Settings | SWA default hostname (set by Bicep) |
+| `SWA_HOSTNAME` | Function App Settings | *(Optional)* Custom domain hostname, if configured |
+| `SWA_ADMIN_APP_ROLE` | Function App Settings | App role value for admin access (default: `SamlCertRotation.Admin`) |
+| `SWA_READER_APP_ROLE` | Function App Settings | App role value for reader access (default: `SamlCertRotation.Reader`) |
 | `RotationSchedule` | Function App Settings | CRON expression for rotation checks (default: `0 0 6 * * *` = 6 AM UTC daily) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
 | Easy Auth | Function App | Disabled (Step 7.10) |
 | `tenantId` | infrastructure/main.parameters.json | Your Azure AD Tenant ID |
 | Tenant ID | staticwebapp.config.json (`__TENANT_ID__`) | Replaced during Step 8.2 |
+
+> **SWA Token Trust**: When SWA forwards requests to the linked Function App backend, it includes a JWT in the `x-ms-auth-token` header. This token is issued by SWA itself (issuer = `https://<swa-hostname>/.auth`), **not** by Entra ID. The Function App trusts this token using the `SWA_DEFAULT_HOSTNAME` setting (set automatically by Bicep). If you add a custom domain, also set `SWA_HOSTNAME` to the custom domain so token validation works for both.
 
 > **Note**: Only users or groups assigned to the Enterprise Application can access the dashboard. Users not assigned will see "Access Denied" from Azure AD before reaching the application.
 
@@ -1313,7 +1319,7 @@ az staticwebapp backends link --resource-group $RESOURCE_GROUP --name $STATIC_WE
 # 3) Disable Easy Auth on Function App AFTER backend link
 $SUBSCRIPTION_ID = az account show --query id -o tsv
 az rest --method PUT `
-    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-09-01" `
     --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"requireAuthentication":false,"unauthenticatedClientAction":"AllowAnonymous"}}}'
 ```
 
@@ -1367,12 +1373,12 @@ This usually means Easy Auth is enabled on the Function App:
 # Check if Easy Auth is enabled (should return "false")
 $SUBSCRIPTION_ID = az account show --query id -o tsv
 az rest --method GET `
-    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-09-01" `
     --query "properties.platform.enabled"
 
 # If it returns "true", disable it:
 az rest --method PUT `
-    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-03-01" `
+    --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/config/authsettingsV2?api-version=2022-09-01" `
     --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"unauthenticatedClientAction":"AllowAnonymous"}}}'
 ```
 

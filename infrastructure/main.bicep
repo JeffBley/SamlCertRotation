@@ -296,6 +296,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           name: 'SwaName'
           value: staticWebAppName
         }
+        {
+          name: 'SWA_DEFAULT_HOSTNAME'
+          value: staticWebApp.properties.defaultHostname
+        }
       ]
     }
   }
