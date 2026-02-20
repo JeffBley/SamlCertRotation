@@ -1329,7 +1329,7 @@ public class DashboardFunctions
             }
         }
 
-        foreach (var token in raw.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var token in raw.Split(new[] { ',', ';', ' ', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             if (!string.IsNullOrWhiteSpace(token))
             {
@@ -1376,16 +1376,17 @@ public class DashboardFunctions
         }
 
         var trimmed = payload.Trim();
+        var decoded = Uri.UnescapeDataString(trimmed);
 
         try
         {
-            return Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(trimmed)));
+            return Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(decoded)));
         }
         catch
         {
-            if (trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal))
+            if (decoded.StartsWith("{", StringComparison.Ordinal) || decoded.StartsWith("[", StringComparison.Ordinal))
             {
-                return trimmed;
+                return decoded;
             }
 
             return null;
