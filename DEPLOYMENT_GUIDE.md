@@ -519,7 +519,7 @@ az rest --method PATCH `
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID" `
     --body '{"tags": ["WindowsAzureActiveDirectoryIntegratedApp"]}'
 
-Write-Host "Service Principal created with integrated app tag"
+Write-Host "Service Principal created with Enterprise app tag"
 ```
 
 ### 7.5 Configure User/Group Assignment
