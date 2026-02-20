@@ -173,12 +173,56 @@ Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 
 > **Note**: If `Get-Content` showed no results, you most likely lost the variables set in Step 2.2. Ensure `$RESOURCE_GROUP` is populated and try 4.2 again.
 
-### 4.3 Save Output Values as Variables
+### 4.3 Save Output Values as Variables (Re-runnable)
 
 ```powershell
-# Parse outputs and set as variables
-$outputs = Get-Content deployment-outputs.json | ConvertFrom-Json
+# Re-run this block anytime (including after Cloud Shell session timeout)
+# If deployment-outputs.json is missing/empty, it will pull outputs from the latest deployment.
 
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+
+# Ensure resource group variable exists (set this to your RG if different)
+if (-not $RESOURCE_GROUP) {
+    $RESOURCE_GROUP = "rg-saml-cert-rotation"
+}
+
+$outputsPath = "deployment-outputs.json"
+$outputs = $null
+
+# Try loading outputs from file first
+if (Test-Path $outputsPath) {
+    $raw = Get-Content $outputsPath -Raw
+    if (-not [string]::IsNullOrWhiteSpace($raw) -and $raw.Trim() -ne "null") {
+        $outputs = $raw | ConvertFrom-Json
+    }
+}
+
+# If file not usable, fetch outputs from latest deployment in the resource group
+if (-not $outputs) {
+    $latestDeploymentName = az deployment group list `
+        --resource-group $RESOURCE_GROUP `
+        --query "[?properties.provisioningState=='Succeeded'] | sort_by(@, &properties.timestamp) | [-1].name" `
+        -o tsv
+
+    if (-not $latestDeploymentName) {
+        throw "No successful deployment found in resource group '$RESOURCE_GROUP'. Run Step 4.2 first."
+    }
+
+    $outputs = az deployment group show `
+        --resource-group $RESOURCE_GROUP `
+        --name $latestDeploymentName `
+        --query "properties.outputs" `
+        -o json | ConvertFrom-Json
+
+    if (-not $outputs) {
+        throw "Deployment outputs were empty for deployment '$latestDeploymentName'. Re-run Step 4.2."
+    }
+
+    # Rehydrate local file for future runs
+    $outputs | ConvertTo-Json -Depth 20 | Out-File -FilePath $outputsPath -Encoding utf8
+}
+
+# Set variables
 $MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
 $MANAGED_IDENTITY_CLIENT_ID = $outputs.managedIdentityClientId.value
 $MANAGED_IDENTITY_NAME = $outputs.managedIdentityName.value
