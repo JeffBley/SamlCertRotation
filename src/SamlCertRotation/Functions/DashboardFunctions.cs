@@ -1165,6 +1165,16 @@ public class DashboardFunctions
                 {
                     claimGroupValues.Add(claimValue);
                 }
+
+                if (string.IsNullOrWhiteSpace(userId) &&
+                    (string.Equals(claimType, "oid", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(claimType, "sub", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(claimType, "nameid", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(claimType, "http://schemas.microsoft.com/identity/claims/objectidentifier", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(claimType, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier", StringComparison.OrdinalIgnoreCase)))
+                {
+                    userId = claimValue;
+                }
             }
         }
 
