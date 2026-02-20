@@ -76,6 +76,45 @@ public class DashboardFunctions
     }
 
     /// <summary>
+    /// Temporary diagnostics endpoint to validate SWA auth header forwarding and identity parsing.
+    /// Remove after production issue is resolved.
+    /// </summary>
+    [Function("DebugAuthContext")]
+    public async Task<HttpResponseData> DebugAuthContext(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "debug/auth")] HttpRequestData req)
+    {
+        var identity = ParseClientPrincipal(req);
+
+        var payload = new
+        {
+            request = new
+            {
+                method = req.Method,
+                url = req.Url.ToString()
+            },
+            headerPresence = new
+            {
+                xMsClientPrincipal = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal")),
+                xMsClientPrincipalId = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-id")),
+                xMsClientPrincipalUserId = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-userid")),
+                xMsClientPrincipalName = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-name")),
+                xMsClientPrincipalUserRoles = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-user-roles")),
+                xMsClientPrincipalRoles = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-roles")),
+                xMsClientPrincipalGroups = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal-groups")),
+                xMsAuthToken = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-auth-token"))
+            },
+            parsedIdentity = new
+            {
+                userId = identity?.UserId,
+                isAuthenticated = identity?.IsAuthenticated ?? false,
+                roles = identity?.Roles?.OrderBy(r => r).ToArray() ?? Array.Empty<string>()
+            }
+        };
+
+        return await CreateJsonResponse(req, payload);
+    }
+
+    /// <summary>
     /// Get all SAML applications
     /// </summary>
     [Function("GetApplications")]
