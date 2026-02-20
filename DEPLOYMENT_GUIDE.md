@@ -255,19 +255,7 @@ Write-Host "Logic App: $LOGIC_APP_NAME"
 
 The managed identity needs Microsoft Graph API permissions.
 
-### 5.1 Grant Permissions via Azure Portal (Easiest)
-
-1. Go to [Azure Portal](https://portal.azure.com)
-2. Search for **Enterprise applications**
-3. Change the **Application type** filter to **Managed Identities**
-4. Search for your managed identity name (the value from `$MANAGED_IDENTITY_NAME`)
-5. Click on the managed identity
-6. Go to **Permissions** in the left menu
-7. Click **Grant admin consent for [your tenant]** if available
-
-If permissions aren't listed, use PowerShell below:
-
-### 5.2 Grant Permissions via PowerShell
+### 5.1 Grant Permissions via PowerShell
 
 ```powershell
 # Install Microsoft Graph module if needed
@@ -310,7 +298,7 @@ foreach ($permissionName in $requiredPermissions) {
 }
 ```
 
-### 5.3 Verify Permissions in Portal
+### 5.2 Verify Permissions in Portal
 
 1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Applications** → **Enterprise applications**
@@ -319,7 +307,7 @@ foreach ($permissionName in $requiredPermissions) {
    - `Application.ReadWrite.All`
    - `CustomSecAttributeAssignment.Read.All`
 
-### 5.4 Assign Attribute Assignment Reader Role
+### 5.3 Assign Attribute Assignment Reader Role
 
 The managed identity needs the **Attribute Assignment Reader** role to read custom security attribute values. This is a separate role from the Graph API permission.
 
@@ -351,7 +339,7 @@ Write-Host "Attribute Assignment Reader role assigned"
 6. Search for and select the managed identity then click **Select**
 7. Click **Next** → **Assign**
 
-### 5.5 Verify Role Assignment
+### 5.4 Verify Role Assignment
 
 ```powershell
 # Verify the role was assigned
