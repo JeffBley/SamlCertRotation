@@ -68,48 +68,6 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Temporary endpoint to debug auth header forwarding from SWA.
-    /// Remove after auth issue is resolved.
-    /// </summary>
-    [Function("DebugIdentity")]
-    public async Task<HttpResponseData> DebugIdentity(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "debug/identity")] HttpRequestData req)
-    {
-        var parsedIdentity = ParseClientPrincipal(req);
-
-        var headerSnapshot = req.Headers
-            .Where(h => h.Key.StartsWith("x-ms-", StringComparison.OrdinalIgnoreCase) ||
-                        h.Key.StartsWith("x-arr-", StringComparison.OrdinalIgnoreCase) ||
-                        h.Key.StartsWith("x-forwarded-", StringComparison.OrdinalIgnoreCase))
-            .ToDictionary(
-                h => h.Key,
-                h => h.Value?.Select(v => TruncateForDebug(v)).ToArray() ?? Array.Empty<string>(),
-                StringComparer.OrdinalIgnoreCase);
-
-        var response = new
-        {
-            message = "Temporary auth debug endpoint. Remove after troubleshooting.",
-            url = req.Url.ToString(),
-            method = req.Method,
-            hasClientPrincipalHeader = !string.IsNullOrWhiteSpace(GetHeaderValue(req, "x-ms-client-principal")),
-            clientPrincipalId = GetHeaderValue(req, "x-ms-client-principal-id"),
-            clientPrincipalName = GetHeaderValue(req, "x-ms-client-principal-name"),
-            clientPrincipalUserRoles = GetHeaderValue(req, "x-ms-client-principal-user-roles"),
-            parsedIdentity = parsedIdentity == null
-                ? null
-                : new
-                {
-                    parsedIdentity.UserId,
-                    parsedIdentity.IsAuthenticated,
-                    Roles = parsedIdentity.Roles.OrderBy(r => r).ToArray()
-                },
-            headers = headerSnapshot
-        };
-
-        return await CreateJsonResponse(req, response);
-    }
-
-    /// <summary>
     /// Get dashboard statistics
     /// </summary>
     [Function("GetDashboardStats")]
@@ -1595,17 +1553,6 @@ public class DashboardFunctions
         {
             return false;
         }
-    }
-
-    private static string TruncateForDebug(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            return string.Empty;
-        }
-
-        const int maxLength = 200;
-        return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...(truncated)";
     }
 
     private sealed class SponsorUpdateRequest
