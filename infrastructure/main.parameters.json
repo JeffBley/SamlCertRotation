@@ -18,10 +18,10 @@
       "value": "mscott@domain.com;jhalpert@domain.com"
     },
     "customSecurityAttributeSet": {
-      "value": "<insert custom security attribute set name here>"
+      "value": "SamlCertRotation"
     },
     "customSecurityAttributeName": {
-      "value": "<insert custom security attribute name here>"
+      "value": "AutoRotate"
     },
     "defaultCreateCertDays": {
       "value": 30
