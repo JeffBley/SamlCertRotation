@@ -4,20 +4,20 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 
 ## Table of Contents
 
-[Prerequisites](#prerequisites)
-[Step 1: Upload Project to Cloud Shell](#step-1-upload-project-to-cloud-shell)
-[Step 2: Prepare Your Environment](#step-2-prepare-your-environment)
-[Step 3: Create Custom Security Attributes](#step-3-create-custom-security-attributes)
-[Step 4: Deploy Azure Infrastructure](#step-4-deploy-azure-infrastructure)
-[Step 5: Grant Microsoft Graph Permissions](#step-5-grant-microsoft-graph-permissions)
-[Step 6: Deploy the Function App Code](#step-6-deploy-the-function-app-code)
-[Step 7: Configure Dashboard Access Control](#step-7-configure-dashboard-access-control)
-[Step 8: Deploy the Dashboard](#step-8-deploy-the-dashboard)
-[Step 9: Configure Email Notifications](#step-9-configure-email-notifications)
-[Step 10: Tag Applications for Auto-Rotation](#step-10-tag-applications-for-auto-rotation)
-[Step 11: Verify the Deployment](#step-11-verify-the-deployment)
-[Next Steps](#next-steps)
-[Troubleshooting](#troubleshooting)
+[Prerequisites](#prerequisites) <br />
+[Step 1: Upload Project to Cloud Shell](#step-1-upload-project-to-cloud-shell) <br />
+[Step 2: Prepare Your Environment](#step-2-prepare-your-environment) <br />
+[Step 3: Create Custom Security Attributes](#step-3-create-custom-security-attributes) <br />
+[Step 4: Deploy Azure Infrastructure](#step-4-deploy-azure-infrastructure) <br />
+[Step 5: Grant Microsoft Graph Permissions](#step-5-grant-microsoft-graph-permissions) <br />
+[Step 6: Deploy the Function App Code](#step-6-deploy-the-function-app-code) <br />
+[Step 7: Configure Dashboard Access Control](#step-7-configure-dashboard-access-control) <br />
+[Step 8: Deploy the Dashboard](#step-8-deploy-the-dashboard) <br />
+[Step 9: Configure Email Notifications](#step-9-configure-email-notifications) <br />
+[Step 10: Tag Applications for Auto-Rotation](#step-10-tag-applications-for-auto-rotation) <br />
+[Step 11: Verify the Deployment](#step-11-verify-the-deployment) <br />
+[Next Steps](#next-steps) <br />
+[Troubleshooting](#troubleshooting) <br /> 
 [Cleanup / Teardown](#cleanup--teardown)
 
 ---
@@ -35,36 +35,17 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 ---
 
 ## Step 1: Upload Project to Cloud Shell
+Navigate to https://portal.azure.com/#cloudshell/
+- Ensure you're in PowerShell
+- Under **Settings** select **Go to Classic version** (Recommended)
 
-### Option A: Clone from Git Repository (Recommended)
 
+### Clone from Git Repository
 ```powershell
 # Clone the repository
 git clone https://github.com/JeffBley/SamlCertRotation.git
 Set-Location SamlCertRotation
 ```
-
-### Option B: Upload ZIP File
-
-1. On your local machine, zip the entire project folder
-2. In Cloud Shell, click the **Upload/Download files** button (up/down arrow icon)
-3. Select **Upload** and choose your zip file
-4. Extract in Cloud Shell:
-
-```powershell
-# Create project directory
-New-Item -ItemType Directory -Path "$HOME/SamlCertRotation" -Force
-Set-Location "$HOME/SamlCertRotation"
-
-# Unzip (file will be in your home directory after upload)
-Expand-Archive -Path "$HOME/SamlCertRotation.zip" -DestinationPath . -Force
-```
-
-### Option C: Upload Individual Files via Cloud Shell Editor
-
-1. In Cloud Shell, click the **Editor** button (curly braces icon `{}`)
-2. Create the folder structure manually
-3. Copy/paste file contents from your local machine
 
 ### Verify Files Are Present
 
@@ -72,13 +53,15 @@ Expand-Archive -Path "$HOME/SamlCertRotation.zip" -DestinationPath . -Force
 # Navigate to project root and verify structure
 Set-Location "$HOME/SamlCertRotation"
 Get-ChildItem
-
-# You should see:
-# - infrastructure/
-# - src/
-# - dashboard/
-# - DEPLOYMENT_GUIDE.md
 ```
+You should see:
+- dashboard
+- infrastructure
+- src
+- DEPLOYMENT_GUIDE.md
+- README.md
+- SamlCertRotation.sln
+
 
 ### Sync to the Latest Repository Version (Required)
 
@@ -102,13 +85,14 @@ Cloud Shell is automatically authenticated. Verify your subscription:
 ```powershell
 # Check current subscription
 az account show --query "{Name:name, SubscriptionId:id}" -o table
-
+```
+```powershell
 # If you need to change subscription:
 az account list --output table
 az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
 ```
 
-### 2.2 Set Environment Variables
+### 2.2 Create Resource Group
 
 ```powershell
 # Set variables (modify as needed)
@@ -125,18 +109,18 @@ az group create --name $RESOURCE_GROUP --location $LOCATION
 
 Custom Security Attributes allow you to tag which SAML apps should be auto-rotated.
 
-### Via Microsoft Entra Admin Center (Recommended)
+### Via Microsoft Entra Admin Center
 
 1. Open a new browser tab and go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Protection** → **Custom security attributes**
 3. Click **+ Add attribute set**:
-   - **Name**: `SamlCertRotation`
+   - **Name**: Enter a name like `SamlCertRotation`
    - **Description**: `Attributes for SAML certificate rotation automation`
    - **Maximum number of attributes**: 10
 4. Click **Add**
 5. Select the `SamlCertRotation` attribute set
 6. Click **+ Add attribute**:
-   - **Attribute name**: `AutoRotate`
+   - **Attribute name**: Enter a name like `AutoRotate`
    - **Description**: `Enable automatic SAML certificate rotation`
    - **Data type**: String
    - **Allow only predefined values**: Yes
@@ -161,6 +145,8 @@ code main.parameters.json
 Update these values:
 - `notificationSenderEmail`: Your notification sender email
 - `adminNotificationEmails`: Admin emails (semicolon-separated)
+- `customSecurityAttributeSet`: The Attribute Set you created in step 3
+- `customSecurityAttributeName`: The Attribute Name you created in step 3
 
 Save the file (Ctrl+S), then close the editor (Ctrl+Q).
 
@@ -316,16 +302,7 @@ foreach ($permissionName in $requiredPermissions) {
 }
 ```
 
-### 5.2 Verify Permissions in Portal
-
-1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
-2. Navigate to **Applications** → **Enterprise applications**
-3. Filter by **Managed Identities** and find your identity
-4. Go to **Permissions** and verify these are listed:
-   - `Application.ReadWrite.All`
-   - `CustomSecAttributeAssignment.Read.All`
-
-### 5.3 Assign Attribute Assignment Reader Role
+### 5.2 Assign Attribute Assignment Reader Role
 
 The managed identity needs the **Attribute Assignment Reader** role to read custom security attribute values. This is a separate role from the Graph API permission.
 
@@ -333,7 +310,7 @@ The managed identity needs the **Attribute Assignment Reader** role to read cust
 > 1. Graph API permission (`CustomSecAttributeAssignment.Read.All`) - allows calling the API
 > 2. Directory role (Attribute Assignment Reader) - allows reading the actual values
 
-Switch back to the Cloud Shell and run the following:
+Switch back to the **Cloud Shell** and run the following:
 
 ```powershell
 # Assign the Attribute Assignment Reader role to the managed identity
@@ -345,24 +322,9 @@ az rest --method POST `
     --body "{`"principalId`":`"$MANAGED_IDENTITY_PRINCIPAL_ID`",`"roleDefinitionId`":`"ffd52fa5-98dc-465c-991d-fc073eb59f8f`",`"directoryScopeId`":`"/`"}"
 ```
 
-### 5.4 Verify Role Assignment
-
-```powershell
-# Verify the role was assigned
-az rest --method GET `
-    --uri "https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?`$filter=principalId eq '$MANAGED_IDENTITY_PRINCIPAL_ID'&`$expand=roleDefinition" `
-    --query "value[].{role:roleDefinition.displayName, scope:directoryScopeId}" -o table
-```
-
-You should see `Attribute Assignment Reader` in the output.
-
-> **Note**: Role assignments can take up to 1 hour to fully propagate. If custom attributes aren't showing immediately, wait and try again.
-
 ---
 
 ## Step 6: Deploy the Function App Code
-
-> **Required deployment order**: Deploy Function App code first (Step 6), then configure access/auth (Step 7), then deploy dashboard static files (Step 8).
 
 ### 6.1 Build the Project
 
@@ -417,7 +379,7 @@ try {
 }
 ```
 
-You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` or `403`.
+You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). If you see `200`, Easy Auth may still be enabled on the Function App — Step 7.10 disables it. A `404` indicates deployment or routing issues.
 
 ### 6.4 Recovery Command (Only run if Functions List Is Empty is empty from Step 6.3)
 

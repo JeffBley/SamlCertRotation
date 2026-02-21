@@ -1107,10 +1107,20 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Parses the SWA client principal from request headers.
+    /// Parses the caller identity from request headers/tokens.
+    /// Order matters for security: validated AAD token first (signature-verified),
+    /// then SWA client principal header, then unsigned SWA JWT (last resort).
     /// </summary>
     private async Task<RequestIdentity?> ParseClientPrincipalAsync(HttpRequestData req)
     {
+        // 1. Try validated AAD token first — most secure (signature + issuer verified)
+        var tokenIdentity = await ParseClientPrincipalFromValidatedAuthTokenAsync(req);
+        if (tokenIdentity != null)
+        {
+            return tokenIdentity;
+        }
+
+        // 2. Try x-ms-client-principal base64 header — set by SWA reverse proxy
         var encodedPrincipal = GetHeaderValue(req, "x-ms-client-principal");
         if (!string.IsNullOrWhiteSpace(encodedPrincipal))
         {
@@ -1138,22 +1148,8 @@ public class DashboardFunctions
             }
         }
 
-        var headerIdentity = ParseClientPrincipalFromSwaHeaders(req);
-        if (headerIdentity != null)
-        {
-            return headerIdentity;
-        }
-
-        var tokenIdentity = await ParseClientPrincipalFromValidatedAuthTokenAsync(req);
-        if (tokenIdentity != null)
-        {
-            return tokenIdentity;
-        }
-
-        // SWA-issued tokens use SWA's own signing keys (not publicly available),
-        // so we decode the payload without signature validation.
-        // This has the same trust model as x-ms-client-principal:
-        // the header is set by SWA's reverse proxy and can't be spoofed by clients.
+        // 3. Try SWA-issued JWT — unsigned, but only trusted for explicitly configured SWA hostnames.
+        // Required for SWA linked backends where x-ms-client-principal is not forwarded.
         var swaTokenIdentity = ParseIdentityFromSwaIssuedToken(req);
         if (swaTokenIdentity != null)
         {
@@ -1192,18 +1188,15 @@ public class DashboardFunctions
 
             var issuer = jwt.Issuer;
 
-            // Check if this is a SWA-issued token by matching issuer
-            var isTrustedSwa = _trustedSwaIssuers.Count > 0
-                && _trustedSwaIssuers.Contains(issuer);
-
-            // Auto-detect: if issuer ends with /.auth and matches azurestaticapps.net pattern
-            if (!isTrustedSwa && !string.IsNullOrWhiteSpace(issuer)
-                && issuer.EndsWith("/.auth", StringComparison.OrdinalIgnoreCase)
-                && issuer.Contains(".azurestaticapps.net", StringComparison.OrdinalIgnoreCase))
+            // Check if this is a SWA-issued token by matching issuer against explicitly configured hostnames.
+            // No auto-detect: SWA_HOSTNAME must be configured to prevent forged tokens from unknown issuers.
+            if (_trustedSwaIssuers.Count == 0)
             {
-                isTrustedSwa = true;
-                _logger.LogInformation("Auto-detected SWA issuer: {Issuer}. Consider setting SWA_HOSTNAME in app settings.", issuer);
+                _logger.LogWarning("SWA_HOSTNAME is not configured. Cannot authenticate SWA-issued tokens. Set SWA_HOSTNAME in Function App settings.");
+                return null;
             }
+
+            var isTrustedSwa = _trustedSwaIssuers.Contains(issuer);
 
             if (!isTrustedSwa)
             {
@@ -1436,56 +1429,6 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Parses SWA forwarded principal headers when x-ms-client-principal payload is unavailable.
-    /// </summary>
-    private RequestIdentity? ParseClientPrincipalFromSwaHeaders(HttpRequestData req)
-    {
-        var userId = GetHeaderValue(req, "x-ms-client-principal-id")
-                     ?? GetHeaderValue(req, "x-ms-client-principal-userid")
-                     ?? GetHeaderValue(req, "x-ms-client-principal-name");
-
-        var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var claimRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var claimGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var role in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-user-roles")))
-        {
-            roles.Add(role);
-            claimRoleValues.Add(role);
-        }
-
-        foreach (var role in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-roles")))
-        {
-            roles.Add(role);
-            claimRoleValues.Add(role);
-        }
-
-        foreach (var group in ParseHeaderList(GetHeaderValue(req, "x-ms-client-principal-groups")))
-        {
-            claimGroupValues.Add(group);
-        }
-
-        ApplyConfiguredRoleMappings(roles, claimRoleValues, claimGroupValues);
-
-        if (roles.Count == 0 && !string.IsNullOrWhiteSpace(userId))
-        {
-            roles.Add("authenticated");
-        }
-
-        if (!IsAuthenticatedPrincipal(userId, roles))
-        {
-            return null;
-        }
-
-        return new RequestIdentity
-        {
-            UserId = userId,
-            IsAuthenticated = true,
-            Roles = roles
-        };
-    }
-
-    /// <summary>
     /// Builds an internal identity model from SWA principal payload fields and claims.
     /// </summary>
     private RequestIdentity? BuildIdentityFromPrincipalRoot(JsonElement root)
@@ -1698,54 +1641,6 @@ public class DashboardFunctions
         }
 
         return normalized;
-    }
-
-    private static IEnumerable<string> ParseHeaderList(string? headerValue)
-    {
-        var values = new List<string>();
-        if (string.IsNullOrWhiteSpace(headerValue))
-        {
-            return values;
-        }
-
-        var raw = headerValue.Trim();
-
-        if (raw.StartsWith("[", StringComparison.Ordinal))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(raw);
-                if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in doc.RootElement.EnumerateArray())
-                    {
-                        if (item.ValueKind == JsonValueKind.String)
-                        {
-                            var value = item.GetString();
-                            if (!string.IsNullOrWhiteSpace(value))
-                            {
-                                values.Add(value);
-                            }
-                        }
-                    }
-                }
-
-                return values;
-            }
-            catch
-            {
-            }
-        }
-
-        foreach (var token in raw.Split(new[] { ',', ';', ' ', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (!string.IsNullOrWhiteSpace(token))
-            {
-                values.Add(token);
-            }
-        }
-
-        return values;
     }
 
     private static string? TryGetString(JsonElement element, string propertyName)
