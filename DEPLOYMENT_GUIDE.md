@@ -620,8 +620,6 @@ az staticwebapp backends link `
     --name $STATIC_WEB_APP_NAME `
     --backend-resource-id $FUNCTION_APP_ID `
     --backend-region $FUNC_LOCATION
-
-Write-Host "Function App linked as SWA backend"
 ```
 
 ### 7.10 Disable Easy Auth on Function App
@@ -663,8 +661,6 @@ $accessControlConfig = @{
 } | ConvertTo-Json
 
 Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.json" -Value $accessControlConfig
-
-Write-Host "Access control configuration saved to access-control-config.json"
 ```
 
 ### Summary of Access Control Settings
@@ -719,9 +715,9 @@ Set-Location "$HOME/SamlCertRotation/dashboard"
 $configContent = Get-Content staticwebapp.config.json -Raw
 $configContent = $configContent -replace '__TENANT_ID__', $TENANT_ID
 Set-Content -Path staticwebapp.config.json -Value $configContent
-
-# NOTE: API_BASE_URL in index.html should remain empty - the SWA backend link handles API routing
 ```
+**NOTE**: API_BASE_URL in index.html should remain empty - the SWA backend link handles API routing
+
 
 ### 8.3 Deploy Dashboard
 
@@ -732,6 +728,7 @@ Use SWA CLI via `npx` for deployment:
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item unauthorized.html dist/
+Copy-Item debug.html dist/
 Copy-Item staticwebapp.config.json dist/
 
 # Deploy using npx (will show dependency warnings - these are safe to ignore)
@@ -799,8 +796,6 @@ az functionapp config appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
     --settings "LogicAppEmailUrl=$LOGIC_APP_URL"
-
-Write-Host "Function App configured to use Logic App for email notifications"
 ```
 
 ### 9.5 Test Email Notifications
@@ -824,8 +819,6 @@ Invoke-RestMethod -Uri $LOGIC_APP_URL -Method Post -Body $testPayload -ContentTy
 
 ## Step 10: Tag Applications for Auto-Rotation
 
-### Via Entra Admin Center
-
 1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Applications** → **Enterprise applications**
 3. Select a SAML application
@@ -837,71 +830,24 @@ Invoke-RestMethod -Uri $LOGIC_APP_URL -Method Post -Body $testPayload -ContentTy
    - Assigned values: `on`
 7. Click **Save**
 
-### Via PowerShell
-
-```powershell
-# Connect to Graph (if not already connected)
-Connect-MgGraph -Scopes "Application.ReadWrite.All", "CustomSecAttributeAssignment.ReadWrite.All"
-
-# Set attribute on a specific app (replace with your app display name)
-$appDisplayName = "Your SAML App Name"
-$sp = Get-MgServicePrincipal -Filter "displayName eq '$appDisplayName'"
-
-$customAttributes = @{
-    customSecurityAttributes = @{
-        SamlCertRotation = @{
-            "@odata.type" = "#Microsoft.DirectoryServices.CustomSecurityAttributeValue"
-            AutoRotate = "on"
-        }
-    }
-}
-
-Update-MgServicePrincipal -ServicePrincipalId $sp.Id -BodyParameter $customAttributes
-Write-Host "Tagged: $appDisplayName"
-```
-
 ---
 
 ## Step 11: Verify the Deployment
 
-### 11.1 Test the Function App API
-
-```powershell
-# Test dashboard stats endpoint (no function key needed - endpoints are anonymous)
-# Note: Easy Auth must be disabled on Function App for this to work (Step 7.10)
-$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/dashboard/stats" -Method Get
-$response | ConvertTo-Json -Depth 5
-
-# Expected output: JSON with totalSamlApps, appsExpiringIn30Days, etc.
-```
-
-If you get `400 Bad Request`, Easy Auth is still enabled on the Function App. Run Step 7.10 to disable it.
-
-### 11.2 Manually Trigger Rotation
-
-```powershell
-# Trigger manual rotation check (this scans all tagged apps and rotates certificates as needed)
-$response = Invoke-RestMethod -Uri "$FUNCTION_APP_URL/api/admin/trigger-rotation" -Method Post
-$response | ConvertTo-Json -Depth 5
-```
-
-### 11.3 Verify Dashboard Access
+### 11.1 Verify Dashboard Access
 
 1. Open the dashboard URL in your browser
 2. Sign in with an account that is assigned to the Enterprise Application
 3. Verify you can see the dashboard with application statistics
 
-### 11.4 Verify SWA Role Enrichment
+### 11.2 Verify SWA Role Enrichment
 
-After sign-in, verify SWA is enriching roles via the role source endpoint:
+After sign-in, verify SWA is enriching roles via the auth metadata endpoint:
 
 1. Open `https://<your-static-web-app-name>.azurestaticapps.net/.auth/me`
-2. Open `https://<your-static-web-app-name>.azurestaticapps.net/api/GetRoles`
-3. Confirm role data includes `admin` and/or `reader` as expected
+2. Confirm the `userRoles` array includes `admin` and/or `reader` in addition to `anonymous` and `authenticated`
 
-> **Note**: Check these in your browser after sign-in. Running these endpoints from Cloud Shell is unauthenticated and will not show your app roles.
-
-If `/api/GetRoles` returns 404, verify your deployed Function App includes the `GetRoles` function and route casing exactly as `GetRoles`.
+> **Note**: The `GetRoles` function is called internally by SWA during the authentication flow — you cannot browse to `/api/GetRoles` directly. If `/.auth/me` shows the correct roles, `GetRoles` is working.
 
 
 ### Dashboard shows 404 Not Found
@@ -1079,6 +1025,7 @@ Make sure to create the dist folder before deploying:
 Set-Location "$HOME/SamlCertRotation/dashboard"
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
+Copy-Item debug.html dist/
 Copy-Item staticwebapp.config.json dist/
 ```
 
@@ -1108,6 +1055,7 @@ Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path dist -Force | Out-Null
 Copy-Item index.html dist/
 Copy-Item unauthorized.html dist/
+Copy-Item debug.html dist/
 Copy-Item staticwebapp.config.json dist/
 
 $SWA_TOKEN = az staticwebapp secrets list `
