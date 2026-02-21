@@ -143,6 +143,7 @@ code main.parameters.json
 ```
 
 Update these values:
+- `tenantId`: Your Azure AD Tenant ID (run `az account show --query tenantId -o tsv` to get it)
 - `notificationSenderEmail`: Your notification sender email
 - `adminNotificationEmails`: Admin emails (semicolon-separated)
 - `customSecurityAttributeSet`: The Attribute Set you created in step 3
@@ -379,25 +380,8 @@ try {
 }
 ```
 
-You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). If you see `200`, Easy Auth may still be enabled on the Function App — Step 7.10 disables it. A `404` indicates deployment or routing issues.
+You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). If you see `200`, Easy Auth is likely still enabled on the Function App — Step 7.10 disables it. A `404` indicates deployment or routing issues.
 
-### 6.4 Recovery Command (Only run if Functions List Is Empty is empty from Step 6.3)
-
-```powershell
-# Re-publish and force host refresh
-Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
-func azure functionapp publish $FUNCTION_APP_NAME --dotnet-isolated --force
-# func publish already syncs triggers in Cloud Shell
-az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
-Start-Sleep -Seconds 20
-
-# Re-check
-az functionapp function list `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --query "[].name" `
-    --output table
-```
 
 ---
 
@@ -480,22 +464,18 @@ Write-Host "Service Principal ID: $SP_ID"
 az rest --method PATCH `
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID" `
     --body '{"tags": ["WindowsAzureActiveDirectoryIntegratedApp"]}'
-
-Write-Host "Service Principal created with Enterprise app tag"
 ```
 
-### 7.5 Configure User/Group Assignment
-
-This step restricts dashboard access to specific users or groups. **You must assign at least one user or group** for authentication to work.
+This step restricts dashboard access to specific users or groups. 
 
 ```powershell
 # Enable "Assignment required" on the Enterprise Application
 az rest --method PATCH `
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID" `
     --body '{"appRoleAssignmentRequired": true}'
-
-Write-Host "Assignment required enabled"
 ```
+
+### 7.5 Configure User/Group Assignment
 
 Now assign users or groups to the application in the Entra Portal (assumes your group already exists):
 
@@ -538,8 +518,6 @@ az keyvault secret set `
     --value $CLIENT_SECRET `
     --expires (Get-Date).AddYears(2).ToString("yyyy-MM-ddTHH:mm:ssZ") `
     --tags "AppClientId=$CLIENT_ID" "CreatedBy=ManualDeployment"
-
-Write-Host "Client secret stored in Key Vault as 'SamlDashboardClientSecret'"
 ```
 
 > **Important**: Keep the secret name consistent across Key Vault and SWA app settings. In this guide the required name is `SamlDashboardClientSecret`.
