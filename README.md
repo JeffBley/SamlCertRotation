@@ -313,14 +313,19 @@ Create in Microsoft Entra Admin Center:
 │   │   ├── GraphService.cs                  # Microsoft Graph API
 │   │   ├── PolicyService.cs                 # Policy storage (Table)
 │   │   ├── AuditService.cs                  # Audit logging (Table)
-│   │   └── NotificationService.cs           # Email notifications
+│   │   ├── NotificationService.cs           # Email notifications
+│   │   └── SwaSettingsService.cs            # SWA settings persistence
 │   └── Models/                              # Data models
 ├── dashboard/
 │   ├── index.html                           # Single-page dashboard
+│   ├── unauthorized.html                    # Access denied page
+│   ├── favicon.png                          # Dashboard favicon
 │   └── staticwebapp.config.json             # SWA auth configuration
 ├── infrastructure/
 │   ├── main.bicep                           # Azure infrastructure
 │   └── main.parameters.json                 # Deployment parameters
+├── scripts/
+│   └── redeploy-functions.ps1               # Cloud Shell redeploy helper
 ├── DEPLOYMENT_GUIDE.md                      # Step-by-step deployment
 └── README.md                                # This file
 ```
@@ -336,7 +341,7 @@ Create in Microsoft Entra Admin Center:
 - **XSS prevention**: All user content is escaped before rendering
 - **Error sanitization**: Stack traces, connection strings, and secrets are filtered from API error responses
 - **Input validation**: GUID format validation on all ID parameters, email format validation on sponsor updates, OData injection prevention on audit queries
-- **Security headers**: CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, strict Referrer-Policy
+- **Security headers**: HSTS, CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, strict Referrer-Policy
 
 ## License
 

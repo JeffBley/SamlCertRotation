@@ -65,13 +65,12 @@ You should see:
 
 ### Sync to the Latest Repository Version (Required)
 
-Cloud Shell storage persists between sessions. Always sync to the latest `v2/main` before building or deploying to avoid stale UI/API regressions.
+Cloud Shell storage persists between sessions. Always sync to the latest code before building or deploying to avoid stale UI/API regressions.
 
 ```powershell
 Set-Location "$HOME/SamlCertRotation"
 git fetch origin
-git checkout v2/main
-git reset --hard origin/v2/main
+git pull origin main
 ```
 
 ---
@@ -762,7 +761,7 @@ Use SWA CLI via `npx` for deployment:
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item unauthorized.html dist/
-Copy-Item debug.html dist/
+Copy-Item favicon.png dist/
 Copy-Item staticwebapp.config.json dist/
 
 # Deploy using npx (will show dependency warnings - these are safe to ignore)
@@ -991,7 +990,7 @@ This means the deployment didn't succeed or files weren't deployed correctly:
 Set-Location "$HOME/SamlCertRotation/dashboard"
 Get-ChildItem dist/
 
-# Should show: index.html, staticwebapp.config.json, unauthorized.html
+# Should show: index.html, staticwebapp.config.json, unauthorized.html, favicon.png
 
 # 2. Verify deployment token is set
 Write-Host "Token set: $([bool]$SWA_TOKEN)"
@@ -1057,7 +1056,8 @@ Make sure to create the dist folder before deploying:
 Set-Location "$HOME/SamlCertRotation/dashboard"
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
-Copy-Item debug.html dist/
+Copy-Item unauthorized.html dist/
+Copy-Item favicon.png dist/
 Copy-Item staticwebapp.config.json dist/
 ```
 
@@ -1074,8 +1074,7 @@ This usually indicates stale source in Cloud Shell or a partial deployment.
 # 1) Sync Cloud Shell repo to the latest committed code
 Set-Location "$HOME/SamlCertRotation"
 git fetch origin
-git checkout v2/main
-git reset --hard origin/v2/main
+git pull origin main
 
 # 2) Force redeploy Function App
 Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
@@ -1087,7 +1086,7 @@ Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path dist -Force | Out-Null
 Copy-Item index.html dist/
 Copy-Item unauthorized.html dist/
-Copy-Item debug.html dist/
+Copy-Item favicon.png dist/
 Copy-Item staticwebapp.config.json dist/
 
 $SWA_TOKEN = az staticwebapp secrets list `
@@ -1418,7 +1417,6 @@ $configPath = "$HOME/SamlCertRotation/infrastructure/access-control-config.json"
 if (Test-Path $configPath) {
     $config = Get-Content $configPath | ConvertFrom-Json
     $CLIENT_ID = $config.clientId
-    $ADMIN_GROUP_ID = $config.adminGroupId
 }
 
 # Delete the App Registration (also deletes the Service Principal)
@@ -1427,11 +1425,9 @@ if ($CLIENT_ID) {
     Write-Host "Deleted App Registration: $CLIENT_ID"
 }
 
-# Delete the Security Group (optional - you may want to keep this)
-if ($ADMIN_GROUP_ID) {
-    az ad group delete --group $ADMIN_GROUP_ID
-    Write-Host "Deleted Security Group: $ADMIN_GROUP_ID"
-}
+# Delete the Security Group (optional - only if you created one manually)
+# $GROUP_ID = "<your-group-object-id>"
+# az ad group delete --group $GROUP_ID
 ```
 
 ### Step 3: Delete Custom Security Attributes (Optional)
