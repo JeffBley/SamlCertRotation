@@ -19,7 +19,7 @@ public class PolicyService : IPolicyService
 
     private const string PolicyTableName = "RotationPolicies";
     private const int DefaultRetentionPolicyDays = 180;
-    private const int DefaultSessionTimeoutMinutes = 0;
+    private const int DefaultSessionTimeoutMinutes = 15;
     private const int DefaultFirstSponsorReminderDays = 30;
     private const int DefaultSecondSponsorReminderDays = 7;
     private const int DefaultThirdSponsorReminderDays = 1;
