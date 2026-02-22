@@ -632,7 +632,10 @@
                     <h1>SAML Certificate Rotation Dashboard</h1>
                     <p>Automated certificate lifecycle management for Microsoft Entra ID</p>
                 </div>
-                <button class="logout-btn" onclick="signOut()">Sign Out</button>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                    <span id="user-upn" style="font-size:12px;color:#fff;opacity:0.85;"></span>
+                    <button class="logout-btn" onclick="signOut()">Sign Out</button>
+                </div>
             </div>
         </div>
     </header>
@@ -683,8 +686,8 @@
                         <span class="last-updated" id="last-updated"></span>
                         <button class="btn btn-secondary" onclick="exportApplications()">Export</button>
                         <button class="btn btn-secondary" onclick="loadData()">Refresh</button>
-                        <button class="btn btn-secondary" onclick="triggerReportOnlyRun()">Run - Report-only</button>
-                        <button class="btn btn-primary" onclick="triggerProdRun()">Run - Prod</button>
+                        <button id="btn-report-only" class="btn btn-secondary" onclick="triggerReportOnlyRun()">Run - Report-only</button>
+                        <button id="btn-prod-run" class="btn btn-primary" onclick="triggerProdRun()">Run - Prod</button>
                     </div>
                 </div>
                 <div class="filter-bar">
@@ -921,6 +924,7 @@
         let createCertDaysThreshold = 60;
         let activateCertDaysThreshold = 30;
         let currentUserRoles = [];
+        let currentUserUpn = '';
         const ADMIN_APP_ROLE_VALUE = 'SamlCertRotation.Admin';
         const READER_APP_ROLE_VALUE = 'SamlCertRotation.Reader';
         const auditFilterColumns = [
@@ -999,13 +1003,44 @@
                 }
 
                 currentUserRoles = [...new Set(normalizedRoles)];
+                currentUserUpn = principal?.userDetails || '';
             } catch {
                 currentUserRoles = [];
+                currentUserUpn = '';
             }
         }
 
         function hasDashboardAccess() {
             return currentUserRoles.includes('admin') || currentUserRoles.includes('reader');
+        }
+
+        function applyRoleBasedAccess() {
+            // Display UPN
+            const upnEl = document.getElementById('user-upn');
+            if (upnEl) upnEl.textContent = currentUserUpn;
+
+            const readOnly = !isAdminUser();
+
+            // Run buttons
+            const reportBtn = document.getElementById('btn-report-only');
+            const prodBtn = document.getElementById('btn-prod-run');
+            if (reportBtn) { reportBtn.disabled = readOnly; reportBtn.style.opacity = readOnly ? '0.5' : '1'; reportBtn.style.cursor = readOnly ? 'not-allowed' : 'pointer'; }
+            if (prodBtn) { prodBtn.disabled = readOnly; prodBtn.style.opacity = readOnly ? '0.5' : '1'; prodBtn.style.cursor = readOnly ? 'not-allowed' : 'pointer'; }
+
+            // Policy tab inputs and Save Policy button
+            document.getElementById('createDays').disabled = readOnly;
+            document.getElementById('activateDays').disabled = readOnly;
+            document.querySelectorAll('#tab-policy .btn-primary').forEach(btn => {
+                btn.disabled = readOnly; btn.style.opacity = readOnly ? '0.5' : '1'; btn.style.cursor = readOnly ? 'not-allowed' : 'pointer';
+            });
+
+            // Settings tab - all inputs, selects, textareas, and Save Settings button
+            document.querySelectorAll('#tab-settings input:not([readonly]), #tab-settings select, #tab-settings textarea').forEach(el => {
+                el.disabled = readOnly;
+            });
+            document.querySelectorAll('#tab-settings .btn-primary').forEach(btn => {
+                btn.disabled = readOnly; btn.style.opacity = readOnly ? '0.5' : '1'; btn.style.cursor = readOnly ? 'not-allowed' : 'pointer';
+            });
         }
 
         function enforceRoleAccessOrRedirect() {
@@ -2130,6 +2165,7 @@
             if (!enforceRoleAccessOrRedirect()) {
                 return;
             }
+            applyRoleBasedAccess();
             loadData();
         })();
     </script>
