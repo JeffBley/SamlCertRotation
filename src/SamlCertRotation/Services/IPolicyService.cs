@@ -96,4 +96,14 @@ public interface IPolicyService
     /// Update sponsor reminder days (must be 1..180)
     /// </summary>
     Task UpdateSponsorReminderDaysAsync(int firstReminderDays, int secondReminderDays, int thirdReminderDays);
+
+    /// <summary>
+    /// Get session timeout in minutes (default 0 = disabled)
+    /// </summary>
+    Task<int> GetSessionTimeoutMinutesAsync();
+
+    /// <summary>
+    /// Update session timeout in minutes (0 = disabled)
+    /// </summary>
+    Task UpdateSessionTimeoutMinutesAsync(int minutes);
 }

@@ -19,6 +19,7 @@ public class PolicyService : IPolicyService
 
     private const string PolicyTableName = "RotationPolicies";
     private const int DefaultRetentionPolicyDays = 180;
+    private const int DefaultSessionTimeoutMinutes = 0;
     private const int DefaultFirstSponsorReminderDays = 30;
     private const int DefaultSecondSponsorReminderDays = 7;
     private const int DefaultThirdSponsorReminderDays = 1;
@@ -483,6 +484,56 @@ public class PolicyService : IPolicyService
         if (days < MinSponsorReminderDays || days > MaxSponsorReminderDays)
         {
             throw new ArgumentOutOfRangeException(paramName, $"Reminder day value must be between {MinSponsorReminderDays} and {MaxSponsorReminderDays}.");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> GetSessionTimeoutMinutesAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SessionTimeoutMinutes");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Minutes");
+                if (int.TryParse(value, out var minutes) && minutes >= 0)
+                {
+                    return minutes;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting session timeout setting from storage");
+        }
+
+        return DefaultSessionTimeoutMinutes;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSessionTimeoutMinutesAsync(int minutes)
+    {
+        if (minutes < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(minutes), "Session timeout must be 0 (disabled) or a positive number.");
+        }
+
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "SessionTimeoutMinutes")
+            {
+                { "Minutes", minutes.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated session timeout minutes: {Minutes}", minutes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating session timeout setting");
+            throw;
         }
     }
 }

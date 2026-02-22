@@ -44,4 +44,9 @@ public class SettingsUpdateRequest
     /// Days before expiry for sponsor 3rd reminder
     /// </summary>
     public int? SponsorThirdReminderDays { get; set; }
+
+    /// <summary>
+    /// Session timeout in minutes (0 = disabled)
+    /// </summary>
+    public int? SessionTimeoutMinutes { get; set; }
 }

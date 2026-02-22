@@ -904,9 +904,20 @@
                 </div>
             </div>
 
-        </div>
+            <div class="section" style="margin-top: 24px;">
+                <div class="section-header">
+                    <h2>Security</h2>
+                </div>
+                <div class="policy-form">
+                    <div class="form-group">
+                        <label for="sessionTimeoutMinutes">Session timeout (minutes)</label>
+                        <input type="number" id="sessionTimeoutMinutes" min="0" max="480" step="1" value="0" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <p style="font-size:11px;color:#888;margin-top:4px;">Idle time before the user is prompted to stay signed in. Set to 0 to disable session timeout.</p>
+                    </div>
+                </div>
+            </div>
 
-    <!-- Confirmation Modal -->
+        </div>
     <div id="confirmModal" class="modal-overlay">
         <div class="modal">
             <h3 id="modalTitle">Confirm Action</h3>
@@ -914,6 +925,18 @@
             <div class="modal-buttons">
                 <button class="btn-cancel" onclick="closeModal()">Cancel</button>
                 <button class="btn btn-primary" id="modalConfirmBtn" onclick="confirmModalAction()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Timeout Modal -->
+    <div id="sessionTimeoutModal" class="modal-overlay">
+        <div class="modal">
+            <h3 style="color:#0078d4;">Are you still there?</h3>
+            <p>Your session will expire due to inactivity. You will be signed out in <strong id="timeout-countdown">2:00</strong>.</p>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="endAppSession()">Sign Out</button>
+                <button class="btn btn-primary" onclick="renewSession()">Stay Signed In</button>
             </div>
         </div>
     </div>
@@ -935,6 +958,10 @@
         let activateCertDaysThreshold = 30;
         let currentUserRoles = [];
         let currentUserUpn = '';
+        let sessionTimeoutMinutes = 0;
+        let idleTimer = null;
+        let countdownTimer = null;
+        let countdownSeconds = 120;
         const ADMIN_APP_ROLE_VALUE = 'SamlCertRotation.Admin';
         const READER_APP_ROLE_VALUE = 'SamlCertRotation.Reader';
         const auditFilterColumns = [
@@ -971,9 +998,63 @@
         }
 
         // Authentication and role helpers
-        // Sign Out function - kills app session only (not global SSO logout)
-        function signOut() {
+        // End app session (clears SWA auth cookie) and redirect to login
+        function endAppSession() {
+            stopIdleTracking();
             window.location.href = '/.auth/logout?post_logout_redirect_uri=/';
+        }
+
+        // Sign Out button - same as app session termination
+        function signOut() {
+            endAppSession();
+        }
+
+        // Session idle timeout tracking
+        function resetIdleTimer() {
+            if (sessionTimeoutMinutes <= 0) return;
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(showTimeoutPrompt, sessionTimeoutMinutes * 60 * 1000);
+        }
+
+        function startIdleTracking() {
+            if (sessionTimeoutMinutes <= 0) return;
+            const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+            events.forEach(evt => document.addEventListener(evt, resetIdleTimer, { passive: true }));
+            resetIdleTimer();
+        }
+
+        function stopIdleTracking() {
+            clearTimeout(idleTimer);
+            clearInterval(countdownTimer);
+            const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+            events.forEach(evt => document.removeEventListener(evt, resetIdleTimer));
+        }
+
+        function showTimeoutPrompt() {
+            countdownSeconds = 120;
+            updateCountdownDisplay();
+            document.getElementById('sessionTimeoutModal').classList.add('show');
+            countdownTimer = setInterval(() => {
+                countdownSeconds--;
+                updateCountdownDisplay();
+                if (countdownSeconds <= 0) {
+                    clearInterval(countdownTimer);
+                    endAppSession();
+                }
+            }, 1000);
+        }
+
+        function updateCountdownDisplay() {
+            const mins = Math.floor(countdownSeconds / 60);
+            const secs = countdownSeconds % 60;
+            document.getElementById('timeout-countdown').textContent =
+                `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function renewSession() {
+            clearInterval(countdownTimer);
+            document.getElementById('sessionTimeoutModal').classList.remove('show');
+            resetIdleTimer();
         }
 
         function isAdminUser() {
@@ -1470,9 +1551,10 @@
         // Load dashboard data
         async function loadData() {
             try {
-                const [stats, policy] = await Promise.all([
+                const [stats, policy, settings] = await Promise.all([
                     apiCall('dashboard/stats'),
-                    apiCall('policy').catch(() => null)
+                    apiCall('policy').catch(() => null),
+                    apiCall('settings').catch(() => null)
                 ]);
 
                 if (policy) {
@@ -1483,6 +1565,12 @@
                         ? policy.activateCertDaysBeforeExpiry
                         : activateCertDaysThreshold;
                 }
+
+                // Start session idle tracking
+                if (settings && typeof settings.sessionTimeoutMinutes === 'number') {
+                    sessionTimeoutMinutes = settings.sessionTimeoutMinutes;
+                }
+                startIdleTracking();
                 
                 // Update stats
                 document.getElementById('stat-total').textContent = stats.totalSamlApps;
@@ -1657,6 +1745,7 @@
                 document.getElementById('sponsorSecondReminderDays').value = Number.isInteger(settings.sponsorSecondReminderDays) ? settings.sponsorSecondReminderDays : 7;
                 document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
                 document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
+                document.getElementById('sessionTimeoutMinutes').value = typeof settings.sessionTimeoutMinutes === 'number' ? settings.sessionTimeoutMinutes : 0;
                 toggleSponsorReminderSettings();
             } catch (error) {
                 console.error('Failed to load settings:', error);
@@ -1712,12 +1801,17 @@
                     sponsorFirstReminderDays,
                     sponsorSecondReminderDays,
                     sponsorThirdReminderDays,
-                    retentionPolicyDays
+                    retentionPolicyDays,
+                    sessionTimeoutMinutes: parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0
                 };
                 await apiCall('settings', {
                     method: 'PUT',
                     body: JSON.stringify(settings)
                 });
+                // Update idle tracking with new timeout setting
+                stopIdleTracking();
+                sessionTimeoutMinutes = parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0;
+                startIdleTracking();
                 alert('Settings saved successfully!');
             } catch (error) {
                 alert('Failed to save settings: ' + error.message);

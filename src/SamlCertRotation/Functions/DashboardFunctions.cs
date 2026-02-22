@@ -515,6 +515,7 @@ public class DashboardFunctions
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
             var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
+            var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
 
             var settings = new
             {
@@ -528,7 +529,8 @@ public class DashboardFunctions
                 notifySponsorsOnExpiration,
                 sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
-                sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays
+                sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
+                sessionTimeoutMinutes
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -615,11 +617,21 @@ public class DashboardFunctions
                 await _policyService.UpdateSponsorReminderDaysAsync(firstReminderDays, secondReminderDays, thirdReminderDays);
             }
 
+            if (settings.SessionTimeoutMinutes.HasValue)
+            {
+                if (settings.SessionTimeoutMinutes.Value < 0)
+                {
+                    return await CreateErrorResponse(req, "Session timeout must be 0 (disabled) or a positive number", HttpStatusCode.BadRequest);
+                }
+                await _policyService.UpdateSessionTimeoutMinutesAsync(settings.SessionTimeoutMinutes.Value);
+            }
+
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
             var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
+            var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
 
             return await CreateJsonResponse(req, new 
             { 
@@ -631,7 +643,8 @@ public class DashboardFunctions
                 notifySponsorsOnExpiration,
                 sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
-                sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays
+                sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
+                sessionTimeoutMinutes
             });
         }
         catch (Exception ex)
