@@ -1554,16 +1554,16 @@
                                 <td class="actions-cell">
                                     <button class="actions-btn" onclick='toggleActionsMenu(event, ${toJsStringLiteral(appIdToken)})'>⋮</button>
                                     <div id="actions-menu-${appIdToken}" class="dropdown-menu">
-                                        <button class="dropdown-item" onclick='createNewCert(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
+                                        <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} onclick='createNewCert(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
                                             Create new SAML certificate
                                         </button>
-                                        <button class="dropdown-item" onclick='activateNewestCert(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
+                                        <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} onclick='activateNewestCert(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
                                             Make newest cert active
                                         </button>
-                                        <button class="dropdown-item" onclick='editSponsor(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)}, ${toJsStringLiteral(app.sponsor || '')})'>
+                                        <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} onclick='editSponsor(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)}, ${toJsStringLiteral(app.sponsor || '')})'>
                                             Edit Sponsor
                                         </button>
-                                        <button class="dropdown-item ${computedStatus === 'ok' ? 'disabled' : ''}" ${computedStatus === 'ok' ? 'disabled' : ''} onclick='resendReminderEmail(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
+                                        <button class="dropdown-item ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''}" ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''} ${!isAdminUser() ? 'style="opacity:0.5;cursor:not-allowed;"' : ''} onclick='resendReminderEmail(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
                                             Resend Reminder Email
                                         </button>
                                     </div>

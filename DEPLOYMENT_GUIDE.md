@@ -882,50 +882,6 @@ After sign-in, verify SWA is enriching roles via the auth metadata endpoint:
 1. Open `https://<your-static-web-app-name>.azurestaticapps.net/.auth/me`
 2. Confirm the `userRoles` array includes `admin` and/or `reader` in addition to `anonymous` and `authenticated`
 
-> **Note**: The `GetRoles` function is called internally by SWA during the authentication flow — you cannot browse to `/api/GetRoles` directly. If `/.auth/me` shows the correct roles, `GetRoles` is working.
-
-
-### Dashboard shows 404 Not Found
-
-This means the deployment didn't succeed or files weren't deployed correctly:
-
-```powershell
-# 1. Verify dist folder has the correct files
-Set-Location "$HOME/SamlCertRotation/dashboard"
-Get-ChildItem dist/
-
-# Should show: index.html, staticwebapp.config.json, unauthorized.html
-
-# 2. Verify deployment token is set
-Write-Host "Token set: $([bool]$SWA_TOKEN)"
-
-# 3. If token is missing, get it again
-$SWA_TOKEN = az staticwebapp secrets list `
-    --resource-group $RESOURCE_GROUP `
-    --name $STATIC_WEB_APP_NAME `
-    --query "properties.apiKey" -o tsv
-
-# 4. Re-deploy
-npx -y @azure/static-web-apps-cli deploy ./dist `
-    --deployment-token $SWA_TOKEN `
-    --env production
-
-# 5. Wait 1-2 minutes and refresh the browser
-```
-
-If you still see 404, check the Azure Portal:
-1. Go to your Static Web App resource
-2. Click **Environment** in the left menu
-3. Verify there's a deployment under "Production"
-### 11.5 Access the Dashboard
-
-Open your browser and navigate to:
-```
-https://<your-static-web-app-name>.azurestaticapps.net
-```
-
----
-
 ## Next Steps
 
 Now that deployment is complete, consider these optional enhancements:
@@ -1025,6 +981,48 @@ The dashboard records all certificate operations. Use the **Audit Logs** tab to:
 ---
 
 ## Troubleshooting
+
+
+### Dashboard shows 404 Not Found
+
+This means the deployment didn't succeed or files weren't deployed correctly:
+
+```powershell
+# 1. Verify dist folder has the correct files
+Set-Location "$HOME/SamlCertRotation/dashboard"
+Get-ChildItem dist/
+
+# Should show: index.html, staticwebapp.config.json, unauthorized.html
+
+# 2. Verify deployment token is set
+Write-Host "Token set: $([bool]$SWA_TOKEN)"
+
+# 3. If token is missing, get it again
+$SWA_TOKEN = az staticwebapp secrets list `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --query "properties.apiKey" -o tsv
+
+# 4. Re-deploy
+npx -y @azure/static-web-apps-cli deploy ./dist `
+    --deployment-token $SWA_TOKEN `
+    --env production
+
+# 5. Wait 1-2 minutes and refresh the browser
+```
+
+If you still see 404, check the Azure Portal:
+1. Go to your Static Web App resource
+2. Click **Environment** in the left menu
+3. Verify there's a deployment under "Production"
+### 11.5 Access the Dashboard
+
+Open your browser and navigate to:
+```
+https://<your-static-web-app-name>.azurestaticapps.net
+```
+
+---
 
 ### Git merge conflicts when pulling updates
 
