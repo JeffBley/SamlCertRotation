@@ -87,7 +87,8 @@ public class SamlCertificate
     public bool IsActive { get; set; }
 
     /// <summary>
-    /// Days until certificate expires
+    /// Days until certificate expires (negative = already expired).
+    /// Uses Math.Floor so a cert expired even 1 minute ago yields -1, not 0.
     /// </summary>
-    public int DaysUntilExpiry => (int)(EndDateTime - DateTime.UtcNow).TotalDays;
+    public int DaysUntilExpiry => (int)Math.Floor((EndDateTime - DateTime.UtcNow).TotalDays);
 }
