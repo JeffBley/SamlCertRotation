@@ -380,7 +380,7 @@ try {
 }
 ```
 
-You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). If you see `200`, Easy Auth is likely still enabled on the Function App — Step 7.10 disables it. A `404` indicates deployment or routing issues.
+You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). If you see `200`, Easy Auth is likely still enabled on the Function App — Step 7.11 disables it. A `404` indicates deployment or routing issues.
 
 
 ---
@@ -475,7 +475,42 @@ az rest --method PATCH `
     --body '{"appRoleAssignmentRequired": true}'
 ```
 
-### 7.5 Configure User/Group Assignment
+### 7.5 Grant Admin Consent for Microsoft Graph Permissions (Optional)
+
+Grant admin consent for delegated Microsoft Graph permissions (`openid`, `profile`, `email`) used during SWA authentication. This avoids users seeing a consent prompt on first sign-in.
+
+```powershell
+# Grant admin consent for openid, profile, and email delegated permissions
+# Microsoft Graph well-known AppId: 00000003-0000-0000-c000-000000000000
+$GRAPH_SP_ID = az ad sp list --filter "appId eq '00000003-0000-0000-c000-000000000000'" --query "[0].id" -o tsv
+
+# Permission IDs for openid, profile, email
+$PERMISSIONS = @(
+    @{ Id = "37f7f235-527c-4136-accd-4a02d197296e"; Name = "openid" },
+    @{ Id = "14dad69e-099b-42c9-810b-d002981feec1"; Name = "profile" },
+    @{ Id = "64a6cdd6-aab1-4aaf-94b8-3cc8405e90d0"; Name = "email" }
+)
+
+foreach ($perm in $PERMISSIONS) {
+    $body = @{
+        clientId = $SP_ID
+        consentType = "AllPrincipals"
+        resourceId = $GRAPH_SP_ID
+        scope = $perm.Name
+    } | ConvertTo-Json -Compress
+
+    try {
+        az rest --method POST --uri "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" --headers "Content-Type=application/json" --body $body
+        Write-Host "Granted admin consent: $($perm.Name)" -ForegroundColor Green
+    } catch {
+        Write-Host "Already granted or error: $($perm.Name)" -ForegroundColor Yellow
+    }
+}
+```
+
+> **Note**: If you skip this step, users will be prompted to consent to these permissions on their first sign-in. This is harmless but may confuse users.
+
+### 7.6 Configure User/Group Assignment
 
 Now assign users or groups to the application in the Entra Portal (assumes your group already exists):
 
@@ -491,7 +526,7 @@ Now assign users or groups to the application in the Entra Portal (assumes your 
 
 > **Important**: Users who are not assigned to the Enterprise Application will receive an "Access Denied" error when trying to access the dashboard.
 
-### 7.6 Store Client Secret in Key Vault
+### 7.7 Store Client Secret in Key Vault
 
 Store the dashboard client secret in Azure Key Vault. This project does not auto-rotate dashboard secrets.
 
@@ -522,7 +557,7 @@ az keyvault secret set `
 
 > **Important**: Keep the secret name consistent across Key Vault and SWA app settings. In this guide the required name is `SamlDashboardClientSecret`.
 
-### 7.7 Enable Static Web App Managed Identity and Key Vault Access
+### 7.8 Enable Static Web App Managed Identity and Key Vault Access
 
 The Static Web App must use a managed identity with Key Vault read access before Key Vault references will resolve.
 
@@ -549,7 +584,7 @@ Write-Host "Waiting 60 seconds for RBAC propagation..."
 Start-Sleep -Seconds 60
 ```
 
-### 7.8 Configure Static Web App and Function App Settings
+### 7.9 Configure Static Web App and Function App Settings
 
 ```powershell
 # Read tenant ID from infrastructure/main.parameters.json
@@ -599,7 +634,7 @@ az staticwebapp appsettings list `
     --query "properties.{AAD_CLIENT_ID:AAD_CLIENT_ID,AAD_CLIENT_SECRET:AAD_CLIENT_SECRET}" -o json
 ```
 
-### 7.9 Link Function App to Static Web App
+### 7.10 Link Function App to Static Web App
 
 ```powershell
 # Get the Function App resource ID
@@ -622,11 +657,11 @@ az staticwebapp backends link `
     --backend-region $FUNC_LOCATION
 ```
 
-### 7.10 Disable Easy Auth on Function App
+### 7.11 Disable Easy Auth on Function App
 
 The `backends link` command above enables Easy Auth on the Function App. We need to **disable it** because authentication is handled by the Static Web App, not the Function App.
 
-> **Important**: This step MUST run AFTER 7.9 (backend linking), otherwise the link command will re-enable Easy Auth.
+> **Important**: This step MUST run AFTER 7.10 (backend linking), otherwise the link command will re-enable Easy Auth.
 
 ```powershell
 # Disable Easy Auth on the Function App
@@ -648,7 +683,7 @@ if ($easyAuthStatus -eq "false") {
 }
 ```
 
-### 7.11 Save Access Control Configuration
+### 7.12 Save Access Control Configuration
 
 ```powershell
 # Save configuration for reference
@@ -677,7 +712,7 @@ Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.j
 | `SWA_READER_APP_ROLE` | Function App Settings | App role value for reader access (default: `SamlCertRotation.Reader`) |
 | `RotationSchedule` | Function App Settings | CRON expression for rotation checks (default: `0 0 6 * * *` = 6 AM UTC daily) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
-| Easy Auth | Function App | Disabled (Step 7.10) |
+| Easy Auth | Function App | Disabled (Step 7.11) |
 | `tenantId` | infrastructure/main.parameters.json | Your Azure AD Tenant ID |
 | Tenant ID | staticwebapp.config.json (`__TENANT_ID__`) | Replaced during Step 8.2 |
 
@@ -711,7 +746,7 @@ $SWA_TOKEN = az staticwebapp secrets list `
 ```powershell
 Set-Location "$HOME/SamlCertRotation/dashboard"
 
-# Update staticwebapp.config.json with tenant ID from Step 7.8
+# Update staticwebapp.config.json with tenant ID from Step 7.9
 $configContent = Get-Content staticwebapp.config.json -Raw
 $configContent = $configContent -replace '__TENANT_ID__', $TENANT_ID
 Set-Content -Path staticwebapp.config.json -Value $configContent
@@ -1172,8 +1207,8 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName $FUNCTION_APP_NAME -Resou
 ### Dashboard shows no data
 
 1. Check browser console (F12) for errors
-2. Verify the SWA backend link was configured (Step 7.9)
-3. Check that Easy Auth is disabled on the Function App (Step 7.10)
+2. Verify the SWA backend link was configured (Step 7.10)
+3. Check that Easy Auth is disabled on the Function App (Step 7.11)
 4. Ensure API_BASE_URL in index.html is empty (SWA backend handles routing)
 5. Verify `https://<SWA_HOST>/api/GetRoles` is not 404 (302/200 is expected)
 
@@ -1270,21 +1305,21 @@ az rest --method PUT `
     --body '{"properties":{"platform":{"enabled":false},"globalValidation":{"unauthenticatedClientAction":"AllowAnonymous"}}}'
 ```
 
-> **Note**: The `az staticwebapp backends link` command (Step 7.9) enables Easy Auth on the Function App. Step 7.10 must run AFTER to disable it.
+> **Note**: The `az staticwebapp backends link` command (Step 7.10) enables Easy Auth on the Function App. Step 7.11 must run AFTER to disable it.
 
 ### Dashboard shows "Unexpected token '<'" error
 
 This typically means the API is returning HTML instead of JSON. Common causes:
 
-1. **Easy Auth is enabled on Function App** - Disable it via Step 7.10
-2. **SWA backend link not configured** - Run Step 7.9
+1. **Easy Auth is enabled on Function App** - Disable it via Step 7.11
+2. **SWA backend link not configured** - Run Step 7.10
 3. **Missing exclude patterns in staticwebapp.config.json** - Ensure `/api/*` is in exclude list
 
 ### Dashboard shows "Access Denied" / User shows as "anonymous"
 
-1. **Enterprise App assignment not configured** - Run Step 7.4 through 7.5
+1. **Enterprise App assignment not configured** - Run Step 7.4 through 7.6
 2. **User not assigned to the Enterprise App** - Add user/group via Azure Portal
-3. **SWA app settings not configured** - Run Step 7.8
+3. **SWA app settings not configured** - Run Step 7.9
 
 ### Auto-rotate status shows as "Not Set" (null) for all apps
 
