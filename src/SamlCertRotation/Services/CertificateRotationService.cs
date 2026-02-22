@@ -385,9 +385,14 @@ public class CertificateRotationService : ICertificateRotationService
             return;
         }
 
-        var globalPolicy = await _policyService.GetGlobalPolicyAsync();
+        // Only process apps with AutoRotate = "on" or "notify"
+        var eligibleApps = apps.Where(a =>
+        {
+            var mode = a.AutoRotateStatus?.Trim().ToLowerInvariant();
+            return mode == AutoRotateOn || mode == AutoRotateNotify;
+        }).ToList();
 
-        foreach (var app in apps)
+        foreach (var app in eligibleApps)
         {
             try
             {
@@ -397,12 +402,13 @@ public class CertificateRotationService : ICertificateRotationService
                     continue;
                 }
 
-                var status = GetCertificateStatus(activeCert.DaysUntilExpiry, globalPolicy.CreateCertDaysBeforeExpiry, globalPolicy.ActivateCertDaysBeforeExpiry);
-                if (string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase))
+                // Only notify when the certificate has actually expired
+                if (activeCert.DaysUntilExpiry >= 0)
                 {
                     continue;
                 }
 
+                var status = "Expired";
                 var milestoneLabel = $"Expiration-{status}";
                 var alreadySent = HasExpirationMilestoneBeenSent(GetCachedEntries(app.Id, auditCache), activeCert.Thumbprint, milestoneLabel);
                 if (alreadySent)

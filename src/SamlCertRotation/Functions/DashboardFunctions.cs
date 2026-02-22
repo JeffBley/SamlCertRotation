@@ -1115,8 +1115,7 @@ public class DashboardFunctions
         }
 
         var hasReadAccess = identity.Roles.Contains(DashboardRoles.Admin)
-                    || identity.Roles.Contains(DashboardRoles.Reader)
-                    || identity.Roles.Contains(DashboardRoles.Authenticated);
+                    || identity.Roles.Contains(DashboardRoles.Reader);
         if (!hasReadAccess)
         {
             _logger.LogWarning("Forbidden request by user {UserId} to {Method} {Url} - missing reader/admin role", identity.UserId ?? "unknown", req.Method, req.Url);
