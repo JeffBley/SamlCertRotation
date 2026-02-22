@@ -718,6 +718,16 @@
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="ok" onchange="onAppFilterChanged()">OK</label>
                             </div>
                         </div>
+                        <input type="text" id="app-sponsor-search" placeholder="Filter by sponsor..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;" oninput="applyFilters()">
+                        <select id="app-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyFilters()">
+                            <option value="name">Sort: Name</option>
+                            <option value="daysRemaining">Sort: Days Remaining</option>
+                            <option value="expiryDate">Sort: Expiry Date</option>
+                        </select>
+                        <select id="app-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyFilters()">
+                            <option value="asc">Asc</option>
+                            <option value="desc">Desc</option>
+                        </select>
                     </div>
                 </div>
                 <div id="apps-table-container">
@@ -1191,6 +1201,7 @@
 
         function getFilteredApps() {
             const searchTerm = (document.getElementById('app-search')?.value || '').trim().toLowerCase();
+            const sponsorTerm = (document.getElementById('app-sponsor-search')?.value || '').trim().toLowerCase();
             const selectedAutoRotateFilters = getSelectedAppAutoRotateFilters();
             const selectedStatusFilters = getSelectedAppStatusFilters();
 
@@ -1208,8 +1219,9 @@
                 const autoRotateMatch = selectedAutoRotateFilters.length === 0 || selectedAutoRotateFilters.includes(autoRotateValue);
                 const statusMatch = selectedStatusFilters.length === 0 || selectedStatusFilters.includes(computedStatus);
                 const nameMatch = !searchTerm || (app.displayName || '').toLowerCase().includes(searchTerm);
+                const sponsorMatch = !sponsorTerm || (app.sponsor || '').toLowerCase().includes(sponsorTerm);
 
-                return autoRotateMatch && statusMatch && nameMatch;
+                return autoRotateMatch && statusMatch && nameMatch && sponsorMatch;
             });
         }
 
@@ -1498,9 +1510,35 @@
             }
         }
 
-        // Apply filters and render apps table
+        // Apply filters, sort, and render apps table
         function applyFilters() {
-            renderApps(getFilteredApps());
+            const filtered = getFilteredApps();
+            const sortBy = (document.getElementById('app-sort-by')?.value || 'name').toLowerCase();
+            const sortDirection = (document.getElementById('app-sort-direction')?.value || 'asc').toLowerCase();
+
+            filtered.sort((a, b) => {
+                let left, right;
+                switch (sortBy) {
+                    case 'daysremaining':
+                        left = typeof a.daysUntilExpiry === 'number' ? a.daysUntilExpiry : Infinity;
+                        right = typeof b.daysUntilExpiry === 'number' ? b.daysUntilExpiry : Infinity;
+                        break;
+                    case 'expirydate':
+                        left = a.certExpiryDate ? new Date(a.certExpiryDate).getTime() : Infinity;
+                        right = b.certExpiryDate ? new Date(b.certExpiryDate).getTime() : Infinity;
+                        break;
+                    case 'name':
+                    default:
+                        left = (a.displayName || '').toLowerCase();
+                        right = (b.displayName || '').toLowerCase();
+                        break;
+                }
+                if (left < right) return sortDirection === 'asc' ? -1 : 1;
+                if (left > right) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            renderApps(filtered);
         }
 
         // Render apps table
