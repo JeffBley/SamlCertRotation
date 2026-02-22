@@ -144,7 +144,6 @@ code main.parameters.json
 
 Update these values:
 - `tenantId`: Your Azure AD Tenant ID (run `az account show --query tenantId -o tsv` to get it)
-- `notificationSenderEmail`: Your notification sender email
 - `adminNotificationEmails`: Admin emails (semicolon-separated)
 - `customSecurityAttributeSet`: The Attribute Set you created in step 3
 - `customSecurityAttributeName`: The Attribute Name you created in step 3

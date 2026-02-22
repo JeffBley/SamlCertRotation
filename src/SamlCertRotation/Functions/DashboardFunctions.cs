@@ -520,7 +520,6 @@ public class DashboardFunctions
             var settings = new
             {
                 notificationEmails,
-                senderEmail = _configuration["NotificationSenderEmail"] ?? "",
                 tenantId = _configuration["TenantId"] ?? "",
                 rotationSchedule = _configuration["RotationSchedule"] ?? "0 0 6 * * *",
                 reportOnlyModeEnabled,
@@ -797,7 +796,8 @@ public class DashboardFunctions
                 id,
                 app.DisplayName,
                 AuditActionType.CertificateCreated,
-                $"New certificate created via dashboard. KeyId: {cert.KeyId}");
+                $"New certificate created via dashboard. KeyId: {cert.KeyId}",
+                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
 
             return await CreateJsonResponse(req, new
             {
@@ -870,7 +870,8 @@ public class DashboardFunctions
                 id,
                 app.DisplayName,
                 AuditActionType.CertificateActivated,
-                $"Certificate activated via dashboard. KeyId: {newestCert.KeyId}, Thumbprint: {newestCert.Thumbprint}, Expires: {newestCert.EndDateTime:yyyy-MM-dd}");
+                $"Certificate activated via dashboard. KeyId: {newestCert.KeyId}, Thumbprint: {newestCert.Thumbprint}, Expires: {newestCert.EndDateTime:yyyy-MM-dd}",
+                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
 
             return await CreateJsonResponse(req, new
             {
@@ -939,7 +940,8 @@ public class DashboardFunctions
                 app.DisplayName,
                 AuditActionType.SponsorExpirationReminderSent,
                 $"Manual expiration reminder sent. Status: {status}. Days remaining: {activeCert.DaysUntilExpiry}. Link: {appUrl}",
-                activeCert.Thumbprint);
+                activeCert.Thumbprint,
+                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
 
             return await CreateJsonResponse(req, new
             {
@@ -1018,7 +1020,8 @@ public class DashboardFunctions
                 id,
                 app.DisplayName,
                 AuditActionType.SponsorUpdated,
-                $"Sponsor updated to AppSponsor={sponsorEmail}");
+                $"Sponsor updated to AppSponsor={sponsorEmail}",
+                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
 
             return await CreateJsonResponse(req, new
             {
@@ -1035,7 +1038,8 @@ public class DashboardFunctions
                 app?.DisplayName ?? "Unknown",
                 AuditActionType.SponsorUpdated,
                 "Error updating sponsor",
-                ex.Message);
+                ex.Message,
+                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
 
             return await CreateErrorResponse(req, ex.Message);
         }
@@ -1090,140 +1094,6 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Diagnostic endpoint for troubleshooting auth, roles, and custom security attribute issues.
-    /// Returns detailed information about the request's auth context and configuration.
-    /// </summary>
-    [Function("DebugDiagnostics")]
-    public async Task<HttpResponseData> DebugDiagnostics(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "debug/diagnostics")] HttpRequestData req)
-    {
-        var diagnostics = new Dictionary<string, object?>();
-
-        // 1. Request headers (redacted sensitive values)
-        var headers = new Dictionary<string, string>();
-        foreach (var header in req.Headers)
-        {
-            var name = header.Key.ToLowerInvariant();
-            if (name.Contains("secret") || name.Contains("password") || name.Contains("key"))
-            {
-                headers[header.Key] = "[REDACTED]";
-            }
-            else
-            {
-                headers[header.Key] = string.Join(", ", header.Value);
-            }
-        }
-        diagnostics["requestHeaders"] = headers;
-
-        // 2. Auth parsing results
-        var identity = await ParseClientPrincipalAsync(req);
-        diagnostics["parsedIdentity"] = identity == null ? null : new
-        {
-            identity.UserId,
-            identity.IsAuthenticated,
-            Roles = identity.Roles.ToList()
-        };
-
-        // 3. SWA client principal header (decoded)
-        var encodedPrincipal = GetHeaderValue(req, "x-ms-client-principal");
-        if (!string.IsNullOrWhiteSpace(encodedPrincipal))
-        {
-            try
-            {
-                var json = DecodePrincipalPayload(encodedPrincipal);
-                diagnostics["clientPrincipalHeader"] = json != null 
-                    ? JsonSerializer.Deserialize<object>(json) 
-                    : "decode failed";
-            }
-            catch (Exception ex)
-            {
-                diagnostics["clientPrincipalHeader"] = $"Error: {ex.Message}";
-            }
-        }
-        else
-        {
-            diagnostics["clientPrincipalHeader"] = "not present";
-        }
-
-        // 4. Auth token (JWT claims, not the full token)
-        var authTokens = GetCandidateAuthTokens(req).ToList();
-        var tokenDetails = new List<object>();
-        var handler = new JwtSecurityTokenHandler();
-        foreach (var (source, token) in authTokens)
-        {
-            try
-            {
-                var jwt = handler.ReadJwtToken(token);
-                tokenDetails.Add(new
-                {
-                    Source = source,
-                    Issuer = jwt.Issuer,
-                    Audiences = jwt.Audiences.ToList(),
-                    Subject = jwt.Subject,
-                    Claims = jwt.Claims.Select(c => new { c.Type, c.Value }).ToList(),
-                    ValidFrom = jwt.ValidFrom,
-                    ValidTo = jwt.ValidTo
-                });
-            }
-            catch (Exception ex)
-            {
-                tokenDetails.Add(new { Source = source, Error = ex.Message });
-            }
-        }
-        diagnostics["authTokens"] = tokenDetails;
-
-        // 5. Configuration values
-        diagnostics["configuration"] = new
-        {
-            TenantId = _tenantId ?? "NOT SET",
-            SWA_HOSTNAME = _configuration["SWA_HOSTNAME"] ?? "NOT SET",
-            SWA_DEFAULT_HOSTNAME = _configuration["SWA_DEFAULT_HOSTNAME"] ?? "NOT SET",
-            AAD_CLIENT_ID = _configuration["AAD_CLIENT_ID"] ?? "NOT SET",
-            SWA_AAD_CLIENT_ID = _configuration["SWA_AAD_CLIENT_ID"] ?? "NOT SET",
-            SWA_ADMIN_APP_ROLE = _configuration["SWA_ADMIN_APP_ROLE"] ?? "NOT SET",
-            SWA_READER_APP_ROLE = _configuration["SWA_READER_APP_ROLE"] ?? "NOT SET",
-            SWA_ADMIN_GROUP_ID = _configuration["SWA_ADMIN_GROUP_ID"] ?? "NOT SET",
-            SWA_READER_GROUP_ID = _configuration["SWA_READER_GROUP_ID"] ?? "NOT SET",
-            CustomSecurityAttributeSet = _configuration["CustomSecurityAttributeSet"] ?? "NOT SET (default: SamlCertRotation)",
-            CustomSecurityAttributeName = _configuration["CustomSecurityAttributeName"] ?? "NOT SET (default: AutoRotate)",
-            TrustedSwaIssuers = _trustedSwaIssuers.ToList(),
-            AllowedAudiences = _allowedAudiences.ToList()
-        };
-
-        // 6. Try reading CSA for one sample app to test Graph permissions
-        try
-        {
-            var apps = await _graphService.GetSamlApplicationsAsync();
-            var csaSummary = apps.Select(a => new
-            {
-                a.Id,
-                a.DisplayName,
-                AutoRotateStatus = a.AutoRotateStatus ?? "null"
-            }).ToList();
-            diagnostics["samlApps"] = new
-            {
-                TotalCount = apps.Count,
-                WithAutoRotateSet = apps.Count(a => !string.IsNullOrWhiteSpace(a.AutoRotateStatus)),
-                WithAutoRotateNull = apps.Count(a => string.IsNullOrWhiteSpace(a.AutoRotateStatus)),
-                Apps = csaSummary
-            };
-        }
-        catch (Exception ex)
-        {
-            diagnostics["samlApps"] = new { Error = ex.Message, Type = ex.GetType().Name };
-        }
-
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        response.Headers.Add("Content-Type", "application/json");
-        await response.WriteStringAsync(JsonSerializer.Serialize(diagnostics, new JsonSerializerOptions 
-        { 
-            WriteIndented = true, 
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase 
-        }));
-        return response;
-    }
-
-    /// <summary>
     /// Validates caller identity and role requirements for dashboard endpoints.
     /// </summary>
     private async Task<HttpResponseData?> AuthorizeRequestAsync(HttpRequestData req, bool requireAdmin = false)
@@ -1235,16 +1105,16 @@ public class DashboardFunctions
             return await CreateErrorResponse(req, "Authentication is required.", HttpStatusCode.Unauthorized);
         }
 
-        var hasReadAccess = identity.Roles.Contains("admin")
-                    || identity.Roles.Contains("reader")
-                    || identity.Roles.Contains("authenticated");
+        var hasReadAccess = identity.Roles.Contains(DashboardRoles.Admin)
+                    || identity.Roles.Contains(DashboardRoles.Reader)
+                    || identity.Roles.Contains(DashboardRoles.Authenticated);
         if (!hasReadAccess)
         {
             _logger.LogWarning("Forbidden request by user {UserId} to {Method} {Url} - missing reader/admin role", identity.UserId ?? "unknown", req.Method, req.Url);
             return await CreateErrorResponse(req, "Reader or admin role is required.", HttpStatusCode.Forbidden);
         }
 
-        if (requireAdmin && !identity.Roles.Contains("admin"))
+        if (requireAdmin && !identity.Roles.Contains(DashboardRoles.Admin))
         {
             _logger.LogWarning("Forbidden request by user {UserId} to {Method} {Url}", identity.UserId ?? "unknown", req.Method, req.Url);
             return await CreateErrorResponse(req, "Admin role is required.", HttpStatusCode.Forbidden);

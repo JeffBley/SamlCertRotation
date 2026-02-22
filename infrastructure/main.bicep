@@ -21,9 +21,6 @@ param location string = resourceGroup().location
 @description('The tenant ID for Microsoft Entra ID')
 param tenantId string = subscription().tenantId
 
-@description('Email address to send notifications from (must be a valid mailbox)')
-param notificationSenderEmail string
-
 @description('Admin email addresses for daily summaries (semicolon-separated)')
 param adminNotificationEmails string = ''
 
@@ -257,10 +254,6 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           value: tenantId
         }
         {
-          name: 'NotificationSenderEmail'
-          value: notificationSenderEmail
-        }
-        {
           name: 'AdminNotificationEmails'
           value: adminNotificationEmails
         }
@@ -279,6 +272,14 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         {
           name: 'DefaultActivateCertDaysBeforeExpiry'
           value: string(defaultActivateCertDays)
+        }
+        {
+          name: 'RotationSchedule'
+          value: '0 0 6 * * *'
+        }
+        {
+          name: 'LogicAppEmailUrl'
+          value: listCallbackUrl('${logicApp.id}/triggers/manual', '2019-05-01').value
         }
         {
           name: 'KeyVaultUri'

@@ -1726,9 +1726,9 @@
                     method: 'PUT',
                     body: JSON.stringify(policy)
                 });
-                alert('Policy saved successfully!');
+                showSuccess('Policy saved successfully!');
             } catch (error) {
-                alert('Failed to save policy: ' + error.message);
+                showError('Failed to save policy: ' + error.message);
             }
         }
 
@@ -1777,7 +1777,7 @@
                 const retentionPolicyDays = parseInt(document.getElementById('retentionPolicyDays').value, 10);
 
                 if (Number.isNaN(retentionPolicyDays) || retentionPolicyDays < 1) {
-                    alert('Retention policy must be at least 1 day.');
+                    showError('Retention policy must be at least 1 day.');
                     return;
                 }
 
@@ -1789,7 +1789,7 @@
                 const invalidReminderValue = reminderValues.some(value => !Number.isInteger(value) || value < 1 || value > 180);
 
                 if (invalidReminderValue) {
-                    alert('Sponsor reminder values must be whole numbers between 1 and 180.');
+                    showError('Sponsor reminder values must be whole numbers between 1 and 180.');
                     return;
                 }
 
@@ -1812,9 +1812,9 @@
                 stopIdleTracking();
                 sessionTimeoutMinutes = parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0;
                 startIdleTracking();
-                alert('Settings saved successfully!');
+                showSuccess('Settings saved successfully!');
             } catch (error) {
-                alert('Failed to save settings: ' + error.message);
+                showError('Failed to save settings: ' + error.message);
             }
         }
 
@@ -1970,7 +1970,7 @@
             const firstAvailableColumn = auditFilterColumns.find(column => !usedColumns.has(column.value));
 
             if (!firstAvailableColumn) {
-                alert('All available audit columns already have filters.');
+                showError('All available audit columns already have filters.');
                 return;
             }
 

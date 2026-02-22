@@ -13,7 +13,6 @@ public class NotificationService : INotificationService
     private readonly IGraphService _graphService;
     private readonly IPolicyService _policyService;
     private readonly ILogger<NotificationService> _logger;
-    private readonly string _senderEmail;
     private readonly string _adminEmails;
 
     public NotificationService(
@@ -25,7 +24,6 @@ public class NotificationService : INotificationService
         _graphService = graphService;
         _policyService = policyService;
         _logger = logger;
-        _senderEmail = configuration["NotificationSenderEmail"] ?? "noreply@yourdomain.com";
         _adminEmails = configuration["AdminNotificationEmails"] ?? "";
     }
 
@@ -42,7 +40,7 @@ public class NotificationService : INotificationService
         var subject = $"[SAML Cert Rotation] New Certificate Created - {app.DisplayName}";
         var body = GenerateCertificateCreatedEmail(app, newCert);
 
-        return await _graphService.SendEmailAsync(_senderEmail, recipients, subject, body);
+        return await _graphService.SendEmailAsync(recipients, subject, body);
     }
 
     /// <inheritdoc />
@@ -58,7 +56,7 @@ public class NotificationService : INotificationService
         var subject = $"[SAML Cert Rotation] Certificate Activated - {app.DisplayName}";
         var body = GenerateCertificateActivatedEmail(app, activatedCert);
 
-        return await _graphService.SendEmailAsync(_senderEmail, recipients, subject, body);
+        return await _graphService.SendEmailAsync(recipients, subject, body);
     }
 
     /// <inheritdoc />
@@ -70,7 +68,7 @@ public class NotificationService : INotificationService
         var subject = $"[SAML Cert Rotation] ERROR - {operation} Failed - {app.DisplayName}";
         var body = GenerateErrorEmail(app, errorMessage, operation);
 
-        return await _graphService.SendEmailAsync(_senderEmail, recipients, subject, body);
+        return await _graphService.SendEmailAsync(recipients, subject, body);
     }
 
     /// <inheritdoc />
@@ -86,7 +84,7 @@ public class NotificationService : INotificationService
         var subject = $"[SAML Cert Rotation] Daily Summary - {DateTime.UtcNow:yyyy-MM-dd}";
         var body = GenerateDailySummaryEmail(stats, results);
 
-        return await _graphService.SendEmailAsync(_senderEmail, adminRecipients, subject, body);
+        return await _graphService.SendEmailAsync(adminRecipients, subject, body);
     }
 
     /// <inheritdoc />
@@ -101,7 +99,7 @@ public class NotificationService : INotificationService
 
         var subject = $"[SAML Cert Rotation] [Notify] Certificate Expiring in {daysUntilExpiry} day(s) - {app.DisplayName}";
         var body = GenerateNotifyOnlyReminderEmail(app, expiringCert, daysUntilExpiry, appPortalUrl, milestoneLabel);
-        return await _graphService.SendEmailAsync(_senderEmail, recipients, subject, body);
+        return await _graphService.SendEmailAsync(recipients, subject, body);
     }
 
     /// <inheritdoc />
@@ -122,7 +120,7 @@ public class NotificationService : INotificationService
             : $"[SAML Cert Rotation] [{sendModeText}] {normalizedStatus} Certificate Status - {app.DisplayName}";
 
         var body = GenerateSponsorExpirationStatusEmail(app, cert, daysUntilExpiry, appPortalUrl, normalizedStatus, manualSend);
-        return await _graphService.SendEmailAsync(_senderEmail, recipients, subject, body);
+        return await _graphService.SendEmailAsync(recipients, subject, body);
     }
 
     private async Task<List<string>> GetRecipientsAsync(SamlApplication app)

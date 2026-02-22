@@ -2,6 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using SamlCertRotation.Models;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -88,13 +89,13 @@ public class RoleFunctions
 
                 if (isAdmin)
                 {
-                    roles.Add("admin");
+                    roles.Add(DashboardRoles.Admin);
                     _logger.LogInformation("User {UserId} assigned admin role", clientPrincipal.UserId);
                 }
 
                 if (isReader || isAdmin)
                 {
-                    roles.Add("reader");
+                    roles.Add(DashboardRoles.Reader);
                 }
 
                 if (!isAdmin && !isReader)

@@ -16,13 +16,13 @@ public interface IAuditService
     /// Log a successful operation
     /// </summary>
     Task LogSuccessAsync(string servicePrincipalId, string appDisplayName, string actionType, string description, 
-        string? certificateThumbprint = null, string? newCertificateThumbprint = null);
+        string? certificateThumbprint = null, string? newCertificateThumbprint = null, string? performedBy = null);
 
     /// <summary>
     /// Log a failed operation
     /// </summary>
     Task LogFailureAsync(string servicePrincipalId, string appDisplayName, string actionType, string description, 
-        string errorMessage);
+        string errorMessage, string? performedBy = null);
 
     /// <summary>
     /// Get audit entries for a specific date range

@@ -33,9 +33,9 @@ public interface IGraphService
     Task<string?> GetCustomSecurityAttributeAsync(string servicePrincipalId, string attributeSet, string attributeName);
 
     /// <summary>
-    /// Send an email notification via Microsoft Graph
+    /// Send an email notification via Logic App
     /// </summary>
-    Task<bool> SendEmailAsync(string senderEmail, List<string> recipients, string subject, string htmlBody);
+    Task<bool> SendEmailAsync(List<string> recipients, string subject, string htmlBody);
 
     /// <summary>
     /// Get notification email addresses for an application (owners, etc.)

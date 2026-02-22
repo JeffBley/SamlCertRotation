@@ -59,9 +59,9 @@ public class AuditEntry : ITableEntity
     public string? NewCertificateThumbprint { get; set; }
 
     /// <summary>
-    /// Notification sent to these emails
+    /// Identity of the user who performed the action (null for automated operations)
     /// </summary>
-    public string? NotificationsSentTo { get; set; }
+    public string? PerformedBy { get; set; }
 
     /// <summary>
     /// Timestamp of the audit entry

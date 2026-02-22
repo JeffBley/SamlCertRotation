@@ -294,7 +294,7 @@ public class GraphService : IGraphService
     }
 
     /// <inheritdoc />
-    public async Task<bool> SendEmailAsync(string senderEmail, List<string> recipients, string subject, string htmlBody)
+    public async Task<bool> SendEmailAsync(List<string> recipients, string subject, string htmlBody)
     {
         try
         {

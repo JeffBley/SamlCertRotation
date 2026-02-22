@@ -11,9 +11,6 @@
     "tenantId": {
       "value": "<insert your tenant id here>"
     },
-    "notificationSenderEmail": {
-      "value": "saml-rotation@domain.com"
-    },
     "adminNotificationEmails": {
       "value": "mscott@domain.com;jhalpert@domain.com"
     },

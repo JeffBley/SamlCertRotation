@@ -47,7 +47,7 @@ public class AuditService : IAuditService
 
     /// <inheritdoc />
     public async Task LogSuccessAsync(string servicePrincipalId, string appDisplayName, string actionType, 
-        string description, string? certificateThumbprint = null, string? newCertificateThumbprint = null)
+        string description, string? certificateThumbprint = null, string? newCertificateThumbprint = null, string? performedBy = null)
     {
         var entry = new AuditEntry
         {
@@ -57,7 +57,8 @@ public class AuditService : IAuditService
             Description = description,
             IsSuccess = true,
             CertificateThumbprint = certificateThumbprint,
-            NewCertificateThumbprint = newCertificateThumbprint
+            NewCertificateThumbprint = newCertificateThumbprint,
+            PerformedBy = performedBy
         };
 
         await LogAsync(entry);
@@ -65,7 +66,7 @@ public class AuditService : IAuditService
 
     /// <inheritdoc />
     public async Task LogFailureAsync(string servicePrincipalId, string appDisplayName, string actionType, 
-        string description, string errorMessage)
+        string description, string errorMessage, string? performedBy = null)
     {
         var entry = new AuditEntry
         {
@@ -74,7 +75,8 @@ public class AuditService : IAuditService
             ActionType = actionType,
             Description = description,
             IsSuccess = false,
-            ErrorMessage = errorMessage
+            ErrorMessage = errorMessage,
+            PerformedBy = performedBy
         };
 
         await LogAsync(entry);
@@ -149,7 +151,10 @@ public class AuditService : IAuditService
             var endPartitionKey = endDate.ToString("yyyy-MM-dd");
 
             // Build a filter for the requested service principal IDs
-            var idSet = servicePrincipalIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            // Validate as GUIDs to prevent OData injection
+            var idSet = servicePrincipalIds
+                .Where(id => !string.IsNullOrWhiteSpace(id) && Guid.TryParse(id, out _))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (idSet.Count == 0) return result;
 
             var filter = $"PartitionKey ge '{startPartitionKey}' and PartitionKey le '{endPartitionKey}'";
