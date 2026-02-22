@@ -811,6 +811,7 @@
                         <select id="audit-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyAuditFilters()">
                             <option value="time">Sort: Time</option>
                             <option value="application">Sort: Application</option>
+                            <option value="initiatedBy">Sort: Initiated By</option>
                             <option value="action">Sort: Action</option>
                             <option value="result">Sort: Result</option>
                         </select>
@@ -966,6 +967,7 @@
         const READER_APP_ROLE_VALUE = 'SamlCertRotation.Reader';
         const auditFilterColumns = [
             { value: 'application', label: 'Application' },
+            { value: 'initiatedBy', label: 'Initiated By' },
             { value: 'result', label: 'Result' },
             { value: 'details', label: 'Details' }
         ];
@@ -1890,6 +1892,8 @@
                     return `${new Date(entry.timestamp || 0).toLocaleString()} ${entry.timestamp || ''}`;
                 case 'application':
                     return entry.appDisplayName || '';
+                case 'initiatedBy':
+                    return entry.performedBy || 'System';
                 case 'action':
                     return entry.actionType || '';
                 case 'result':
@@ -2073,6 +2077,10 @@
                         left = (a.appDisplayName || '').toLowerCase();
                         right = (b.appDisplayName || '').toLowerCase();
                         break;
+                    case 'initiatedBy':
+                        left = (a.performedBy || 'System').toLowerCase();
+                        right = (b.performedBy || 'System').toLowerCase();
+                        break;
                     case 'action':
                         left = (a.actionType || '').toLowerCase();
                         right = (b.actionType || '').toLowerCase();
@@ -2109,6 +2117,7 @@
                         <tr>
                             <th>Time</th>
                             <th>Application</th>
+                            <th>Initiated By</th>
                             <th>Action</th>
                             <th>Result</th>
                             <th>Details</th>
@@ -2119,6 +2128,7 @@
                             <tr>
                                 <td>${new Date(entry.timestamp).toLocaleString()}</td>
                                 <td>${escapeHtml(entry.appDisplayName)}</td>
+                                <td>${escapeHtml(entry.performedBy || 'System')}</td>
                                 <td>${escapeHtml(entry.actionType)}</td>
                                 <td>
                                     <span class="status-badge ${entry.isSuccess ? 'status-on' : 'status-off'}">

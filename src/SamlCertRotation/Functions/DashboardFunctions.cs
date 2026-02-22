@@ -797,7 +797,7 @@ public class DashboardFunctions
                 app.DisplayName,
                 AuditActionType.CertificateCreated,
                 $"New certificate created via dashboard. KeyId: {cert.KeyId}",
-                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
+                performedBy: await GetPerformedByAsync(req));
 
             return await CreateJsonResponse(req, new
             {
@@ -871,7 +871,7 @@ public class DashboardFunctions
                 app.DisplayName,
                 AuditActionType.CertificateActivated,
                 $"Certificate activated via dashboard. KeyId: {newestCert.KeyId}, Thumbprint: {newestCert.Thumbprint}, Expires: {newestCert.EndDateTime:yyyy-MM-dd}",
-                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
+                performedBy: await GetPerformedByAsync(req));
 
             return await CreateJsonResponse(req, new
             {
@@ -941,7 +941,7 @@ public class DashboardFunctions
                 AuditActionType.SponsorExpirationReminderSent,
                 $"Manual expiration reminder sent. Status: {status}. Days remaining: {activeCert.DaysUntilExpiry}. Link: {appUrl}",
                 activeCert.Thumbprint,
-                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
+                performedBy: await GetPerformedByAsync(req));
 
             return await CreateJsonResponse(req, new
             {
@@ -1021,7 +1021,7 @@ public class DashboardFunctions
                 app.DisplayName,
                 AuditActionType.SponsorUpdated,
                 $"Sponsor updated to AppSponsor={sponsorEmail}",
-                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
+                performedBy: await GetPerformedByAsync(req));
 
             return await CreateJsonResponse(req, new
             {
@@ -1039,7 +1039,7 @@ public class DashboardFunctions
                 AuditActionType.SponsorUpdated,
                 "Error updating sponsor",
                 ex.Message,
-                performedBy: (await ParseClientPrincipalAsync(req))?.UserId);
+                performedBy: await GetPerformedByAsync(req));
 
             return await CreateErrorResponse(req, ex.Message);
         }
@@ -1091,6 +1091,15 @@ public class DashboardFunctions
         }
         
         return message;
+    }
+
+    /// <summary>
+    /// Extracts the caller's UPN (or user ID as fallback) for audit trail attribution.
+    /// </summary>
+    private async Task<string?> GetPerformedByAsync(HttpRequestData req)
+    {
+        var identity = await ParseClientPrincipalAsync(req);
+        return identity?.UserPrincipalName ?? identity?.UserId;
     }
 
     /// <summary>
@@ -1227,6 +1236,11 @@ public class DashboardFunctions
                          ?? jwt.Claims.FirstOrDefault(c => c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value
                          ?? jwt.Claims.FirstOrDefault(c => c.Type == "stable_sid")?.Value;
 
+            var userPrincipalName = jwt.Claims.FirstOrDefault(c => c.Type == "preferred_username")?.Value
+                                   ?? jwt.Claims.FirstOrDefault(c => c.Type == "upn")?.Value
+                                   ?? jwt.Claims.FirstOrDefault(c => c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value
+                                   ?? jwt.Claims.FirstOrDefault(c => c.Type == "email")?.Value;
+
             var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var claimRoleValues = new List<string>();
             var claimGroupValues = new List<string>();
@@ -1245,6 +1259,12 @@ public class DashboardFunctions
                     if (string.IsNullOrWhiteSpace(userId))
                     {
                         userId = TryGetString(prnRoot, "userId");
+                    }
+
+                    // Extract userDetails (UPN) from prn
+                    if (string.IsNullOrWhiteSpace(userPrincipalName))
+                    {
+                        userPrincipalName = TryGetString(prnRoot, "userDetails");
                     }
 
                     // Extract userRoles from prn — these are the roles assigned by SWA (including custom roles from GetRoles)
@@ -1304,6 +1324,7 @@ public class DashboardFunctions
             return new RequestIdentity
             {
                 UserId = userId,
+                UserPrincipalName = userPrincipalName,
                 IsAuthenticated = true,
                 Roles = roles
             };
@@ -1360,6 +1381,11 @@ public class DashboardFunctions
                              ?? principal.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
                              ?? principal.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
 
+                var userPrincipalName = principal.FindFirst("preferred_username")?.Value
+                                       ?? principal.FindFirst("upn")?.Value
+                                       ?? principal.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn")?.Value
+                                       ?? principal.FindFirst("email")?.Value;
+
                 var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var claimRoleValues = principal.Claims
                     .Where(c =>
@@ -1392,6 +1418,7 @@ public class DashboardFunctions
                 return new RequestIdentity
                 {
                     UserId = userId,
+                    UserPrincipalName = userPrincipalName,
                     IsAuthenticated = true,
                     Roles = roles
                 };
@@ -1451,6 +1478,7 @@ public class DashboardFunctions
     private RequestIdentity? BuildIdentityFromPrincipalRoot(JsonElement root)
     {
         var userId = TryGetString(root, "userId");
+        var userPrincipalName = TryGetString(root, "userDetails");
         var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var claimRoleValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var claimGroupValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1505,6 +1533,16 @@ public class DashboardFunctions
                 {
                     userId = claimValue;
                 }
+
+                if (string.IsNullOrWhiteSpace(userPrincipalName) &&
+                    (string.Equals(claimType, "preferred_username", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(claimType, "upn", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(claimType, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(claimType, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(claimType, "email", StringComparison.OrdinalIgnoreCase)))
+                {
+                    userPrincipalName = claimValue;
+                }
             }
         }
 
@@ -1523,6 +1561,7 @@ public class DashboardFunctions
         return new RequestIdentity
         {
             UserId = userId,
+            UserPrincipalName = userPrincipalName,
             IsAuthenticated = IsAuthenticatedPrincipal(userId, roles),
             Roles = roles
         };
@@ -1733,6 +1772,7 @@ public class DashboardFunctions
     private sealed class RequestIdentity
     {
         public string? UserId { get; set; }
+        public string? UserPrincipalName { get; set; }
         public bool IsAuthenticated { get; set; }
         public HashSet<string> Roles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
