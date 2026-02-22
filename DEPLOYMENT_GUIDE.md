@@ -760,6 +760,7 @@ Use SWA CLI via `npx` for deployment:
 # Prepare dashboard files
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
+Copy-Item app.js dist/
 Copy-Item unauthorized.html dist/
 Copy-Item favicon.png dist/
 Copy-Item staticwebapp.config.json dist/
@@ -1056,6 +1057,7 @@ Make sure to create the dist folder before deploying:
 Set-Location "$HOME/SamlCertRotation/dashboard"
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
+Copy-Item app.js dist/
 Copy-Item unauthorized.html dist/
 Copy-Item favicon.png dist/
 Copy-Item staticwebapp.config.json dist/
@@ -1085,6 +1087,7 @@ Set-Location "$HOME/SamlCertRotation/dashboard"
 Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path dist -Force | Out-Null
 Copy-Item index.html dist/
+Copy-Item app.js dist/
 Copy-Item unauthorized.html dist/
 Copy-Item favicon.png dist/
 Copy-Item staticwebapp.config.json dist/

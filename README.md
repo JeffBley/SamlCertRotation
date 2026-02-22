@@ -318,6 +318,7 @@ Create in Microsoft Entra Admin Center:
 │   └── Models/                              # Data models
 ├── dashboard/
 │   ├── index.html                           # Single-page dashboard
+│   ├── app.js                               # Dashboard JavaScript (extracted)
 │   ├── unauthorized.html                    # Access denied page
 │   ├── favicon.png                          # Dashboard favicon
 │   └── staticwebapp.config.json             # SWA auth configuration

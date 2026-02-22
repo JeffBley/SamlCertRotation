@@ -101,6 +101,18 @@ resource keyVaultSecretsOfficerRole 'Microsoft.Authorization/roleAssignments@202
   }
 }
 
+// Key Vault secret for Logic App callback URL (contains SAS token)
+resource logicAppEmailUrlSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'LogicAppEmailUrl'
+  properties: {
+    value: listCallbackUrl('${logicApp.id}/triggers/manual', '2019-05-01').value
+  }
+  dependsOn: [
+    keyVaultSecretsOfficerRole
+  ]
+}
+
 // ============================================================================
 // Storage Account
 // ============================================================================
@@ -206,6 +218,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    keyVaultReferenceIdentity: managedIdentity.id
     siteConfig: {
       netFrameworkVersion: 'v8.0'
       ftpsState: 'Disabled'
@@ -279,7 +292,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         }
         {
           name: 'LogicAppEmailUrl'
-          value: listCallbackUrl('${logicApp.id}/triggers/manual', '2019-05-01').value
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=LogicAppEmailUrl)'
         }
         {
           name: 'KeyVaultUri'

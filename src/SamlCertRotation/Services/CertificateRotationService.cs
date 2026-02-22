@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using SamlCertRotation.Helpers;
 using SamlCertRotation.Models;
 
 namespace SamlCertRotation.Services;
@@ -175,7 +176,7 @@ public class CertificateRotationService : ICertificateRotationService
                     return result;
                 }
 
-                var appUrl = BuildEntraManagedAppUrl(app.Id, app.AppId);
+                var appUrl = UrlHelper.BuildEntraManagedAppUrl(app.Id, app.AppId);
                 var sent = await _notificationService.SendNotifyOnlyReminderAsync(app, activeCert, daysUntilExpiry, appUrl, notifyMilestone);
 
                 if (sent)
@@ -416,7 +417,7 @@ public class CertificateRotationService : ICertificateRotationService
                     continue;
                 }
 
-                var appUrl = BuildEntraManagedAppUrl(app.Id, app.AppId);
+                var appUrl = UrlHelper.BuildEntraManagedAppUrl(app.Id, app.AppId);
                 var sent = await _notificationService.SendSponsorExpirationStatusNotificationAsync(
                     app,
                     activeCert,
@@ -474,6 +475,9 @@ public class CertificateRotationService : ICertificateRotationService
                         break;
                     case "off":
                         stats.AppsWithAutoRotateOff++;
+                        break;
+                    case "notify":
+                        stats.AppsWithAutoRotateNotify++;
                         break;
                     default:
                         stats.AppsWithAutoRotateNull++;
@@ -537,11 +541,6 @@ public class CertificateRotationService : ICertificateRotationService
         if (daysUntilExpiry <= 60) return "Warning";
         if (daysUntilExpiry <= 90) return "Attention";
         return "OK";
-    }
-
-    private static string BuildEntraManagedAppUrl(string servicePrincipalObjectId, string appId)
-    {
-        return $"https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/SignOn/objectId/{Uri.EscapeDataString(servicePrincipalObjectId)}/appId/{Uri.EscapeDataString(appId)}/preferredSingleSignOnMode/saml/servicePrincipalType/Application/fromNav/";
     }
 
     private static string? GetNotifyMilestoneToSend(

@@ -26,6 +26,11 @@ public class DashboardStats
     public int AppsWithAutoRotateNull { get; set; }
 
     /// <summary>
+    /// Apps with AutoRotate = "notify" (notify only, no auto-rotation)
+    /// </summary>
+    public int AppsWithAutoRotateNotify { get; set; }
+
+    /// <summary>
     /// Apps with certificates expiring within the configured create threshold
     /// </summary>
     public int AppsExpiringIn30Days { get; set; }

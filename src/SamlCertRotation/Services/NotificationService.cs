@@ -406,6 +406,10 @@ public class NotificationService : INotificationService
             </div>
             <div class='stats-grid'>
                 <div class='stat-card'>
+                    <div class='stat-value' style='color: #0078d4;'>{stats.AppsWithAutoRotateNotify}</div>
+                    <div class='stat-label'>Notify Only</div>
+                </div>
+                <div class='stat-card'>
                     <div class='stat-value' style='color: #797775;'>{stats.AppsWithAutoRotateNull}</div>
                     <div class='stat-label'>Not Configured</div>
                 </div>

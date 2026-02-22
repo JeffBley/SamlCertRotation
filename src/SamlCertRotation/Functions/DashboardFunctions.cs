@@ -12,6 +12,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using SamlCertRotation.Helpers;
 using SamlCertRotation.Models;
 using SamlCertRotation.Services;
 
@@ -927,7 +928,7 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Reminder emails can only be resent for Expired, Critical, or Warning applications", HttpStatusCode.BadRequest);
             }
 
-            var appUrl = BuildEntraManagedAppUrl(app.Id, app.AppId);
+            var appUrl = UrlHelper.BuildEntraManagedAppUrl(app.Id, app.AppId);
             var sent = await _notificationService.SendSponsorExpirationStatusNotificationAsync(app, activeCert, activeCert.DaysUntilExpiry, appUrl, status, true);
             if (!sent)
             {
@@ -1713,14 +1714,6 @@ public class DashboardFunctions
     private static bool IsValidGuid(string value)
     {
         return !string.IsNullOrEmpty(value) && Guid.TryParse(value, out _);
-    }
-
-    /// <summary>
-    /// Builds a deep-link to the managed app SAML sign-on blade in Entra admin center.
-    /// </summary>
-    private static string BuildEntraManagedAppUrl(string servicePrincipalObjectId, string appId)
-    {
-        return $"https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/SignOn/objectId/{Uri.EscapeDataString(servicePrincipalObjectId)}/appId/{Uri.EscapeDataString(appId)}/preferredSingleSignOnMode/saml/servicePrincipalType/Application/fromNav/";
     }
 
     /// <summary>
