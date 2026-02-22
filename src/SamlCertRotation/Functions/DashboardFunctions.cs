@@ -36,8 +36,7 @@ public class DashboardFunctions
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
     public DashboardFunctions(

@@ -613,23 +613,4 @@ public class CertificateRotationService : ICertificateRotationService
             (entry.Description?.Contains($"Milestone: {milestoneLabel}", StringComparison.OrdinalIgnoreCase) ?? false));
     }
 
-    private static string GetCertificateStatus(int daysUntilExpiry, int warningThresholdDays, int criticalThresholdDays)
-    {
-        if (daysUntilExpiry < 0)
-        {
-            return "Expired";
-        }
-
-        if (daysUntilExpiry <= criticalThresholdDays)
-        {
-            return "Critical";
-        }
-
-        if (daysUntilExpiry <= warningThresholdDays)
-        {
-            return "Warning";
-        }
-
-        return "OK";
-    }
 }
