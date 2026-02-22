@@ -391,7 +391,7 @@ public class PolicyService : IPolicyService
             _logger.LogWarning(ex, "Error getting sponsor expiration notification setting from storage");
         }
 
-        return false;
+        return true;
     }
 
     /// <inheritdoc />
