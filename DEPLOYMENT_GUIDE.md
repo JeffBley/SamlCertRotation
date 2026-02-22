@@ -749,7 +749,7 @@ $configContent = Get-Content staticwebapp.config.json -Raw
 $configContent = $configContent -replace '__TENANT_ID__', $TENANT_ID
 Set-Content -Path staticwebapp.config.json -Value $configContent
 ```
-**NOTE**: API_BASE_URL in index.html should remain empty - the SWA backend link handles API routing
+**NOTE**: API_BASE_URL in app.js should remain empty - the SWA backend link handles API routing
 
 
 ### 8.3 Deploy Dashboard
@@ -811,25 +811,39 @@ The Logic App was deployed with a **Send an email (V2)** action pre-configured. 
 
 > **Note**: The account you sign in with will be the "From" address for all notification emails. Consider using a shared mailbox like `saml-notifications@yourdomain.com`.
 
-### 9.3 Get Logic App Callback URL
+### 9.3 Verify Logic App URL in Key Vault (Automatic)
+
+The Bicep deployment automatically retrieves the Logic App callback URL (which contains a SAS token) and stores it as a Key Vault secret. The Function App reads it via a `@Microsoft.KeyVault()` reference — no manual configuration is needed.
+
+To verify the secret was created:
 
 ```powershell
-# Get the Logic App HTTP trigger URL
+# Verify the Logic App URL secret exists in Key Vault
+az keyvault secret show `
+    --vault-name $KEY_VAULT_NAME `
+    --name "LogicAppEmailUrl" `
+    --query "{name:name, created:attributes.created}" -o table
+```
+
+To verify the Function App is using the Key Vault reference (not a plain-text URL):
+
+```powershell
+# Should return an @Microsoft.KeyVault(...) reference, NOT a plain-text URL
+az functionapp config appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "[?name=='LogicAppEmailUrl'].value" -o tsv
+```
+
+> **Important**: Do NOT manually set `LogicAppEmailUrl` via `az functionapp config appsettings set`.
+> This would overwrite the Key Vault reference with a plain-text URL containing a SAS token.
+
+If you need to retrieve the Logic App URL for testing (Step 9.5), run:
+
+```powershell
 $LOGIC_APP_URL = az rest --method post `
     --uri "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Logic/workflows/$LOGIC_APP_NAME/triggers/manual/listCallbackUrl?api-version=2016-10-01" `
     --query "value" -o tsv
-
-Write-Host "Logic App URL: $LOGIC_APP_URL"
-```
-
-### 9.4 Configure Function App with Logic App URL
-
-```powershell
-# Store the Logic App URL in Function App settings
-az functionapp config appsettings set `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --settings "LogicAppEmailUrl=$LOGIC_APP_URL"
 ```
 
 ### 9.5 Test Email Notifications
@@ -991,7 +1005,7 @@ This means the deployment didn't succeed or files weren't deployed correctly:
 Set-Location "$HOME/SamlCertRotation/dashboard"
 Get-ChildItem dist/
 
-# Should show: index.html, staticwebapp.config.json, unauthorized.html, favicon.png
+# Should show: index.html, app.js, staticwebapp.config.json, unauthorized.html, favicon.png
 
 # 2. Verify deployment token is set
 Write-Host "Token set: $([bool]$SWA_TOKEN)"
@@ -1208,7 +1222,7 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName $FUNCTION_APP_NAME -Resou
 1. Check browser console (F12) for errors
 2. Verify the SWA backend link was configured (Step 7.10)
 3. Check that Easy Auth is disabled on the Function App (Step 7.11)
-4. Ensure API_BASE_URL in index.html is empty (SWA backend handles routing)
+4. Ensure API_BASE_URL in app.js is empty (SWA backend handles routing)
 5. Verify `https://<SWA_HOST>/api/GetRoles` is not 404 (302/200 is expected)
 
 Compatibility note for backend inspection command:
