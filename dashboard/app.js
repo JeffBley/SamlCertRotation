@@ -1035,12 +1035,15 @@ async function loadSettings() {
         document.getElementById('reportOnlyMode').value = settings.reportOnlyModeEnabled === false ? 'disabled' : 'enabled';
         document.getElementById('retentionPolicyDays').value = settings.retentionPolicyDays || 180;
         document.getElementById('sponsorsReceiveNotifications').value = settings.sponsorsReceiveNotifications === false ? 'disabled' : 'enabled';
+        document.getElementById('sponsorRemindersEnabled').value = settings.sponsorRemindersEnabled === false ? 'disabled' : 'enabled';
+        document.getElementById('sponsorReminderCount').value = (settings.sponsorReminderCount >= 1 && settings.sponsorReminderCount <= 3) ? settings.sponsorReminderCount : 3;
         document.getElementById('sponsorFirstReminderDays').value = Number.isInteger(settings.sponsorFirstReminderDays) ? settings.sponsorFirstReminderDays : 30;
         document.getElementById('sponsorSecondReminderDays').value = Number.isInteger(settings.sponsorSecondReminderDays) ? settings.sponsorSecondReminderDays : 7;
         document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
         document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
         document.getElementById('sessionTimeoutMinutes').value = typeof settings.sessionTimeoutMinutes === 'number' ? settings.sessionTimeoutMinutes : 0;
         toggleSponsorReminderSettings();
+        toggleSponsorReminderCount();
     } catch (error) {
         console.error('Failed to load settings:', error);
     }
@@ -1075,14 +1078,18 @@ async function saveSettings() {
             return;
         }
 
+        const sponsorRemindersEnabled = document.getElementById('sponsorRemindersEnabled').value === 'enabled';
+        const sponsorReminderCount = parseInt(document.getElementById('sponsorReminderCount').value, 10) || 3;
+
+        // Only validate reminder days that are active based on the count
         const sponsorFirstReminderDays = parseInt(document.getElementById('sponsorFirstReminderDays').value, 10);
         const sponsorSecondReminderDays = parseInt(document.getElementById('sponsorSecondReminderDays').value, 10);
         const sponsorThirdReminderDays = parseInt(document.getElementById('sponsorThirdReminderDays').value, 10);
 
-        const reminderValues = [sponsorFirstReminderDays, sponsorSecondReminderDays, sponsorThirdReminderDays];
-        const invalidReminderValue = reminderValues.some(value => !Number.isInteger(value) || value < 1 || value > 180);
+        const activeReminderValues = [sponsorFirstReminderDays, sponsorSecondReminderDays, sponsorThirdReminderDays].slice(0, sponsorReminderCount);
+        const invalidReminderValue = activeReminderValues.some(value => !Number.isInteger(value) || value < 1 || value > 180);
 
-        if (invalidReminderValue) {
+        if (sponsorRemindersEnabled && invalidReminderValue) {
             showError('Sponsor reminder values must be whole numbers between 1 and 180.');
             return;
         }
@@ -1091,6 +1098,8 @@ async function saveSettings() {
             notificationEmails: document.getElementById('notificationEmails').value.trim(),
             reportOnlyModeEnabled: document.getElementById('reportOnlyMode').value === 'enabled',
             sponsorsReceiveNotifications: document.getElementById('sponsorsReceiveNotifications').value === 'enabled',
+            sponsorRemindersEnabled,
+            sponsorReminderCount,
             notifySponsorsOnExpiration: document.getElementById('notifySponsorsOnExpiration').value === 'enabled',
             sponsorFirstReminderDays,
             sponsorSecondReminderDays,
@@ -1113,7 +1122,7 @@ async function saveSettings() {
 }
 
 function toggleSponsorReminderSettings() {
-    const select = document.getElementById('sponsorsReceiveNotifications');
+    const select = document.getElementById('sponsorRemindersEnabled');
     const reminderContainer = document.getElementById('sponsor-reminder-settings');
 
     if (!select || !reminderContainer) {
@@ -1121,6 +1130,24 @@ function toggleSponsorReminderSettings() {
     }
 
     reminderContainer.style.display = select.value === 'enabled' ? 'block' : 'none';
+    if (select.value === 'enabled') {
+        toggleSponsorReminderCount();
+    }
+}
+
+function toggleSponsorReminderCount() {
+    const countSelect = document.getElementById('sponsorReminderCount');
+    if (!countSelect) return;
+
+    const count = parseInt(countSelect.value, 10) || 3;
+
+    const reminder1 = document.getElementById('reminder1-group');
+    const reminder2 = document.getElementById('reminder2-group');
+    const reminder3 = document.getElementById('reminder3-group');
+
+    if (reminder1) reminder1.style.display = count >= 1 ? 'block' : 'none';
+    if (reminder2) reminder2.style.display = count >= 2 ? 'block' : 'none';
+    if (reminder3) reminder3.style.display = count >= 3 ? 'block' : 'none';
 }
 
 // Audit log filters and rendering
@@ -1579,7 +1606,8 @@ document.querySelectorAll('.audit-columns-filter-option-input').forEach(function
 
 // Settings tab
 document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
-document.getElementById('sponsorsReceiveNotifications').addEventListener('change', toggleSponsorReminderSettings);
+document.getElementById('sponsorRemindersEnabled').addEventListener('change', toggleSponsorReminderSettings);
+document.getElementById('sponsorReminderCount').addEventListener('change', toggleSponsorReminderCount);
 
 // Confirm modal
 document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);

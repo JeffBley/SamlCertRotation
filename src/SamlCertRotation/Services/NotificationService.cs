@@ -90,7 +90,7 @@ public class NotificationService : INotificationService
     /// <inheritdoc />
     public async Task<bool> SendNotifyOnlyReminderAsync(SamlApplication app, SamlCertificate expiringCert, int daysUntilExpiry, string appPortalUrl, string milestoneLabel)
     {
-        var recipients = await GetSponsorRecipientsAsync(app);
+        var recipients = await GetSponsorReminderRecipientsAsync(app);
         if (!recipients.Any())
         {
             _logger.LogInformation("Sponsor notifications disabled or no sponsor recipient for app {AppName}", app.DisplayName);
@@ -146,6 +146,22 @@ public class NotificationService : INotificationService
     private async Task<List<string>> GetSponsorRecipientsAsync(SamlApplication app)
     {
         var enabled = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+        if (!enabled)
+        {
+            return new List<string>();
+        }
+
+        if (string.IsNullOrWhiteSpace(app.Sponsor))
+        {
+            return new List<string>();
+        }
+
+        return new List<string> { app.Sponsor.Trim() };
+    }
+
+    private async Task<List<string>> GetSponsorReminderRecipientsAsync(SamlApplication app)
+    {
+        var enabled = await _policyService.GetSponsorRemindersEnabledAsync();
         if (!enabled)
         {
             return new List<string>();

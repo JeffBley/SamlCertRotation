@@ -31,6 +31,16 @@ public class SettingsUpdateRequest
     public bool? NotifySponsorsOnExpiration { get; set; }
 
     /// <summary>
+    /// Whether sponsor reminders for notify apps are enabled
+    /// </summary>
+    public bool? SponsorRemindersEnabled { get; set; }
+
+    /// <summary>
+    /// Number of sponsor reminders to send (1-3)
+    /// </summary>
+    public int? SponsorReminderCount { get; set; }
+
+    /// <summary>
     /// Days before expiry for sponsor 1st reminder
     /// </summary>
     public int? SponsorFirstReminderDays { get; set; }

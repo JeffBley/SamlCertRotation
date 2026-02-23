@@ -174,7 +174,8 @@ public class CertificateRotationService : ICertificateRotationService
             if (autoRotateMode == AutoRotateNotify)
             {
                 var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
-                var notifyMilestone = GetNotifyMilestoneToSend(app, activeCert, daysUntilExpiry, sponsorReminderDays, auditCache);
+                var sponsorReminderCount = await _policyService.GetSponsorReminderCountAsync();
+                var notifyMilestone = GetNotifyMilestoneToSend(app, activeCert, daysUntilExpiry, sponsorReminderDays, sponsorReminderCount, auditCache);
                 if (notifyMilestone != null)
                 {
                     var appUrl = UrlHelper.BuildEntraManagedAppUrl(app.Id, app.AppId);
@@ -617,6 +618,7 @@ public class CertificateRotationService : ICertificateRotationService
         SamlCertificate activeCert,
         int daysUntilExpiry,
         (int firstReminderDays, int secondReminderDays, int thirdReminderDays) sponsorReminderDays,
+        int sponsorReminderCount,
         Dictionary<string, List<AuditEntry>>? auditCache)
     {
         if (daysUntilExpiry < 0)
@@ -630,6 +632,9 @@ public class CertificateRotationService : ICertificateRotationService
             ($"2nd-{sponsorReminderDays.secondReminderDays}", sponsorReminderDays.secondReminderDays),
             ($"3rd-{sponsorReminderDays.thirdReminderDays}", sponsorReminderDays.thirdReminderDays)
         };
+
+        // Limit milestones based on the configured reminder count
+        milestones = milestones.Take(sponsorReminderCount).ToList();
 
         var entries = GetCachedEntries(app.Id, auditCache);
 

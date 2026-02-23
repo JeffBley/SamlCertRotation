@@ -423,6 +423,101 @@ public class PolicyService : IPolicyService
     }
 
     /// <inheritdoc />
+    public async Task<bool> GetSponsorRemindersEnabledAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorRemindersEnabled");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsor reminders enabled setting from storage");
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSponsorRemindersEnabledAsync(bool enabled)
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "SponsorRemindersEnabled")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated sponsor reminders enabled setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsor reminders enabled setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> GetSponsorReminderCountAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorReminderCount");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Count");
+                if (int.TryParse(value, out var count) && count >= 1 && count <= 3)
+                {
+                    return count;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsor reminder count from storage");
+        }
+
+        return 3;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSponsorReminderCountAsync(int count)
+    {
+        if (count < 1 || count > 3)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), "Sponsor reminder count must be between 1 and 3.");
+        }
+
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "SponsorReminderCount")
+            {
+                { "Count", count.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated sponsor reminder count: {Count}", count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsor reminder count");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<(int firstReminderDays, int secondReminderDays, int thirdReminderDays)> GetSponsorReminderDaysAsync()
     {
         try

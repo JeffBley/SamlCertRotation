@@ -572,6 +572,8 @@ public class DashboardFunctions
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
             var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
+            var sponsorRemindersEnabled = await _policyService.GetSponsorRemindersEnabledAsync();
+            var sponsorReminderCount = await _policyService.GetSponsorReminderCountAsync();
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
             var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
             var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
@@ -585,6 +587,8 @@ public class DashboardFunctions
                 retentionPolicyDays,
                 sponsorsReceiveNotifications,
                 notifySponsorsOnExpiration,
+                sponsorRemindersEnabled,
+                sponsorReminderCount,
                 sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
@@ -635,6 +639,8 @@ public class DashboardFunctions
             var beforeRetention = await _policyService.GetRetentionPolicyDaysAsync();
             var beforeSponsorsNotify = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
             var beforeNotifyOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
+            var beforeRemindersEnabled = await _policyService.GetSponsorRemindersEnabledAsync();
+            var beforeReminderCount = await _policyService.GetSponsorReminderCountAsync();
             var beforeReminders = await _policyService.GetSponsorReminderDaysAsync();
             var beforeTimeout = await _policyService.GetSessionTimeoutMinutesAsync();
             var beforeCreateCertsForNotify = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
@@ -668,6 +674,20 @@ public class DashboardFunctions
             if (settings.NotifySponsorsOnExpiration.HasValue)
             {
                 await _policyService.UpdateNotifySponsorsOnExpirationEnabledAsync(settings.NotifySponsorsOnExpiration.Value);
+            }
+
+            if (settings.SponsorRemindersEnabled.HasValue)
+            {
+                await _policyService.UpdateSponsorRemindersEnabledAsync(settings.SponsorRemindersEnabled.Value);
+            }
+
+            if (settings.SponsorReminderCount.HasValue)
+            {
+                if (settings.SponsorReminderCount.Value < 1 || settings.SponsorReminderCount.Value > 3)
+                {
+                    return await CreateErrorResponse(req, "Sponsor reminder count must be between 1 and 3", HttpStatusCode.BadRequest);
+                }
+                await _policyService.UpdateSponsorReminderCountAsync(settings.SponsorReminderCount.Value);
             }
 
             if (settings.SponsorFirstReminderDays.HasValue || settings.SponsorSecondReminderDays.HasValue || settings.SponsorThirdReminderDays.HasValue)
@@ -704,6 +724,8 @@ public class DashboardFunctions
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
             var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
+            var sponsorRemindersEnabled = await _policyService.GetSponsorRemindersEnabledAsync();
+            var sponsorReminderCount = await _policyService.GetSponsorReminderCountAsync();
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
             var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
             var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
@@ -720,6 +742,10 @@ public class DashboardFunctions
                 changes.Add($"SponsorsReceiveNotifications: {beforeSponsorsNotify} → {settings.SponsorsReceiveNotifications.Value}");
             if (settings.NotifySponsorsOnExpiration.HasValue && settings.NotifySponsorsOnExpiration.Value != beforeNotifyOnExpiration)
                 changes.Add($"NotifySponsorsOnExpiration: {beforeNotifyOnExpiration} → {settings.NotifySponsorsOnExpiration.Value}");
+            if (settings.SponsorRemindersEnabled.HasValue && settings.SponsorRemindersEnabled.Value != beforeRemindersEnabled)
+                changes.Add($"SponsorRemindersEnabled: {beforeRemindersEnabled} → {settings.SponsorRemindersEnabled.Value}");
+            if (settings.SponsorReminderCount.HasValue && settings.SponsorReminderCount.Value != beforeReminderCount)
+                changes.Add($"SponsorReminderCount: {beforeReminderCount} → {settings.SponsorReminderCount.Value}");
             if (settings.SponsorFirstReminderDays.HasValue && settings.SponsorFirstReminderDays.Value != beforeReminders.firstReminderDays)
                 changes.Add($"SponsorFirstReminderDays: {beforeReminders.firstReminderDays} → {settings.SponsorFirstReminderDays.Value}");
             if (settings.SponsorSecondReminderDays.HasValue && settings.SponsorSecondReminderDays.Value != beforeReminders.secondReminderDays)
@@ -751,6 +777,8 @@ public class DashboardFunctions
                 retentionPolicyDays,
                 sponsorsReceiveNotifications,
                 notifySponsorsOnExpiration,
+                sponsorRemindersEnabled,
+                sponsorReminderCount,
                 sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
