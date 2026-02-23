@@ -115,10 +115,23 @@
         }
 
         .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            display: flex;
+            flex-direction: column;
             gap: 16px;
             margin-bottom: 24px;
+            align-items: center;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .stats-row .stat-card {
+            min-width: 180px;
+            flex: 0 1 220px;
         }
 
         .stat-card {
@@ -645,33 +658,37 @@
         <div id="error-container"></div>
 
         <div class="stats-grid" id="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value" id="stat-total">-</div>
-                <div class="stat-label">Total SAML Apps</div>
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-total">-</div>
+                    <div class="stat-label">Total SAML Apps</div>
+                </div>
+                <div class="stat-card expiring">
+                    <div class="stat-value" id="stat-expiring-30">-</div>
+                    <div class="stat-label" id="stat-expiring-label">Expiring ≤30 Days</div>
+                </div>
+                <div class="stat-card expired">
+                    <div class="stat-value" id="stat-expired">-</div>
+                    <div class="stat-label">Expired</div>
+                </div>
             </div>
-            <div class="stat-card on">
-                <div class="stat-value" id="stat-on">-</div>
-                <div class="stat-label">Auto-Rotate ON</div>
-            </div>
-            <div class="stat-card off">
-                <div class="stat-value" id="stat-off">-</div>
-                <div class="stat-label">Auto-Rotate OFF</div>
-            </div>
-            <div class="stat-card notify">
-                <div class="stat-value" id="stat-notify">-</div>
-                <div class="stat-label">Notify Only</div>
-            </div>
-            <div class="stat-card null">
-                <div class="stat-value" id="stat-null">-</div>
-                <div class="stat-label">Not Configured</div>
-            </div>
-            <div class="stat-card expiring">
-                <div class="stat-value" id="stat-expiring-30">-</div>
-                <div class="stat-label" id="stat-expiring-label">Expiring ≤30 Days</div>
-            </div>
-            <div class="stat-card expired">
-                <div class="stat-value" id="stat-expired">-</div>
-                <div class="stat-label">Expired</div>
+            <div class="stats-row">
+                <div class="stat-card on">
+                    <div class="stat-value" id="stat-on">-</div>
+                    <div class="stat-label">Auto-Rotate ON</div>
+                </div>
+                <div class="stat-card notify">
+                    <div class="stat-value" id="stat-notify">-</div>
+                    <div class="stat-label">Notify Only</div>
+                </div>
+                <div class="stat-card off">
+                    <div class="stat-value" id="stat-off">-</div>
+                    <div class="stat-label">Auto-Rotate OFF</div>
+                </div>
+                <div class="stat-card null">
+                    <div class="stat-value" id="stat-null">-</div>
+                    <div class="stat-label">Not Configured</div>
+                </div>
             </div>
         </div>
 
