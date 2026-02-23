@@ -1164,6 +1164,112 @@ public class DashboardFunctions
     }
 
     /// <summary>
+    /// Send a test email using a named template with sample data
+    /// </summary>
+    [Function("SendTestEmail")]
+    public async Task<HttpResponseData> SendTestEmail(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "testing/send-test-email")] HttpRequestData req)
+    {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        try
+        {
+            var body = await req.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
+            }
+
+            var request = JsonSerializer.Deserialize<TestEmailRequest>(body, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (string.IsNullOrWhiteSpace(request?.Template))
+            {
+                return await CreateErrorResponse(req, "Template name is required", HttpStatusCode.BadRequest);
+            }
+
+            if (string.IsNullOrWhiteSpace(request?.ToEmail))
+            {
+                return await CreateErrorResponse(req, "Recipient email is required", HttpStatusCode.BadRequest);
+            }
+
+            if (!IsValidEmail(request.ToEmail))
+            {
+                return await CreateErrorResponse(req, "Invalid email address format", HttpStatusCode.BadRequest);
+            }
+
+            if (!NotificationService.TestTemplateNames.Contains(request.Template))
+            {
+                return await CreateErrorResponse(req, $"Unknown template: {request.Template}", HttpStatusCode.BadRequest);
+            }
+
+            _logger.LogInformation("Sending test email: template={Template}, to={To}", request.Template, request.ToEmail);
+
+            var sent = await _notificationService.SendTestEmailAsync(request.Template, request.ToEmail);
+
+            if (sent)
+            {
+                await _auditService.LogSuccessAsync(
+                    "System",
+                    "Test Email",
+                    AuditActionType.SettingsUpdated,
+                    $"Test email sent: template={request.Template}, to={request.ToEmail}",
+                    performedBy: await GetPerformedByAsync(req));
+
+                return await CreateJsonResponse(req, new { message = "Test email sent successfully", template = request.Template, to = request.ToEmail });
+            }
+            else
+            {
+                return await CreateErrorResponse(req, "Failed to send test email. Check Graph API permissions and mail-from configuration.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending test email");
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Get available test email templates
+    /// </summary>
+    [Function("GetTestEmailTemplates")]
+    public async Task<HttpResponseData> GetTestEmailTemplates(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "testing/email-templates")] HttpRequestData req)
+    {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        var templates = NotificationService.TestTemplateNames.Select(t => new
+        {
+            name = t,
+            description = t switch
+            {
+                "CertificateCreated" => "Sent to sponsor when a new certificate is created",
+                "CertificateActivated" => "Sent to sponsor when a certificate is activated",
+                "Error" => "Sent when a certificate operation fails",
+                "DailySummary" => "Daily rotation summary sent to admins",
+                "NotifyReminder" => "Expiration reminder for apps marked as Notify",
+                "SponsorExpirationExpired" => "Sponsor notification for expired certificate",
+                "SponsorExpirationCritical" => "Sponsor notification for critical certificate status",
+                "SponsorExpirationWarning" => "Sponsor notification for warning certificate status",
+                _ => ""
+            }
+        });
+
+        return await CreateJsonResponse(req, new { templates });
+    }
+
+    /// <summary>
     /// Serializes a success payload using the shared JSON options and status code.
     /// </summary>
     private async Task<HttpResponseData> CreateJsonResponse<T>(HttpRequestData req, T data, HttpStatusCode statusCode = HttpStatusCode.OK)
@@ -1876,6 +1982,12 @@ public class DashboardFunctions
     private sealed class SponsorUpdateRequest
     {
         public string? SponsorEmail { get; set; }
+    }
+
+    private sealed class TestEmailRequest
+    {
+        public string? Template { get; set; }
+        public string? ToEmail { get; set; }
     }
 
     private sealed class RequestIdentity

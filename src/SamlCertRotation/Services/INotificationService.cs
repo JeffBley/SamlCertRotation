@@ -36,4 +36,9 @@ public interface INotificationService
     /// Send sponsor expiration email for Expired/Critical/Warning status
     /// </summary>
     Task<bool> SendSponsorExpirationStatusNotificationAsync(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string status, bool manualSend);
+
+    /// <summary>
+    /// Send a test email using a named template with sample data
+    /// </summary>
+    Task<bool> SendTestEmailAsync(string templateName, string toEmail);
 }

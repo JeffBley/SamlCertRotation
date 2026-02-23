@@ -743,6 +743,8 @@ document.querySelectorAll('.tab').forEach(tab => {
             loadSettings();
         } else if (tab.dataset.tab === 'cleanup') {
             loadCleanupData();
+        } else if (tab.dataset.tab === 'testing') {
+            loadTestEmailTemplates();
         }
     });
 });
@@ -1586,6 +1588,105 @@ document.getElementById('modalConfirmBtn').addEventListener('click', confirmModa
 // Session timeout modal
 document.getElementById('btn-timeout-signout').addEventListener('click', endAppSession);
 document.getElementById('btn-timeout-renew').addEventListener('click', renewSession);
+
+// ============================
+// Testing Tab – Send Test Email
+// ============================
+let testEmailTemplates = [];
+
+async function loadTestEmailTemplates() {
+    const templateSelect = document.getElementById('testEmailTemplate');
+    if (testEmailTemplates.length > 0) return; // already loaded
+
+    try {
+        const result = await apiCall('/testing/email-templates');
+        if (result && result.templates) {
+            testEmailTemplates = result.templates;
+            templateSelect.innerHTML = '<option value="">— Select a template —</option>';
+            result.templates.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.name;
+                opt.textContent = formatTemplateName(t.name);
+                opt.dataset.description = t.description || '';
+                templateSelect.appendChild(opt);
+            });
+        }
+    } catch (err) {
+        console.error('Failed to load test email templates:', err);
+    }
+}
+
+function formatTemplateName(name) {
+    // CertificateCreated -> Certificate Created, SponsorExpirationExpired -> Sponsor Expiration Expired
+    return name.replace(/([A-Z])/g, ' $1').trim();
+}
+
+function updateTestEmailSendButton() {
+    const btn = document.getElementById('btn-send-test-email');
+    const template = document.getElementById('testEmailTemplate').value;
+    const toEmail = document.getElementById('testEmailTo').value.trim();
+    const ready = template && toEmail && toEmail.includes('@');
+
+    if (ready) {
+        btn.disabled = false;
+        btn.style.background = '#0078d4';
+        btn.style.color = 'white';
+        btn.style.cursor = 'pointer';
+    } else {
+        btn.disabled = true;
+        btn.style.background = '#d2d0ce';
+        btn.style.color = '#666';
+        btn.style.cursor = 'not-allowed';
+    }
+}
+
+document.getElementById('testEmailTemplate').addEventListener('change', () => {
+    updateTestEmailSendButton();
+    const select = document.getElementById('testEmailTemplate');
+    const descEl = document.getElementById('testEmailTemplateDescription');
+    const selected = select.options[select.selectedIndex];
+    descEl.textContent = selected?.dataset?.description || '';
+});
+
+document.getElementById('testEmailTo').addEventListener('input', updateTestEmailSendButton);
+
+document.getElementById('btn-send-test-email').addEventListener('click', async () => {
+    const template = document.getElementById('testEmailTemplate').value;
+    const toEmail = document.getElementById('testEmailTo').value.trim();
+    const statusEl = document.getElementById('testEmailStatus');
+    const btn = document.getElementById('btn-send-test-email');
+
+    if (!template || !toEmail) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    btn.style.background = '#d2d0ce';
+    btn.style.color = '#666';
+    btn.style.cursor = 'not-allowed';
+    statusEl.style.display = 'none';
+
+    try {
+        const result = await apiCall('/testing/send-test-email', {
+            method: 'POST',
+            body: JSON.stringify({ template, toEmail })
+        });
+
+        statusEl.style.display = 'block';
+        statusEl.style.background = '#dff6dd';
+        statusEl.style.border = '1px solid #107c10';
+        statusEl.style.color = '#107c10';
+        statusEl.textContent = `✓ Test email "${formatTemplateName(template)}" sent to ${toEmail}`;
+    } catch (err) {
+        statusEl.style.display = 'block';
+        statusEl.style.background = '#fde7e9';
+        statusEl.style.border = '1px solid #d13438';
+        statusEl.style.color = '#d13438';
+        statusEl.textContent = `✗ Failed to send test email: ${err.message || 'Unknown error'}`;
+    } finally {
+        btn.textContent = 'Send';
+        updateTestEmailSendButton();
+    }
+});
 
 // Delegated event handler for dynamically rendered app table action buttons
 document.addEventListener('click', function (e) {

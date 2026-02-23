@@ -697,6 +697,7 @@
             <button class="tab" data-tab="policy">Policy Settings</button>
             <button class="tab" data-tab="settings">Settings</button>
             <button class="tab" data-tab="audit">Audit Log</button>
+            <button class="tab" data-tab="testing">Testing</button>
         </div>
 
         <div id="tab-applications" class="tab-content active">
@@ -824,7 +825,7 @@
                         <input type="number" id="activateDays" min="1" max="365" value="30">
                     </div>
                     <div class="form-group">
-                        <label for="createCertsForNotifyApps">Create new certs for Notify apps</label>
+                        <label for="createCertsForNotifyApps">Create new certs for apps marked as Notify</label>
                         <select id="createCertsForNotifyApps" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
@@ -918,6 +919,32 @@
                 <div id="audit-table-container">
                     <div class="loading">Loading audit log...</div>
                 </div>
+            </div>
+        </div>
+
+        <div id="tab-testing" class="tab-content">
+            <div class="section">
+                <div class="section-header">
+                    <h2>Emails</h2>
+                </div>
+                <p style="font-size:13px;color:#666;margin-bottom:16px;">Send a test email using any template to preview what recipients will receive. Emails are sent using the same Graph API mail-from configuration as production.</p>
+                <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:220px;">
+                        <label for="testEmailTemplate" style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Template</label>
+                        <select id="testEmailTemplate" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                            <option value="">— Select a template —</option>
+                        </select>
+                    </div>
+                    <div style="flex:1;min-width:220px;">
+                        <label for="testEmailTo" style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">To</label>
+                        <input type="email" id="testEmailTo" placeholder="recipient@example.com" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <button class="btn" id="btn-send-test-email" disabled style="padding:8px 24px;font-size:14px;background:#d2d0ce;color:#666;border:none;border-radius:4px;cursor:not-allowed;">Send</button>
+                    </div>
+                </div>
+                <div id="testEmailTemplateDescription" style="font-size:12px;color:#888;margin-top:8px;min-height:18px;"></div>
+                <div id="testEmailStatus" style="margin-top:12px;display:none;padding:10px 14px;border-radius:4px;font-size:13px;"></div>
             </div>
         </div>
 
@@ -1039,7 +1066,7 @@
             </div>
             <div id="editPolicyError" style="color:#d13438;font-size:12px;margin-bottom:8px;display:none;"></div>
             <div style="margin-bottom:12px;">
-                <label style="display:block;font-weight:600;margin-bottom:4px;">Create certs for Notify apps</label>
+                <label style="display:block;font-weight:600;margin-bottom:4px;">Create certs for apps marked as Notify</label>
                 <select id="editPolicyNotifyOverride" style="width:100%;padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
                     <option value="default">Default (Global Policy)</option>
                     <option value="enabled">Enabled</option>

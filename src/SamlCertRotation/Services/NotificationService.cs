@@ -549,4 +549,128 @@ public class NotificationService : INotificationService
 </body>
 </html>";
     }
+
+    /// <summary>
+    /// Available test email template names.
+    /// </summary>
+    public static readonly string[] TestTemplateNames = new[]
+    {
+        "CertificateCreated",
+        "CertificateActivated",
+        "Error",
+        "DailySummary",
+        "NotifyReminder",
+        "SponsorExpirationExpired",
+        "SponsorExpirationCritical",
+        "SponsorExpirationWarning"
+    };
+
+    /// <inheritdoc />
+    public async Task<bool> SendTestEmailAsync(string templateName, string toEmail)
+    {
+        var sampleApp = new SamlApplication
+        {
+            Id = "00000000-0000-0000-0000-000000000000",
+            AppId = "11111111-1111-1111-1111-111111111111",
+            DisplayName = "Contoso SAML App (Test)",
+            AutoRotateStatus = "on",
+            Sponsor = toEmail,
+            Certificates = new List<SamlCertificate>
+            {
+                new SamlCertificate
+                {
+                    KeyId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    Thumbprint = "AB12CD34EF56789012345678901234567890ABCD",
+                    StartDateTime = DateTime.UtcNow.AddYears(-2),
+                    EndDateTime = DateTime.UtcNow.AddDays(25),
+                    Type = "AsymmetricX509Cert",
+                    Usage = "Sign",
+                    IsActive = true
+                },
+                new SamlCertificate
+                {
+                    KeyId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                    Thumbprint = "FF99EE88DD77CC66BB55AA4433221100FFEEDDCC",
+                    StartDateTime = DateTime.UtcNow,
+                    EndDateTime = DateTime.UtcNow.AddYears(3),
+                    Type = "AsymmetricX509Cert",
+                    Usage = "Sign",
+                    IsActive = false
+                }
+            }
+        };
+
+        var activeCert = sampleApp.Certificates[0];
+        var newCert = sampleApp.Certificates[1];
+        var appUrl = "https://portal.azure.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/Overview/objectId/00000000-0000-0000-0000-000000000000/appId/11111111-1111-1111-1111-111111111111";
+
+        string subject;
+        string body;
+
+        switch (templateName)
+        {
+            case "CertificateCreated":
+                subject = $"[TEST] [SAML Cert Rotation] New Certificate Created - {sampleApp.DisplayName}";
+                body = GenerateCertificateCreatedEmail(sampleApp, newCert);
+                break;
+
+            case "CertificateActivated":
+                subject = $"[TEST] [SAML Cert Rotation] Certificate Activated - {sampleApp.DisplayName}";
+                body = GenerateCertificateActivatedEmail(sampleApp, newCert);
+                break;
+
+            case "Error":
+                subject = $"[TEST] [SAML Cert Rotation] ERROR - CreateCertificate Failed - {sampleApp.DisplayName}";
+                body = GenerateErrorEmail(sampleApp, "System.Exception: This is a sample error message for testing purposes.\n   at SamlCertRotation.Services.GraphService.CreateSamlCertificateAsync(String id)", "CreateCertificate");
+                break;
+
+            case "DailySummary":
+                var sampleStats = new DashboardStats
+                {
+                    TotalSamlApps = 42,
+                    AppsWithAutoRotateOn = 28,
+                    AppsWithAutoRotateOff = 5,
+                    AppsWithAutoRotateNotify = 6,
+                    AppsWithAutoRotateNull = 3,
+                    AppsExpiringIn30Days = 4,
+                    AppsWithExpiredCerts = 1
+                };
+                var sampleResults = new List<RotationResult>
+                {
+                    new RotationResult { AppDisplayName = "Contoso SAML App A", Success = true, Action = "Created" },
+                    new RotationResult { AppDisplayName = "Contoso SAML App B", Success = true, Action = "Activated" },
+                    new RotationResult { AppDisplayName = "Contoso SAML App C", Success = true, Action = "None" },
+                    new RotationResult { AppDisplayName = "Contoso SAML App D", Success = false, Action = "Create Failed", ErrorMessage = "Insufficient permissions" }
+                };
+                subject = $"[TEST] [SAML Cert Rotation] Daily Summary - {DateTime.UtcNow:yyyy-MM-dd}";
+                body = GenerateDailySummaryEmail(sampleStats, sampleResults);
+                break;
+
+            case "NotifyReminder":
+                subject = $"[TEST] [SAML Cert Rotation] [Notify] Certificate Expiring in 25 day(s) - {sampleApp.DisplayName}";
+                body = GenerateNotifyOnlyReminderEmail(sampleApp, activeCert, 25, appUrl, "30-day reminder");
+                break;
+
+            case "SponsorExpirationExpired":
+                subject = $"[TEST] [SAML Cert Rotation] [Manual] Application Certificate Expired - {sampleApp.DisplayName}";
+                body = GenerateSponsorExpirationStatusEmail(sampleApp, activeCert, -3, appUrl, "Expired", true);
+                break;
+
+            case "SponsorExpirationCritical":
+                subject = $"[TEST] [SAML Cert Rotation] [Manual] Critical Certificate Status - {sampleApp.DisplayName}";
+                body = GenerateSponsorExpirationStatusEmail(sampleApp, activeCert, 5, appUrl, "Critical", true);
+                break;
+
+            case "SponsorExpirationWarning":
+                subject = $"[TEST] [SAML Cert Rotation] [Manual] Warning Certificate Status - {sampleApp.DisplayName}";
+                body = GenerateSponsorExpirationStatusEmail(sampleApp, activeCert, 25, appUrl, "Warning", true);
+                break;
+
+            default:
+                _logger.LogWarning("Unknown test email template: {Template}", templateName);
+                return false;
+        }
+
+        return await _graphService.SendEmailAsync(new List<string> { toEmail }, subject, body);
+    }
 }
