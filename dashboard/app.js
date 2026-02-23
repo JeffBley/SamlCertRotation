@@ -1640,12 +1640,52 @@ function updateTestEmailSendButton() {
     }
 }
 
+const testEmailExplanations = {
+    CertificateCreated: {
+        description: 'Sent to the app sponsor when a new certificate is created.',
+        when: 'Sent automatically during the daily rotation run when an app\'s active certificate is within the "Create cert days before expiry" window and no newer inactive certificate exists. Also triggered when an admin manually creates a certificate from the dashboard.'
+    },
+    CertificateActivated: {
+        description: 'Sent to the app sponsor when a certificate is activated.',
+        when: 'Sent automatically during the daily rotation run when an app\'s active certificate is within the "Activate cert days before expiry" window and a newer inactive certificate is ready. Also triggered when an admin manually activates a certificate from the dashboard.'
+    },
+    Error: {
+        description: 'Sent when a certificate operation fails.',
+        when: 'Sent automatically during the daily rotation run if a certificate creation or activation operation throws an error. Includes the error details and affected application.'
+    },
+    DailySummary: {
+        description: 'Daily rotation summary sent to admin notification recipients.',
+        when: 'Sent automatically at the end of every daily rotation run (both production and report-only modes). Contains an overview of all SAML apps, stats, and a table of all actions taken during the run.'
+    },
+    NotifyReminder: {
+        description: 'Expiration reminder for apps marked as Notify.',
+        when: 'Sent automatically during the daily rotation run for apps with AutoRotate set to Notify. Triggered at the configurable sponsor reminder milestones (1st, 2nd, 3rd reminder days) as the active certificate approaches expiry. Each milestone is sent only once per certificate. Only fires when the certificate has not yet expired.'
+    },
+    SponsorExpirationExpired: {
+        description: 'Sponsor notification for an expired certificate.',
+        when: 'Sent automatically during the daily rotation run for apps (AutoRotate = On or Notify) whose active certificate has already expired. Also sent manually when an admin clicks "Resend Reminder" from the dashboard for an expired app. Sent only once per certificate automatically.'
+    },
+    SponsorExpirationCritical: {
+        description: 'Sponsor notification for critical certificate status.',
+        when: 'Sent manually only — triggered when an admin clicks "Resend Reminder" from the dashboard for an app whose active certificate is in Critical status (days remaining ≤ Activate cert days threshold). There is no automatic trigger for this template.'
+    },
+    SponsorExpirationWarning: {
+        description: 'Sponsor notification for warning certificate status.',
+        when: 'Sent manually only — triggered when an admin clicks "Resend Reminder" from the dashboard for an app whose active certificate is in Warning status (days remaining ≤ Create cert days threshold but above Activate cert days). There is no automatic trigger for this template.'
+    }
+};
+
 document.getElementById('testEmailTemplate').addEventListener('change', () => {
     updateTestEmailSendButton();
     const select = document.getElementById('testEmailTemplate');
     const descEl = document.getElementById('testEmailTemplateDescription');
-    const selected = select.options[select.selectedIndex];
-    descEl.textContent = selected?.dataset?.description || '';
+    const templateName = select.value;
+    const info = testEmailExplanations[templateName];
+    if (info) {
+        descEl.innerHTML = `<strong>${info.description}</strong><br><span style="color:#555;">${info.when}</span>`;
+    } else {
+        descEl.innerHTML = '';
+    }
 });
 
 document.getElementById('testEmailTo').addEventListener('input', updateTestEmailSendButton);
