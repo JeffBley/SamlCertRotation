@@ -126,12 +126,11 @@
             display: flex;
             gap: 16px;
             justify-content: center;
-            flex-wrap: wrap;
         }
 
         .stats-row .stat-card {
-            min-width: 180px;
-            flex: 0 1 220px;
+            width: 200px;
+            flex: 0 0 auto;
         }
 
         .stat-card {
@@ -648,7 +647,7 @@
                 </div>
                 <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
                     <span id="user-upn" style="font-size:12px;color:#fff;opacity:0.85;"></span>
-                    <button class="logout-btn" onclick="signOut()">Sign Out</button>
+                    <button class="logout-btn" id="btn-sign-out">Sign Out</button>
                 </div>
             </div>
         </div>
@@ -706,47 +705,47 @@
                     <h2>SAML Applications</h2>
                     <div>
                         <span class="last-updated" id="last-updated"></span>
-                        <button class="btn btn-secondary" onclick="exportApplications()">Export</button>
-                        <button class="btn btn-secondary" onclick="loadData()">Refresh</button>
-                        <button id="btn-report-only" class="btn btn-secondary" onclick="triggerReportOnlyRun()">Run - Report-only</button>
-                        <button id="btn-prod-run" class="btn btn-primary" onclick="triggerProdRun()">Run - Prod</button>
+                        <button class="btn btn-secondary" id="btn-export-apps">Export</button>
+                        <button class="btn btn-secondary" id="btn-refresh-apps">Refresh</button>
+                        <button id="btn-report-only" class="btn btn-secondary">Run - Report-only</button>
+                        <button id="btn-prod-run" class="btn btn-primary">Run - Prod</button>
                     </div>
                 </div>
                 <div class="filter-bar">
                     <label>Filter:</label>
                     <div class="filter-group">
-                        <input type="text" id="app-search" placeholder="Search application name..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:240px;" oninput="applyFilters()">
+                        <input type="text" id="app-search" placeholder="Search application name..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:240px;">
                         <div class="multi-select-filter-wrapper">
-                            <button type="button" id="app-auto-rotate-filter-toggle" class="btn btn-secondary multi-select-filter-toggle" onclick="toggleAppAutoRotateFilterDropdown(event)">
+                            <button type="button" id="app-auto-rotate-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
                                 <span id="app-auto-rotate-filter-label">Auto-Rotate</span>
                                 <span>▾</span>
                             </button>
-                            <div id="app-auto-rotate-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown" onclick="event.stopPropagation()">
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="on" onchange="onAppFilterChanged()">On</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="off" onchange="onAppFilterChanged()">Off</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notify" onchange="onAppFilterChanged()">Notify Only</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notset" onchange="onAppFilterChanged()">Not Set</label>
+                            <div id="app-auto-rotate-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="on">On</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="off">Off</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notify">Notify Only</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notset">Not Set</label>
                             </div>
                         </div>
                         <div class="multi-select-filter-wrapper">
-                            <button type="button" id="app-status-filter-toggle" class="btn btn-secondary multi-select-filter-toggle" onclick="toggleAppStatusFilterDropdown(event)">
+                            <button type="button" id="app-status-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
                                 <span id="app-status-filter-label">Status</span>
                                 <span>▾</span>
                             </button>
-                            <div id="app-status-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown" onclick="event.stopPropagation()">
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="expired" onchange="onAppFilterChanged()">Expired</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="critical" onchange="onAppFilterChanged()">Critical</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="warning" onchange="onAppFilterChanged()">Warning</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="ok" onchange="onAppFilterChanged()">OK</label>
+                            <div id="app-status-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="expired">Expired</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="critical">Critical</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="warning">Warning</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="ok">OK</label>
                             </div>
                         </div>
-                        <input type="text" id="app-sponsor-search" placeholder="Filter by sponsor..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;" oninput="applyFilters()">
-                        <select id="app-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyFilters()">
+                        <input type="text" id="app-sponsor-search" placeholder="Filter by sponsor..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
+                        <select id="app-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
                             <option value="name">Sort: Name</option>
                             <option value="daysRemaining">Sort: Days Remaining</option>
                             <option value="expiryDate">Sort: Expiry Date</option>
                         </select>
-                        <select id="app-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyFilters()">
+                        <select id="app-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
                             <option value="asc">Asc</option>
                             <option value="desc">Desc</option>
                         </select>
@@ -763,8 +762,8 @@
                 <div class="section-header">
                     <h2>Certificate Clean-up</h2>
                     <div>
-                        <button class="btn btn-secondary" onclick="exportCleanupList()">Export</button>
-                        <button class="btn btn-secondary" onclick="loadCleanupData()">Refresh</button>
+                        <button class="btn btn-secondary" id="btn-export-cleanup">Export</button>
+                        <button class="btn btn-secondary" id="btn-refresh-cleanup">Refresh</button>
                     </div>
                 </div>
                 <p style="margin-bottom:16px;color:#666;">
@@ -791,7 +790,7 @@
                         <label for="activateDays">Activate new certificate (days before expiry)</label>
                         <input type="number" id="activateDays" min="1" max="365" value="30">
                     </div>
-                    <button class="btn btn-primary" onclick="savePolicy()">Save Policy</button>
+                    <button class="btn btn-primary" id="btn-save-policy">Save Policy</button>
                 </div>
             </div>
         </div>
@@ -800,44 +799,44 @@
             <div class="section">
                 <div class="section-header">
                     <h2>Audit Log</h2>
-                    <button class="btn btn-secondary" onclick="loadAuditLog()">Refresh</button>
+                    <button class="btn btn-secondary" id="btn-refresh-audit">Refresh</button>
                 </div>
                 <div class="filter-bar" style="margin-bottom: 16px;">
                     <label>Filters:</label>
                     <div class="filter-group">
                         <label style="display:flex;align-items:center;gap:6px;">
                             From
-                            <input type="date" id="audit-from-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;" onchange="loadAuditLog()">
+                            <input type="date" id="audit-from-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;">
                         </label>
                         <label style="display:flex;align-items:center;gap:6px;">
                             To
-                            <input type="date" id="audit-to-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;" onchange="loadAuditLog()">
+                            <input type="date" id="audit-to-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;">
                         </label>
                         <div class="multi-select-filter-wrapper">
-                            <button type="button" id="audit-action-filter-toggle" class="btn btn-secondary multi-select-filter-toggle" onclick="toggleAuditActionFilterDropdown(event)">
+                            <button type="button" id="audit-action-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
                                 <span id="audit-action-filter-label">Actions</span>
                                 <span>▾</span>
                             </button>
-                            <div id="audit-action-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown" onclick="event.stopPropagation()">
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompleted" onchange="onAuditActionFilterChanged()">ScanCompleted</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompletedReportOnly" onchange="onAuditActionFilterChanged()">ScanCompletedReportOnly</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreated" onchange="onAuditActionFilterChanged()">CertificateCreated</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreatedReportOnly" onchange="onAuditActionFilterChanged()">CertificateCreatedReportOnly</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivated" onchange="onAuditActionFilterChanged()">CertificateActivated</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivatedReportOnly" onchange="onAuditActionFilterChanged()">CertificateActivatedReportOnly</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="Error" onchange="onAuditActionFilterChanged()">Error</label>
+                            <div id="audit-action-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompleted">ScanCompleted</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompletedReportOnly">ScanCompletedReportOnly</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreated">CertificateCreated</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreatedReportOnly">CertificateCreatedReportOnly</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivated">CertificateActivated</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivatedReportOnly">CertificateActivatedReportOnly</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="Error">Error</label>
                             </div>
                         </div>
-                        <button class="btn btn-secondary" onclick="addAuditFilterRow()">Add Filter</button>
-                        <button class="btn btn-secondary" onclick="clearAuditFilters()">Clear Filters</button>
-                        <select id="audit-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyAuditFilters()">
+                        <button class="btn btn-secondary" id="btn-add-audit-filter">Add Filter</button>
+                        <button class="btn btn-secondary" id="btn-clear-audit-filters">Clear Filters</button>
+                        <select id="audit-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
                             <option value="time">Sort: Time</option>
                             <option value="application">Sort: Application</option>
                             <option value="initiatedBy">Sort: Initiated By</option>
                             <option value="action">Sort: Action</option>
                             <option value="result">Sort: Result</option>
                         </select>
-                        <select id="audit-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;" onchange="applyAuditFilters()">
+                        <select id="audit-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
                             <option value="desc">Desc</option>
                             <option value="asc">Asc</option>
                         </select>
@@ -852,7 +851,7 @@
 
         <div id="tab-settings" class="tab-content">
             <div style="margin-bottom: 20px;">
-                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
             </div>
             <div class="section">
                 <div class="section-header">
@@ -866,7 +865,7 @@
                     </div>
                     <div class="form-group">
                         <label for="sponsorsReceiveNotifications">Sponsors receive notifications</label>
-                        <select id="sponsorsReceiveNotifications" onchange="toggleSponsorReminderSettings()" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <select id="sponsorsReceiveNotifications" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
@@ -946,8 +945,8 @@
             <h3 id="modalTitle">Confirm Action</h3>
             <p id="confirmModalMessage">Are you sure you want to proceed?</p>
             <div class="modal-buttons">
-                <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-                <button class="btn btn-primary" id="modalConfirmBtn" onclick="confirmModalAction()">Confirm</button>
+                <button class="btn-cancel" id="btn-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="modalConfirmBtn">Confirm</button>
             </div>
         </div>
     </div>
@@ -958,8 +957,8 @@
             <h3 style="color:#0078d4;">Are you still there?</h3>
             <p>Your session will expire due to inactivity. You will be signed out in <strong id="timeout-countdown">2:00</strong>.</p>
             <div class="modal-buttons">
-                <button class="btn-cancel" onclick="endAppSession()">Sign Out</button>
-                <button class="btn btn-primary" onclick="renewSession()">Stay Signed In</button>
+                <button class="btn-cancel" id="btn-timeout-signout">Sign Out</button>
+                <button class="btn btn-primary" id="btn-timeout-renew">Stay Signed In</button>
             </div>
         </div>
     </div>

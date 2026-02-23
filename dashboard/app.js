@@ -732,18 +732,18 @@ function renderApps(apps) {
                             </span>
                         </td>
                         <td class="actions-cell">
-                            <button class="actions-btn" onclick='toggleActionsMenu(event, ${toJsStringLiteral(appIdToken)})'>⋮</button>
+                            <button class="actions-btn" data-action="toggle-menu" data-app-id-token="${appIdToken}">⋮</button>
                             <div id="actions-menu-${appIdToken}" class="dropdown-menu">
-                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} onclick='createNewCert(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} data-action="create-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Create new SAML certificate
                                 </button>
-                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} onclick='activateNewestCert(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} data-action="activate-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Make newest cert active
                                 </button>
-                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} onclick='editSponsor(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)}, ${toJsStringLiteral(app.sponsor || '')})'>
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} data-action="edit-sponsor" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}" data-sponsor="${escapeHtml(app.sponsor || '')}">
                                     Edit Sponsor
                                 </button>
-                                <button class="dropdown-item ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''}" ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''} ${!isAdminUser() ? 'style="opacity:0.5;cursor:not-allowed;"' : ''} onclick='resendReminderEmail(${toJsStringLiteral(app.id)}, ${toJsStringLiteral(app.displayName)})'>
+                                <button class="dropdown-item ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''}" ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''} ${!isAdminUser() ? 'style="opacity:0.5;cursor:not-allowed;"' : ''} data-action="resend-reminder" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Resend Reminder Email
                                 </button>
                             </div>
@@ -1348,6 +1348,86 @@ function formatDateForFilename() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
+
+// ── Event listener wiring (CSP-safe, no inline handlers) ──
+
+// Header
+document.getElementById('btn-sign-out').addEventListener('click', signOut);
+
+// Applications tab buttons
+document.getElementById('btn-export-apps').addEventListener('click', exportApplications);
+document.getElementById('btn-refresh-apps').addEventListener('click', loadData);
+document.getElementById('btn-report-only').addEventListener('click', triggerReportOnlyRun);
+document.getElementById('btn-prod-run').addEventListener('click', triggerProdRun);
+
+// Applications tab filters
+document.getElementById('app-search').addEventListener('input', applyFilters);
+document.getElementById('app-sponsor-search').addEventListener('input', applyFilters);
+document.getElementById('app-sort-by').addEventListener('change', applyFilters);
+document.getElementById('app-sort-direction').addEventListener('change', applyFilters);
+document.getElementById('app-auto-rotate-filter-toggle').addEventListener('click', function (e) { toggleAppAutoRotateFilterDropdown(e); });
+document.getElementById('app-auto-rotate-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
+document.querySelectorAll('.app-auto-rotate-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAppFilterChanged); });
+document.getElementById('app-status-filter-toggle').addEventListener('click', function (e) { toggleAppStatusFilterDropdown(e); });
+document.getElementById('app-status-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
+document.querySelectorAll('.app-status-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAppFilterChanged); });
+
+// Cleanup tab buttons
+document.getElementById('btn-export-cleanup').addEventListener('click', exportCleanupList);
+document.getElementById('btn-refresh-cleanup').addEventListener('click', loadCleanupData);
+
+// Policy tab
+document.getElementById('btn-save-policy').addEventListener('click', savePolicy);
+
+// Audit tab
+document.getElementById('btn-refresh-audit').addEventListener('click', loadAuditLog);
+document.getElementById('audit-from-date').addEventListener('change', loadAuditLog);
+document.getElementById('audit-to-date').addEventListener('change', loadAuditLog);
+document.getElementById('audit-action-filter-toggle').addEventListener('click', function (e) { toggleAuditActionFilterDropdown(e); });
+document.getElementById('audit-action-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
+document.querySelectorAll('.audit-action-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAuditActionFilterChanged); });
+document.getElementById('btn-add-audit-filter').addEventListener('click', addAuditFilterRow);
+document.getElementById('btn-clear-audit-filters').addEventListener('click', clearAuditFilters);
+document.getElementById('audit-sort-by').addEventListener('change', applyAuditFilters);
+document.getElementById('audit-sort-direction').addEventListener('change', applyAuditFilters);
+
+// Settings tab
+document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
+document.getElementById('sponsorsReceiveNotifications').addEventListener('change', toggleSponsorReminderSettings);
+
+// Confirm modal
+document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
+document.getElementById('modalConfirmBtn').addEventListener('click', confirmModalAction);
+
+// Session timeout modal
+document.getElementById('btn-timeout-signout').addEventListener('click', endAppSession);
+document.getElementById('btn-timeout-renew').addEventListener('click', renewSession);
+
+// Delegated event handler for dynamically rendered app table action buttons
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const appId = btn.dataset.appId;
+    const appName = btn.dataset.appName;
+    switch (action) {
+        case 'toggle-menu':
+            toggleActionsMenu(e, btn.dataset.appIdToken);
+            break;
+        case 'create-cert':
+            createNewCert(appId, appName);
+            break;
+        case 'activate-cert':
+            activateNewestCert(appId, appName);
+            break;
+        case 'edit-sponsor':
+            editSponsor(appId, appName, btn.dataset.sponsor || '');
+            break;
+        case 'resend-reminder':
+            resendReminderEmail(appId, appName);
+            break;
+    }
+});
 
 // Initial load
 (async function initializeDashboard() {
