@@ -46,4 +46,9 @@ public interface IGraphService
     /// Upsert sponsor tag (AppSponsor=&lt;email&gt;) on a service principal while preserving all other tags
     /// </summary>
     Task<bool> UpdateAppSponsorTagAsync(string servicePrincipalId, string sponsorEmail);
+
+    /// <summary>
+    /// Remove the AppSponsor tag from a service principal while preserving all other tags
+    /// </summary>
+    Task<bool> ClearAppSponsorTagAsync(string servicePrincipalId);
 }

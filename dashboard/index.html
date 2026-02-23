@@ -706,6 +706,15 @@
                     <h2>SAML Applications</h2>
                     <div>
                         <span class="last-updated" id="last-updated"></span>
+                        <div style="position:relative;display:inline-block;">
+                            <button class="btn btn-secondary" id="btn-bulk-sponsors">Bulk update sponsors ▾</button>
+                            <div id="bulk-sponsors-dropdown" class="dropdown-menu" style="min-width:260px;">
+                                <button class="dropdown-item" id="btn-bulk-upload-csv">Bulk Update Sponsors - CSV upload</button>
+                                <button class="dropdown-item" id="btn-download-empty-csv">Download empty CSV</button>
+                                <button class="dropdown-item" id="btn-download-filled-csv">Download filled CSV</button>
+                            </div>
+                        </div>
+                        <input type="file" id="bulk-csv-file-input" accept=".csv" style="display:none;">
                         <button class="btn btn-secondary" id="btn-export-apps">Export</button>
                         <button class="btn btn-secondary" id="btn-refresh-apps">Refresh</button>
                         <button id="btn-report-only" class="btn btn-secondary">Run - Report-only</button>
@@ -1101,6 +1110,31 @@
             <div class="modal-buttons">
                 <button class="btn-cancel" id="btn-edit-policy-cancel">Cancel</button>
                 <button class="btn btn-primary" id="btn-edit-policy-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Sponsor Update Preview Modal -->
+    <div id="bulkSponsorModal" class="modal-overlay">
+        <div class="modal" style="min-width:500px;max-width:700px;max-height:80vh;display:flex;flex-direction:column;">
+            <h3>Bulk Sponsor Update Preview</h3>
+            <div id="bulkSponsorSummary" style="margin-bottom:12px;font-size:13px;color:#666;"></div>
+            <div id="bulkSponsorPreview" style="overflow-y:auto;max-height:45vh;border:1px solid #d2d0ce;border-radius:4px;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead>
+                        <tr style="background:#f4f4f4;position:sticky;top:0;">
+                            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #d2d0ce;">Application</th>
+                            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #d2d0ce;">Current Sponsor</th>
+                            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #d2d0ce;">New Sponsor</th>
+                            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #d2d0ce;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bulkSponsorPreviewBody"></tbody>
+                </table>
+            </div>
+            <div class="modal-buttons" style="margin-top:12px;">
+                <button class="btn-cancel" id="btn-bulk-cancel">Cancel</button>
+                <button class="btn btn-primary" id="btn-bulk-apply">Apply Changes</button>
             </div>
         </div>
     </div>

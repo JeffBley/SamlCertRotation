@@ -443,6 +443,53 @@ public class GraphService : IGraphService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<bool> ClearAppSponsorTagAsync(string servicePrincipalId)
+    {
+        if (string.IsNullOrWhiteSpace(servicePrincipalId))
+        {
+            throw new ArgumentException("Service principal ID is required.", nameof(servicePrincipalId));
+        }
+
+        try
+        {
+            var sp = await _graphClient.ServicePrincipals[servicePrincipalId]
+                .GetAsync(config =>
+                {
+                    config.QueryParameters.Select = new[] { "id", "tags" };
+                });
+
+            if (sp == null)
+            {
+                _logger.LogWarning("Service principal {Id} not found while clearing sponsor tag", servicePrincipalId);
+                return false;
+            }
+
+            var existingTags = (sp.Tags ?? new List<string>())
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .ToList();
+
+            var updatedTags = existingTags
+                .Where(tag => !tag.StartsWith(SponsorTagPrefix, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var patchBody = new ServicePrincipal
+            {
+                Tags = updatedTags
+            };
+
+            await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(patchBody);
+
+            _logger.LogInformation("Cleared sponsor tag for service principal {Id}", servicePrincipalId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error clearing sponsor tag for service principal {Id}", servicePrincipalId);
+            throw;
+        }
+    }
+
     private SamlApplication MapToSamlApplication(ServicePrincipal sp)
     {
         var samlApp = new SamlApplication

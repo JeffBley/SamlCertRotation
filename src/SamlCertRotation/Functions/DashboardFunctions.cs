@@ -1192,6 +1192,151 @@ public class DashboardFunctions
     }
 
     /// <summary>
+    /// Bulk update sponsors for multiple applications
+    /// </summary>
+    [Function("BulkUpdateSponsors")]
+    public async Task<HttpResponseData> BulkUpdateSponsors(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "applications/bulk-update-sponsors")] HttpRequestData req)
+    {
+        var authError = await AuthorizeRequestAsync(req, requireAdmin: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        _logger.LogInformation("Bulk updating sponsors");
+
+        try
+        {
+            var body = await req.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
+            }
+
+            var updates = JsonSerializer.Deserialize<List<BulkSponsorUpdate>>(body, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (updates == null || updates.Count == 0)
+            {
+                return await CreateErrorResponse(req, "No updates provided", HttpStatusCode.BadRequest);
+            }
+
+            var results = new List<object>();
+            var successCount = 0;
+            var clearCount = 0;
+            var failCount = 0;
+            var skippedCount = 0;
+            var performedBy = await GetPerformedByAsync(req);
+
+            foreach (var update in updates)
+            {
+                if (string.IsNullOrWhiteSpace(update.ApplicationId) || !IsValidGuid(update.ApplicationId))
+                {
+                    results.Add(new { applicationId = update.ApplicationId, status = "skipped", reason = "Invalid application ID" });
+                    skippedCount++;
+                    continue;
+                }
+
+                try
+                {
+                    var app = await _graphService.GetSamlApplicationAsync(update.ApplicationId);
+                    if (app == null)
+                    {
+                        results.Add(new { applicationId = update.ApplicationId, status = "skipped", reason = "Application not found" });
+                        skippedCount++;
+                        continue;
+                    }
+
+                    var newSponsor = update.SponsorEmail?.Trim() ?? "";
+                    var currentSponsor = app.Sponsor?.Trim() ?? "";
+
+                    // Skip if no change
+                    if (string.Equals(newSponsor, currentSponsor, StringComparison.OrdinalIgnoreCase))
+                    {
+                        results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "unchanged" });
+                        skippedCount++;
+                        continue;
+                    }
+
+                    bool updated;
+                    if (string.IsNullOrWhiteSpace(newSponsor))
+                    {
+                        // Clear sponsor
+                        updated = await _graphService.ClearAppSponsorTagAsync(update.ApplicationId);
+                        if (updated)
+                        {
+                            await _auditService.LogSuccessAsync(
+                                update.ApplicationId,
+                                app.DisplayName,
+                                AuditActionType.SponsorUpdated,
+                                $"Sponsor cleared via bulk update (was: {currentSponsor})",
+                                performedBy: performedBy);
+                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "cleared", previousSponsor = currentSponsor });
+                            clearCount++;
+                        }
+                        else
+                        {
+                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "failed", reason = "Failed to clear sponsor tag" });
+                            failCount++;
+                        }
+                    }
+                    else
+                    {
+                        if (!IsValidEmail(newSponsor))
+                        {
+                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "skipped", reason = $"Invalid email: {newSponsor}" });
+                            skippedCount++;
+                            continue;
+                        }
+
+                        updated = await _graphService.UpdateAppSponsorTagAsync(update.ApplicationId, newSponsor);
+                        if (updated)
+                        {
+                            await _auditService.LogSuccessAsync(
+                                update.ApplicationId,
+                                app.DisplayName,
+                                AuditActionType.SponsorUpdated,
+                                $"Sponsor updated via bulk update: {currentSponsor} → {newSponsor}",
+                                performedBy: performedBy);
+                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "updated", previousSponsor = currentSponsor, newSponsor });
+                            successCount++;
+                        }
+                        else
+                        {
+                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "failed", reason = "Failed to update sponsor tag" });
+                            failCount++;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in bulk update for application {Id}", update.ApplicationId);
+                    results.Add(new { applicationId = update.ApplicationId, status = "failed", reason = ex.Message });
+                    failCount++;
+                }
+            }
+
+            return await CreateJsonResponse(req, new
+            {
+                message = $"Bulk update complete: {successCount} updated, {clearCount} cleared, {skippedCount} skipped, {failCount} failed",
+                updated = successCount,
+                cleared = clearCount,
+                skipped = skippedCount,
+                failed = failCount,
+                results
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in bulk sponsor update");
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Send a test email using a named template with sample data
     /// </summary>
     [Function("SendTestEmail")]
@@ -1203,7 +1348,6 @@ public class DashboardFunctions
         {
             return authError;
         }
-
         try
         {
             var body = await req.ReadAsStringAsync();
@@ -2009,6 +2153,12 @@ public class DashboardFunctions
 
     private sealed class SponsorUpdateRequest
     {
+        public string? SponsorEmail { get; set; }
+    }
+
+    private sealed class BulkSponsorUpdate
+    {
+        public string? ApplicationId { get; set; }
         public string? SponsorEmail { get; set; }
     }
 

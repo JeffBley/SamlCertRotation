@@ -1533,6 +1533,292 @@ function formatDateForFilename() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+// ── Bulk Sponsor Update ──
+
+let pendingBulkUpdates = [];
+
+function toggleBulkSponsorsDropdown() {
+    const dropdown = document.getElementById('bulk-sponsors-dropdown');
+    if (!dropdown) return;
+    const isOpen = dropdown.classList.contains('show');
+    // Close all dropdowns first
+    document.querySelectorAll('.dropdown-menu.show').forEach(d => d.classList.remove('show'));
+    if (!isOpen) dropdown.classList.add('show');
+}
+
+function downloadEmptyCsv() {
+    const csv = 'Application,ApplicationId,SponsorEmail\n';
+    downloadCsvFile(csv, `sponsor-template-${formatDateForFilename()}.csv`);
+    document.getElementById('bulk-sponsors-dropdown')?.classList.remove('show');
+}
+
+function downloadFilledCsv() {
+    if (!allApps || allApps.length === 0) {
+        showError('No applications loaded. Please refresh first.');
+        return;
+    }
+
+    const rows = allApps.map(app => {
+        const name = escapeCsvField(app.displayName || '');
+        const id = escapeCsvField(app.id || '');
+        const sponsor = escapeCsvField(app.sponsor || '');
+        return `${name},${id},${sponsor}`;
+    });
+
+    const csv = 'Application,ApplicationId,SponsorEmail\n' + rows.join('\n') + '\n';
+    downloadCsvFile(csv, `sponsor-export-${formatDateForFilename()}.csv`);
+    document.getElementById('bulk-sponsors-dropdown')?.classList.remove('show');
+}
+
+function escapeCsvField(value) {
+    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+        return '"' + value.replace(/"/g, '""') + '"';
+    }
+    return value;
+}
+
+function downloadCsvFile(csvContent, filename) {
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function triggerBulkUpload() {
+    document.getElementById('bulk-sponsors-dropdown')?.classList.remove('show');
+    document.getElementById('bulk-csv-file-input').click();
+}
+
+function handleBulkCsvUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const csvText = e.target.result;
+            const parsed = parseCsv(csvText);
+            if (parsed.length === 0) {
+                showError('CSV file is empty or has no data rows.');
+                return;
+            }
+            previewBulkUpdates(parsed);
+        } catch (err) {
+            showError('Failed to parse CSV: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+    // Reset file input so the same file can be re-uploaded
+    event.target.value = '';
+}
+
+function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+    if (lines.length < 1) return [];
+
+    // Parse header to find column indices
+    const headerCols = parseCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+    const appIdIdx = headerCols.findIndex(h => h === 'applicationid');
+    const sponsorIdx = headerCols.findIndex(h => h === 'sponsoremail');
+
+    if (appIdIdx === -1) {
+        throw new Error('Missing required column: ApplicationId');
+    }
+    if (sponsorIdx === -1) {
+        throw new Error('Missing required column: SponsorEmail');
+    }
+
+    const results = [];
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i]);
+        const applicationId = (cols[appIdIdx] || '').trim();
+        const sponsorEmail = (cols[sponsorIdx] || '').trim();
+
+        if (applicationId) {
+            results.push({ applicationId, sponsorEmail });
+        }
+    }
+    return results;
+}
+
+function parseCsvLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+            if (ch === '"' && i + 1 < line.length && line[i + 1] === '"') {
+                current += '"';
+                i++;
+            } else if (ch === '"') {
+                inQuotes = false;
+            } else {
+                current += ch;
+            }
+        } else {
+            if (ch === '"') {
+                inQuotes = true;
+            } else if (ch === ',') {
+                result.push(current);
+                current = '';
+            } else {
+                current += ch;
+            }
+        }
+    }
+    result.push(current);
+    return result;
+}
+
+function previewBulkUpdates(csvData) {
+    // Build a lookup from current apps
+    const appLookup = {};
+    allApps.forEach(app => {
+        appLookup[app.id] = app;
+    });
+
+    // Compute diff
+    const changes = [];
+    let updateCount = 0;
+    let clearCount = 0;
+    let unchangedCount = 0;
+    let notFoundCount = 0;
+    let invalidEmailCount = 0;
+
+    csvData.forEach(row => {
+        const app = appLookup[row.applicationId];
+        if (!app) {
+            changes.push({
+                applicationId: row.applicationId,
+                displayName: '(Not found)',
+                currentSponsor: '',
+                newSponsor: row.sponsorEmail,
+                action: 'skip',
+                reason: 'App not found'
+            });
+            notFoundCount++;
+            return;
+        }
+
+        const currentSponsor = (app.sponsor || '').trim();
+        const newSponsor = row.sponsorEmail.trim();
+
+        if (currentSponsor.toLowerCase() === newSponsor.toLowerCase()) {
+            unchangedCount++;
+            return;
+        }
+
+        if (newSponsor === '') {
+            changes.push({
+                applicationId: row.applicationId,
+                displayName: app.displayName,
+                currentSponsor,
+                newSponsor: '(clear)',
+                action: 'clear'
+            });
+            clearCount++;
+        } else {
+            // Basic email validation
+            if (!newSponsor.includes('@') || !newSponsor.includes('.')) {
+                changes.push({
+                    applicationId: row.applicationId,
+                    displayName: app.displayName,
+                    currentSponsor,
+                    newSponsor,
+                    action: 'skip',
+                    reason: 'Invalid email'
+                });
+                invalidEmailCount++;
+                return;
+            }
+            changes.push({
+                applicationId: row.applicationId,
+                displayName: app.displayName,
+                currentSponsor,
+                newSponsor,
+                action: 'update'
+            });
+            updateCount++;
+        }
+    });
+
+    if (changes.length === 0) {
+        showSuccess('No changes detected. All sponsors are already up to date.');
+        return;
+    }
+
+    // Show preview modal
+    pendingBulkUpdates = changes.filter(c => c.action !== 'skip');
+
+    const summaryParts = [];
+    if (updateCount > 0) summaryParts.push(`<strong>${updateCount}</strong> will be updated`);
+    if (clearCount > 0) summaryParts.push(`<strong>${clearCount}</strong> will be cleared`);
+    if (unchangedCount > 0) summaryParts.push(`<strong>${unchangedCount}</strong> unchanged`);
+    if (notFoundCount > 0) summaryParts.push(`<strong>${notFoundCount}</strong> not found (skipped)`);
+    if (invalidEmailCount > 0) summaryParts.push(`<strong>${invalidEmailCount}</strong> invalid email (skipped)`);
+
+    document.getElementById('bulkSponsorSummary').innerHTML = summaryParts.join(' &middot; ');
+
+    const tbody = document.getElementById('bulkSponsorPreviewBody');
+    tbody.innerHTML = changes.map(c => {
+        const actionColor = c.action === 'update' ? '#0078d4' : c.action === 'clear' ? '#d83b01' : '#a19f9d';
+        const actionLabel = c.action === 'update' ? 'Update' : c.action === 'clear' ? 'Clear' : `Skip (${c.reason})`;
+        return `<tr>
+            <td style="padding:6px 10px;border-bottom:1px solid #edebe9;">${escapeHtml(c.displayName)}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #edebe9;">${escapeHtml(c.currentSponsor) || '<em style="color:#a19f9d;">Not Set</em>'}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #edebe9;">${c.action === 'clear' ? '<em style="color:#d83b01;">Clear</em>' : escapeHtml(c.newSponsor)}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #edebe9;color:${actionColor};font-weight:500;">${actionLabel}</td>
+        </tr>`;
+    }).join('');
+
+    const applyBtn = document.getElementById('btn-bulk-apply');
+    applyBtn.disabled = pendingBulkUpdates.length === 0;
+    applyBtn.textContent = pendingBulkUpdates.length > 0 ? `Apply ${pendingBulkUpdates.length} Change${pendingBulkUpdates.length > 1 ? 's' : ''}` : 'No Changes';
+
+    document.getElementById('bulkSponsorModal').classList.add('show');
+}
+
+function closeBulkSponsorModal() {
+    document.getElementById('bulkSponsorModal').classList.remove('show');
+    pendingBulkUpdates = [];
+}
+
+async function applyBulkSponsorUpdates() {
+    if (pendingBulkUpdates.length === 0) return;
+
+    const applyBtn = document.getElementById('btn-bulk-apply');
+    applyBtn.disabled = true;
+    applyBtn.textContent = 'Applying...';
+
+    try {
+        const payload = pendingBulkUpdates.map(c => ({
+            applicationId: c.applicationId,
+            sponsorEmail: c.action === 'clear' ? '' : c.newSponsor
+        }));
+
+        const result = await apiCall('applications/bulk-update-sponsors', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        closeBulkSponsorModal();
+        showSuccess(result.message || 'Bulk update complete.');
+        // Reload apps to reflect changes
+        loadData();
+    } catch (error) {
+        showError('Bulk update failed: ' + error.message);
+        applyBtn.disabled = false;
+        applyBtn.textContent = `Apply ${pendingBulkUpdates.length} Changes`;
+    }
+}
+
 // ── Event listener wiring (CSP-safe, no inline handlers) ──
 
 // Header
@@ -1543,6 +1829,13 @@ document.getElementById('btn-export-apps').addEventListener('click', exportAppli
 document.getElementById('btn-refresh-apps').addEventListener('click', loadData);
 document.getElementById('btn-report-only').addEventListener('click', triggerReportOnlyRun);
 document.getElementById('btn-prod-run').addEventListener('click', triggerProdRun);
+document.getElementById('btn-bulk-sponsors').addEventListener('click', function(e) { e.stopPropagation(); toggleBulkSponsorsDropdown(); });
+document.getElementById('btn-bulk-upload-csv').addEventListener('click', triggerBulkUpload);
+document.getElementById('btn-download-empty-csv').addEventListener('click', downloadEmptyCsv);
+document.getElementById('btn-download-filled-csv').addEventListener('click', downloadFilledCsv);
+document.getElementById('bulk-csv-file-input').addEventListener('change', handleBulkCsvUpload);
+document.getElementById('btn-bulk-cancel').addEventListener('click', closeBulkSponsorModal);
+document.getElementById('btn-bulk-apply').addEventListener('click', applyBulkSponsorUpdates);
 
 // Applications tab filters
 document.getElementById('app-search').addEventListener('input', applyFilters);
