@@ -42,9 +42,10 @@ Navigate to https://portal.azure.com/#cloudshell/
 
 ### Clone from Git Repository
 ```powershell
-# Clone the repository
+# Clone the repository and switch to the v2 branch
 git clone https://github.com/JeffBley/SamlCertRotation.git
 Set-Location SamlCertRotation
+git checkout v2/main
 ```
 
 ### Verify Files Are Present
@@ -70,7 +71,7 @@ Cloud Shell storage persists between sessions. Always sync to the latest code be
 ```powershell
 Set-Location "$HOME/SamlCertRotation"
 git fetch origin
-git pull origin main
+git pull origin v2/main
 ```
 
 ---
@@ -1090,7 +1091,7 @@ This usually indicates stale source in Cloud Shell or a partial deployment.
 # 1) Sync Cloud Shell repo to the latest committed code
 Set-Location "$HOME/SamlCertRotation"
 git fetch origin
-git pull origin main
+git pull origin v2/main
 
 # 2) Force redeploy Function App
 Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"

@@ -136,6 +136,7 @@ public class DashboardFunctions
                     stats.TotalSamlApps,
                     stats.AppsWithAutoRotateOn,
                     stats.AppsWithAutoRotateOff,
+                    stats.AppsWithAutoRotateNotify,
                     stats.AppsWithAutoRotateNull,
                     stats.AppsExpiringIn30Days,
                     stats.ExpiringSoonThresholdDays,
