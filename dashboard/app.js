@@ -525,6 +525,10 @@ function showSuccess(message) {
     }, 5000);
 }
 
+function clearStatusBanner() {
+    document.getElementById('error-container').innerHTML = '';
+}
+
 function renderStatusBanner(message, styles = {}) {
     const container = document.getElementById('error-container');
     container.innerHTML = '';
@@ -577,7 +581,12 @@ async function apiCall(endpoint, options = {}) {
             }
         });
         if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
+            let serverMessage = '';
+            try {
+                const errorBody = await response.json();
+                serverMessage = errorBody.error || errorBody.message || '';
+            } catch (_) { /* response body not JSON */ }
+            throw new Error(serverMessage || `API error: ${response.status}`);
         }
         return await response.json();
     } catch (error) {
@@ -604,6 +613,7 @@ function showError(message) {
 // Load dashboard data
 async function loadData() {
     try {
+        showLoading('Refreshing data...');
         const [stats, policy, settings] = await Promise.all([
             apiCall('dashboard/stats'),
             apiCall('policy').catch(() => null),
@@ -645,6 +655,7 @@ async function loadData() {
         // Store apps for filtering
         allApps = stats.apps;
         applyFilters();
+        clearStatusBanner();
 
     } catch (error) {
         document.getElementById('apps-table-container').innerHTML = 
@@ -887,6 +898,7 @@ function toggleSponsorReminderSettings() {
 // Load audit log
 async function loadAuditLog() {
     try {
+        showLoading('Refreshing audit log...');
         const fromDate = document.getElementById('audit-from-date')?.value;
         const toDate = document.getElementById('audit-to-date')?.value;
 
@@ -897,6 +909,7 @@ async function loadAuditLog() {
 
         allAuditEntries = await apiCall(endpoint);
         applyAuditFilters();
+        clearStatusBanner();
 
     } catch (error) {
         document.getElementById('audit-table-container').innerHTML = 
@@ -1203,6 +1216,7 @@ let cleanupApps = [];
 // Load certificate cleanup data
 async function loadCleanupData() {
     try {
+        showLoading('Refreshing cleanup data...');
         // Get detailed app data including all certificates
         const apps = await apiCall('applications');
         
@@ -1234,6 +1248,7 @@ async function loadCleanupData() {
         }
         
         renderCleanupTable(cleanupApps);
+        clearStatusBanner();
         
     } catch (error) {
         document.getElementById('cleanup-table-container').innerHTML = 
