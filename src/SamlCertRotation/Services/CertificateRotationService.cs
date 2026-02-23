@@ -33,7 +33,7 @@ public class CertificateRotationService : ICertificateRotationService
     }
 
     /// <inheritdoc />
-    public async Task<List<RotationResult>> RunRotationAsync(bool? forceReportOnlyMode = null)
+    public async Task<List<RotationResult>> RunRotationAsync(bool? forceReportOnlyMode = null, string? performedBy = null)
     {
         var results = new List<RotationResult>();
 
@@ -74,7 +74,7 @@ public class CertificateRotationService : ICertificateRotationService
             {
                 try
                 {
-                    var result = await ProcessApplicationAsync(app, reportOnlyMode, auditCache);
+                    var result = await ProcessApplicationAsync(app, reportOnlyMode, auditCache, performedBy);
                     results.Add(result);
                 }
                 catch (Exception ex)
@@ -113,7 +113,8 @@ public class CertificateRotationService : ICertificateRotationService
                 "SYSTEM",
                 "System",
                 reportOnlyMode ? AuditActionType.ScanCompletedReportOnly : AuditActionType.ScanCompleted,
-                completionDescription);
+                completionDescription,
+                performedBy: performedBy);
 
             // Send daily summary — reuse the apps list we already fetched to avoid another Graph round-trip
             var stats = await GetDashboardStatsAsync(apps);
@@ -136,7 +137,7 @@ public class CertificateRotationService : ICertificateRotationService
         return await ProcessApplicationAsync(app, reportOnlyMode, null);
     }
 
-    private async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode, Dictionary<string, List<AuditEntry>>? auditCache)
+    private async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode, Dictionary<string, List<AuditEntry>>? auditCache, string? performedBy = null)
     {
         var result = new RotationResult
         {
@@ -187,7 +188,8 @@ public class CertificateRotationService : ICertificateRotationService
                         app.DisplayName,
                         AuditActionType.CertificateExpiringSoon,
                         $"NotifyOnly reminder sent. Milestone: {notifyMilestone}. Days remaining: {daysUntilExpiry}. Link: {appUrl}",
-                        activeCert.Thumbprint);
+                        activeCert.Thumbprint,
+                        performedBy: performedBy);
                 }
                 else
                 {
@@ -222,7 +224,8 @@ public class CertificateRotationService : ICertificateRotationService
                             app.DisplayName, 
                             AuditActionType.CertificateCreatedReportOnly,
                             $"Report-only mode: would create a new certificate. Active cert expires in {daysUntilExpiry} day(s).",
-                            activeCert.Thumbprint);
+                            activeCert.Thumbprint,
+                            performedBy: performedBy);
                     }
                     else
                     {
@@ -241,7 +244,8 @@ public class CertificateRotationService : ICertificateRotationService
                                 AuditActionType.CertificateCreated,
                                 $"Created new certificate expiring {newCert.EndDateTime:yyyy-MM-dd}",
                                 activeCert.Thumbprint,
-                                newCert.Thumbprint);
+                                newCert.Thumbprint,
+                                performedBy);
 
                             await _notificationService.SendCertificateCreatedNotificationAsync(app, newCert);
                         }
@@ -270,7 +274,8 @@ public class CertificateRotationService : ICertificateRotationService
                                 AuditActionType.CertificateActivatedReportOnly,
                                 $"Report-only mode: would activate pending certificate {newerInactiveCert.Thumbprint} (expires {newerInactiveCert.EndDateTime:yyyy-MM-dd}).",
                                 activeCert.Thumbprint,
-                                newerInactiveCert.Thumbprint);
+                                newerInactiveCert.Thumbprint,
+                                performedBy);
                         }
                         else
                         {
@@ -289,7 +294,8 @@ public class CertificateRotationService : ICertificateRotationService
                                     AuditActionType.CertificateActivated,
                                     $"Activated certificate {newerInactiveCert.Thumbprint} (expires {newerInactiveCert.EndDateTime:yyyy-MM-dd})",
                                     activeCert.Thumbprint,
-                                    newerInactiveCert.Thumbprint);
+                                    newerInactiveCert.Thumbprint,
+                                    performedBy);
 
                                 await _notificationService.SendCertificateActivatedNotificationAsync(app, newerInactiveCert);
                             }
@@ -325,7 +331,8 @@ public class CertificateRotationService : ICertificateRotationService
                             AuditActionType.CertificateActivatedReportOnly,
                             $"Report-only mode: would activate pending certificate {pendingCert.Thumbprint} (expires {pendingCert.EndDateTime:yyyy-MM-dd}).",
                             activeCert.Thumbprint,
-                            pendingCert.Thumbprint);
+                            pendingCert.Thumbprint,
+                            performedBy);
                     }
                     else
                     {
@@ -344,7 +351,8 @@ public class CertificateRotationService : ICertificateRotationService
                                 AuditActionType.CertificateActivated,
                                 $"Activated certificate {pendingCert.Thumbprint} (expires {pendingCert.EndDateTime:yyyy-MM-dd})",
                                 activeCert.Thumbprint,
-                                pendingCert.Thumbprint);
+                                pendingCert.Thumbprint,
+                                performedBy);
 
                             await _notificationService.SendCertificateActivatedNotificationAsync(app, pendingCert);
                         }
@@ -370,7 +378,8 @@ public class CertificateRotationService : ICertificateRotationService
                 app.DisplayName,
                 AuditActionType.Error,
                 "Error during certificate rotation",
-                ex.Message);
+                ex.Message,
+                performedBy);
 
             await _notificationService.SendErrorNotificationAsync(app, ex.Message, "Rotation");
         }

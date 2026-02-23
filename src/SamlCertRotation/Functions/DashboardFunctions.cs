@@ -679,9 +679,12 @@ public class DashboardFunctions
 
         _logger.LogInformation("Manual report-only rotation triggered");
 
+        var identity = await ParseClientPrincipalAsync(req);
+        var performedBy = identity?.UserPrincipalName;
+
         try
         {
-            var results = await _rotationService.RunRotationAsync(true);
+            var results = await _rotationService.RunRotationAsync(true, performedBy);
             var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
             return await CreateJsonResponse(req, new
             {
@@ -726,9 +729,12 @@ public class DashboardFunctions
 
         _logger.LogInformation("Manual production rotation triggered");
 
+        var identity = await ParseClientPrincipalAsync(req);
+        var performedBy = identity?.UserPrincipalName;
+
         try
         {
-            var results = await _rotationService.RunRotationAsync(false);
+            var results = await _rotationService.RunRotationAsync(false, performedBy);
             var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
             return await CreateJsonResponse(req, new
             {
