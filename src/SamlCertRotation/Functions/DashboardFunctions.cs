@@ -414,6 +414,7 @@ public class DashboardFunctions
                 var beforeCreate = beforePolicy?.CreateCertDaysBeforeExpiry;
                 var beforeActivate = beforePolicy?.ActivateCertDaysBeforeExpiry;
                 var beforeAdditionalEmails = beforePolicy?.AdditionalNotificationEmails ?? "";
+                var beforeNotifyOverride = beforePolicy?.CreateCertsForNotifyOverride;
 
                 if (policy.CreateCertDaysBeforeExpiry != beforeCreate)
                     changes.Add($"CreateCertDaysBeforeExpiry: {beforeCreate?.ToString() ?? "global default"} → {policy.CreateCertDaysBeforeExpiry?.ToString() ?? "global default"}");
@@ -421,6 +422,11 @@ public class DashboardFunctions
                     changes.Add($"ActivateCertDaysBeforeExpiry: {beforeActivate?.ToString() ?? "global default"} → {policy.ActivateCertDaysBeforeExpiry?.ToString() ?? "global default"}");
                 if ((policy.AdditionalNotificationEmails ?? "") != beforeAdditionalEmails)
                     changes.Add($"AdditionalNotificationEmails: \"{beforeAdditionalEmails}\" → \"{policy.AdditionalNotificationEmails ?? ""}\"]");
+                if (policy.CreateCertsForNotifyOverride != beforeNotifyOverride)
+                {
+                    string FormatOverride(bool? v) => v switch { true => "Enabled", false => "Disabled", null => "Default (Global)" };
+                    changes.Add($"CreateCertsForNotifyOverride: {FormatOverride(beforeNotifyOverride)} → {FormatOverride(policy.CreateCertsForNotifyOverride)}");
+                }
 
                 if (changes.Count > 0)
                 {
@@ -568,6 +574,7 @@ public class DashboardFunctions
             var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
             var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
+            var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
 
             var settings = new
             {
@@ -581,7 +588,8 @@ public class DashboardFunctions
                 sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
-                sessionTimeoutMinutes
+                sessionTimeoutMinutes,
+                createCertsForNotifyApps
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -629,6 +637,7 @@ public class DashboardFunctions
             var beforeNotifyOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
             var beforeReminders = await _policyService.GetSponsorReminderDaysAsync();
             var beforeTimeout = await _policyService.GetSessionTimeoutMinutesAsync();
+            var beforeCreateCertsForNotify = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
 
             // Note: We can't actually update Azure App Settings from within the function
             // This would require Azure Management API access. For now, we'll store in Table Storage
@@ -686,12 +695,18 @@ public class DashboardFunctions
                 await _policyService.UpdateSessionTimeoutMinutesAsync(settings.SessionTimeoutMinutes.Value);
             }
 
+            if (settings.CreateCertsForNotifyApps.HasValue)
+            {
+                await _policyService.UpdateCreateCertsForNotifyAppsEnabledAsync(settings.CreateCertsForNotifyApps.Value);
+            }
+
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
             var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
             var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
+            var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
 
             // Build list of changed fields
             var changes = new List<string>();
@@ -713,6 +728,8 @@ public class DashboardFunctions
                 changes.Add($"SponsorThirdReminderDays: {beforeReminders.thirdReminderDays} → {settings.SponsorThirdReminderDays.Value}");
             if (settings.SessionTimeoutMinutes.HasValue && settings.SessionTimeoutMinutes.Value != beforeTimeout)
                 changes.Add($"SessionTimeoutMinutes: {beforeTimeout} → {settings.SessionTimeoutMinutes.Value}");
+            if (settings.CreateCertsForNotifyApps.HasValue && settings.CreateCertsForNotifyApps.Value != beforeCreateCertsForNotify)
+                changes.Add($"CreateCertsForNotifyApps: {beforeCreateCertsForNotify} → {settings.CreateCertsForNotifyApps.Value}");
 
             if (changes.Count > 0)
             {
@@ -737,7 +754,8 @@ public class DashboardFunctions
                 sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
-                sessionTimeoutMinutes
+                sessionTimeoutMinutes,
+                createCertsForNotifyApps
             });
         }
         catch (Exception ex)

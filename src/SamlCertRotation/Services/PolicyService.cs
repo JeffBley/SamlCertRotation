@@ -131,6 +131,13 @@ public class PolicyService : IPolicyService
     /// <inheritdoc />
     public async Task<bool> UpsertAppPolicyAsync(AppPolicy policy)
     {
+        // Validate create > activate when both are specified
+        if (policy.CreateCertDaysBeforeExpiry.HasValue && policy.ActivateCertDaysBeforeExpiry.HasValue)
+        {
+            if (policy.ActivateCertDaysBeforeExpiry.Value >= policy.CreateCertDaysBeforeExpiry.Value)
+                throw new ArgumentException("Activate cert days must be less than Create cert days.");
+        }
+
         try
         {
             await EnsureTableExistsAsync();
@@ -533,6 +540,51 @@ public class PolicyService : IPolicyService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating session timeout setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> GetCreateCertsForNotifyAppsEnabledAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "CreateCertsForNotifyApps");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting create-certs-for-notify-apps setting from storage");
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateCreateCertsForNotifyAppsEnabledAsync(bool enabled)
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "CreateCertsForNotifyApps")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated create-certs-for-notify-apps setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating create-certs-for-notify-apps setting");
             throw;
         }
     }

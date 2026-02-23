@@ -678,7 +678,7 @@
                 </div>
                 <div class="stat-card notify">
                     <div class="stat-value" id="stat-notify">-</div>
-                    <div class="stat-label">Notify Only</div>
+                    <div class="stat-label">Notify</div>
                 </div>
                 <div class="stat-card off">
                     <div class="stat-value" id="stat-off">-</div>
@@ -755,7 +755,7 @@
                             <div id="app-auto-rotate-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="on">On</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="off">Off</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notify">Notify Only</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notify">Notify</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notset">Not Set</label>
                             </div>
                         </div>
@@ -822,6 +822,14 @@
                     <div class="form-group">
                         <label for="activateDays">Activate new certificate (days before expiry)</label>
                         <input type="number" id="activateDays" min="1" max="365" value="30">
+                    </div>
+                    <div class="form-group">
+                        <label for="createCertsForNotifyApps">Create new certs for Notify apps</label>
+                        <select id="createCertsForNotifyApps" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                            <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                        <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, Notify apps will have new certificates automatically created (but not activated) before expiry. When disabled, Notify apps receive reminders only.</p>
                     </div>
                     <button class="btn btn-primary" id="btn-save-policy">Save Policy</button>
                 </div>
@@ -936,7 +944,7 @@
                         <p style="font-size:11px;color:#888;margin-top:4px;">App Sponsors will receive notifications about their applications.</p>
                     </div>
                     <div id="sponsor-reminder-settings" class="form-group" style="display:none;">
-                        <p style="font-size:11px;color:#888;margin-bottom:8px;">Applicable only for Notify-only SAML apps. Enter the number of days before expiration to notify sponsors (whole numbers, 1-180).</p>
+                        <p style="font-size:11px;color:#888;margin-bottom:8px;">Applicable only for Notify SAML apps. Enter the number of days before expiration to notify sponsors (whole numbers, 1-180).</p>
                         <label for="sponsorFirstReminderDays">1st reminder</label>
                         <input type="number" id="sponsorFirstReminderDays" min="1" max="180" step="1" value="30" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
                         <label for="sponsorSecondReminderDays" style="margin-top:10px;">2nd reminder</label>
@@ -1030,6 +1038,15 @@
                 <p style="font-size:11px;color:#888;margin-top:2px;">Leave blank to use the global default.</p>
             </div>
             <div id="editPolicyError" style="color:#d13438;font-size:12px;margin-bottom:8px;display:none;"></div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-weight:600;margin-bottom:4px;">Create certs for Notify apps</label>
+                <select id="editPolicyNotifyOverride" style="width:100%;padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                    <option value="default">Default (Global Policy)</option>
+                    <option value="enabled">Enabled</option>
+                    <option value="disabled">Disabled</option>
+                </select>
+                <p style="font-size:11px;color:#888;margin-top:2px;">Override the global setting for this app.</p>
+            </div>
             <div class="modal-buttons">
                 <button class="btn-cancel" id="btn-edit-policy-cancel">Cancel</button>
                 <button class="btn btn-primary" id="btn-edit-policy-save">Save</button>

@@ -407,7 +407,7 @@ public class NotificationService : INotificationService
             <div class='stats-grid'>
                 <div class='stat-card'>
                     <div class='stat-value' style='color: #0078d4;'>{stats.AppsWithAutoRotateNotify}</div>
-                    <div class='stat-label'>Notify Only</div>
+                    <div class='stat-label'>Notify</div>
                 </div>
                 <div class='stat-card'>
                     <div class='stat-value' style='color: #797775;'>{stats.AppsWithAutoRotateNull}</div>
@@ -468,7 +468,7 @@ public class NotificationService : INotificationService
         </div>
         <div class='content'>
             <div class='warning'>
-                <strong>This application is configured as Notify Only.</strong><br/>
+                <strong>This application is configured as Notify.</strong><br/>
                 The current signing certificate expires in <strong>{daysUntilExpiry} day(s)</strong>.
             </div>
             <div class='details'>
@@ -480,7 +480,7 @@ public class NotificationService : INotificationService
                 <p><span class='label'>Expires On:</span> {cert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
                 <a class='button' href='{H(appPortalUrl)}'>Open Enterprise Application</a>
             </div>
-            <p style='margin-top:16px;'>No automatic rotation will occur while Auto-Rotate is set to Notify Only.</p>
+            <p style='margin-top:16px;'>No automatic rotation will occur while Auto-Rotate is set to Notify.</p>
         </div>
         <div class='footer'>
             This is an automated message from the SAML Certificate Rotation Tool.

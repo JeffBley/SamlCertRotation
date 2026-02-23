@@ -49,4 +49,9 @@ public class SettingsUpdateRequest
     /// Session timeout in minutes (0 = disabled)
     /// </summary>
     public int? SessionTimeoutMinutes { get; set; }
+
+    /// <summary>
+    /// Whether to automatically create (but not activate) new certificates for notify-only apps
+    /// </summary>
+    public bool? CreateCertsForNotifyApps { get; set; }
 }

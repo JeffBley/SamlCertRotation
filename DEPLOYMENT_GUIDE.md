@@ -1117,7 +1117,7 @@ npx -y @azure/static-web-apps-cli deploy ./dist `
 
 # 4) Validate latest content is served
 $SWA_HOST = az staticwebapp show --resource-group $RESOURCE_GROUP --name $STATIC_WEB_APP_NAME --query "defaultHostname" -o tsv
-(Invoke-WebRequest "https://$SWA_HOST/index.html" -UseBasicParsing).Content | Select-String "Notify Only|Run - Report-only|Notification Settings"
+(Invoke-WebRequest "https://$SWA_HOST/index.html" -UseBasicParsing).Content | Select-String "Notify|Run - Report-only|Notification Settings"
 ```
 
 ### "Permission denied" or "Insufficient privileges"

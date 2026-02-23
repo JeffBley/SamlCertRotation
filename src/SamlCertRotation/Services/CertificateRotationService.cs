@@ -94,13 +94,17 @@ public class CertificateRotationService : ICertificateRotationService
             await SendAutomaticExpirationNotificationsAsync(apps, auditCache);
 
             // Log completion
-            var reportOnlyCreateCount = results.Count(r => string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase));
+            var reportOnlyCreateCount = results.Count(r => 
+                string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Would Create (Notify)", StringComparison.OrdinalIgnoreCase));
             var reportOnlyActivateCount = results.Count(r => string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase));
             var successCount = results.Count(r =>
                 r.Success && (
                     string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.Action, "Created (Notify)", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.Action, "Would Create (Notify)", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase)));
             var failedCount = results.Count(r => !r.Success);
             var skippedCount = Math.Max(0, results.Count - successCount - failedCount);
@@ -171,31 +175,75 @@ public class CertificateRotationService : ICertificateRotationService
             {
                 var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
                 var notifyMilestone = GetNotifyMilestoneToSend(app, activeCert, daysUntilExpiry, sponsorReminderDays, auditCache);
-                if (notifyMilestone == null)
+                if (notifyMilestone != null)
                 {
-                    result.Action = "None";
-                    return result;
+                    var appUrl = UrlHelper.BuildEntraManagedAppUrl(app.Id, app.AppId);
+                    var sent = await _notificationService.SendNotifyOnlyReminderAsync(app, activeCert, daysUntilExpiry, appUrl, notifyMilestone);
+
+                    if (sent)
+                    {
+                        result.Action = "Notified";
+                        await _auditService.LogSuccessAsync(
+                            app.Id,
+                            app.DisplayName,
+                            AuditActionType.CertificateExpiringSoon,
+                            $"Notify reminder sent. Milestone: {notifyMilestone}. Days remaining: {daysUntilExpiry}. Link: {appUrl}",
+                            activeCert.Thumbprint,
+                            performedBy: performedBy);
+                    }
                 }
 
-                var appUrl = UrlHelper.BuildEntraManagedAppUrl(app.Id, app.AppId);
-                var sent = await _notificationService.SendNotifyOnlyReminderAsync(app, activeCert, daysUntilExpiry, appUrl, notifyMilestone);
-
-                if (sent)
+                // Optionally auto-create (but never activate) certs for notify-only apps
+                var createCertsForNotify = await ResolveCreateCertsForNotifyAsync(app.Id);
+                if (createCertsForNotify && daysUntilExpiry <= policy.CreateCertDaysBeforeExpiry)
                 {
-                    result.Action = "Notified";
-                    await _auditService.LogSuccessAsync(
-                        app.Id,
-                        app.DisplayName,
-                        AuditActionType.CertificateExpiringSoon,
-                        $"NotifyOnly reminder sent. Milestone: {notifyMilestone}. Days remaining: {daysUntilExpiry}. Link: {appUrl}",
-                        activeCert.Thumbprint,
-                        performedBy: performedBy);
-                }
-                else
-                {
-                    result.Action = "None";
+                    var newerInactiveCert = app.Certificates
+                        .Where(c => !c.IsActive && c.EndDateTime > activeCert.EndDateTime)
+                        .OrderByDescending(c => c.EndDateTime)
+                        .FirstOrDefault();
+
+                    if (newerInactiveCert == null)
+                    {
+                        if (reportOnlyMode)
+                        {
+                            result.Action = "Would Create (Notify)";
+                            await _auditService.LogSuccessAsync(
+                                app.Id,
+                                app.DisplayName,
+                                AuditActionType.CertificateCreatedReportOnly,
+                                $"Report-only mode: would create a new certificate for notify-only app. Active cert expires in {daysUntilExpiry} day(s).",
+                                activeCert.Thumbprint,
+                                performedBy: performedBy);
+                        }
+                        else
+                        {
+                            _logger.LogInformation("Creating new certificate for notify-only app {AppName}", app.DisplayName);
+                            var newCert = await _graphService.CreateSamlCertificateAsync(app.Id);
+                            if (newCert != null)
+                            {
+                                result.Action = "Created (Notify)";
+                                result.NewCertificateThumbprint = newCert.Thumbprint;
+                                await _auditService.LogSuccessAsync(
+                                    app.Id,
+                                    app.DisplayName,
+                                    AuditActionType.CertificateCreated,
+                                    $"Created new certificate for notify-only app, expiring {newCert.EndDateTime:yyyy-MM-dd}. Certificate will NOT be auto-activated.",
+                                    activeCert.Thumbprint,
+                                    newCert.Thumbprint,
+                                    performedBy);
+                                await _notificationService.SendCertificateCreatedNotificationAsync(app, newCert);
+                            }
+                            else
+                            {
+                                result.Success = false;
+                                result.Action = "Create Failed";
+                                result.ErrorMessage = "Certificate creation returned null";
+                            }
+                        }
+                    }
                 }
 
+                if (string.IsNullOrEmpty(result.Action)) result.Action = "None";
                 return result;
             }
 
@@ -631,6 +679,20 @@ public class CertificateRotationService : ICertificateRotationService
             string.Equals(entry.ActionType, AuditActionType.SponsorExpirationReminderSent, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(entry.CertificateThumbprint, activeThumbprint, StringComparison.OrdinalIgnoreCase) &&
             (entry.Description?.Contains($"Milestone: {milestoneLabel}", StringComparison.OrdinalIgnoreCase) ?? false));
+    }
+
+    /// <summary>
+    /// Resolve whether cert creation is enabled for a notify-only app,
+    /// considering the app-specific override and the global setting.
+    /// </summary>
+    private async Task<bool> ResolveCreateCertsForNotifyAsync(string servicePrincipalId)
+    {
+        var appPolicy = await _policyService.GetAppPolicyAsync(servicePrincipalId);
+        if (appPolicy?.CreateCertsForNotifyOverride != null)
+        {
+            return appPolicy.CreateCertsForNotifyOverride.Value;
+        }
+        return await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
     }
 
 }

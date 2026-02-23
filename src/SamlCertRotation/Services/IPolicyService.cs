@@ -106,4 +106,14 @@ public interface IPolicyService
     /// Update session timeout in minutes (0 = disabled)
     /// </summary>
     Task UpdateSessionTimeoutMinutesAsync(int minutes);
+
+    /// <summary>
+    /// Get whether to auto-create (but not activate) certs for notify-only apps (default true/enabled)
+    /// </summary>
+    Task<bool> GetCreateCertsForNotifyAppsEnabledAsync();
+
+    /// <summary>
+    /// Update the create-certs-for-notify-apps setting
+    /// </summary>
+    Task UpdateCreateCertsForNotifyAppsEnabledAsync(bool enabled);
 }

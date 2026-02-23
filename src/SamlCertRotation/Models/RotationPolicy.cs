@@ -80,6 +80,11 @@ public class AppPolicy : ITableEntity
     public int? ActivateCertDaysBeforeExpiry { get; set; }
 
     /// <summary>
+    /// Override: create certs for notify-only apps (null = use global, true = enabled, false = disabled)
+    /// </summary>
+    public bool? CreateCertsForNotifyOverride { get; set; }
+
+    /// <summary>
     /// Additional notification emails specific to this app
     /// </summary>
     public string? AdditionalNotificationEmails { get; set; }

@@ -357,7 +357,7 @@ function updateAppAutoRotateFilterLabel() {
     } else if (selected.length <= 2) {
         label.textContent = selected.map(value => {
             if (value === 'notset') return 'Not Set';
-            if (value === 'notify') return 'Notify Only';
+            if (value === 'notify') return 'Notify';
             return value.charAt(0).toUpperCase() + value.slice(1);
         }).join(', ');
     } else {
@@ -551,10 +551,13 @@ async function editPolicy(appId, appName) {
         if (result.isAppSpecific) {
             document.getElementById('editPolicyCreateDays').value = result.policy.createCertDaysBeforeExpiry ?? '';
             document.getElementById('editPolicyActivateDays').value = result.policy.activateCertDaysBeforeExpiry ?? '';
+            const override = result.policy.createCertsForNotifyOverride;
+            document.getElementById('editPolicyNotifyOverride').value = override === true ? 'enabled' : override === false ? 'disabled' : 'default';
         } else {
             // No app-specific policy — leave blank (will use global)
             document.getElementById('editPolicyCreateDays').value = '';
             document.getElementById('editPolicyActivateDays').value = '';
+            document.getElementById('editPolicyNotifyOverride').value = 'default';
         }
 
         document.getElementById('editPolicyModal').classList.add('show');
@@ -583,6 +586,15 @@ async function saveAppPolicy() {
         return;
     }
 
+    if (createDays !== null && activateDays !== null && activateDays >= createDays) {
+        errorEl.textContent = 'Activate cert days must be less than Create cert days.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    const notifyOverrideVal = document.getElementById('editPolicyNotifyOverride').value;
+    const createCertsForNotifyOverride = notifyOverrideVal === 'enabled' ? true : notifyOverrideVal === 'disabled' ? false : null;
+
     try {
         showLoading('Saving app policy...');
         document.getElementById('editPolicyModal').classList.remove('show');
@@ -591,7 +603,8 @@ async function saveAppPolicy() {
             body: JSON.stringify({
                 appDisplayName: editPolicyAppName,
                 createCertDaysBeforeExpiry: createDays,
-                activateCertDaysBeforeExpiry: activateDays
+                activateCertDaysBeforeExpiry: activateDays,
+                createCertsForNotifyOverride: createCertsForNotifyOverride
             })
         });
         showSuccess(`Policy updated for ${editPolicyAppName}`);
@@ -912,7 +925,7 @@ function renderApps(apps) {
                         <td${hide('sponsor')}>${escapeHtml(app.sponsor) || 'Not Set'}</td>
                         <td${hide('autoRotate')}>
                             <span class="status-badge status-${autoRotateStatusClass}">
-                                ${((app.autoRotateStatus || '').toLowerCase() === 'notify') ? 'Notify Only' : (escapeHtml(app.autoRotateStatus) || 'Not Set')}
+                                ${((app.autoRotateStatus || '').toLowerCase() === 'notify') ? 'Notify' : (escapeHtml(app.autoRotateStatus) || 'Not Set')}
                             </span>
                         </td>
                         <td${hide('certExpiry')}>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
@@ -962,6 +975,9 @@ async function loadPolicy() {
         const policy = await apiCall('policy');
         document.getElementById('createDays').value = policy.createCertDaysBeforeExpiry;
         document.getElementById('activateDays').value = policy.activateCertDaysBeforeExpiry;
+
+        const settings = await apiCall('settings');
+        document.getElementById('createCertsForNotifyApps').value = settings.createCertsForNotifyApps === false ? 'disabled' : 'enabled';
     } catch (error) {
         console.error('Failed to load policy:', error);
     }
@@ -970,15 +986,38 @@ async function loadPolicy() {
 // Save policy settings
 async function savePolicy() {
     try {
+        const createDays = parseInt(document.getElementById('createDays').value);
+        const activateDays = parseInt(document.getElementById('activateDays').value);
+
+        if (isNaN(createDays) || createDays < 1 || createDays > 365) {
+            showError('Create cert days must be between 1 and 365.');
+            return;
+        }
+        if (isNaN(activateDays) || activateDays < 1 || activateDays > 365) {
+            showError('Activate cert days must be between 1 and 365.');
+            return;
+        }
+        if (activateDays >= createDays) {
+            showError('Activate cert days must be less than Create cert days.');
+            return;
+        }
+
         const policy = {
-            createCertDaysBeforeExpiry: parseInt(document.getElementById('createDays').value),
-            activateCertDaysBeforeExpiry: parseInt(document.getElementById('activateDays').value),
+            createCertDaysBeforeExpiry: createDays,
+            activateCertDaysBeforeExpiry: activateDays,
             isEnabled: true
         };
         await apiCall('policy', {
             method: 'PUT',
             body: JSON.stringify(policy)
         });
+
+        const createCertsForNotify = document.getElementById('createCertsForNotifyApps').value === 'enabled';
+        await apiCall('settings', {
+            method: 'PUT',
+            body: JSON.stringify({ createCertsForNotifyApps: createCertsForNotify })
+        });
+
         showSuccess('Policy saved successfully!');
     } catch (error) {
         showError('Failed to save policy: ' + error.message);
