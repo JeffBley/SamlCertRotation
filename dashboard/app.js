@@ -280,6 +280,53 @@ function toggleAppStatusFilterDropdown(event) {
     }
 }
 
+function toggleAppPolicyTypeFilterDropdown(event) {
+    event.stopPropagation();
+    const dropdown = document.getElementById('app-policy-type-filter-dropdown');
+    const wasOpen = dropdown.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) {
+        dropdown.classList.add('show');
+    }
+}
+
+function toggleAuditFilterPanel() {
+    const panel = document.getElementById('audit-filter-panel');
+    const btn = document.getElementById('btn-toggle-audit-filters');
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        btn.textContent = 'Hide Filters';
+    } else {
+        panel.style.display = 'none';
+        btn.textContent = 'Add Filter';
+    }
+}
+
+function toggleAppFilterPanel() {
+    const panel = document.getElementById('app-filter-panel');
+    const btn = document.getElementById('btn-toggle-app-filters');
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        btn.textContent = 'Hide Filters';
+    } else {
+        panel.style.display = 'none';
+        btn.textContent = 'Add Filters';
+    }
+}
+
+function clearAppFilters() {
+    document.querySelectorAll('.app-auto-rotate-filter-option-input').forEach(input => { input.checked = false; });
+    document.querySelectorAll('.app-status-filter-option-input').forEach(input => { input.checked = false; });
+    document.querySelectorAll('.app-policy-type-filter-option-input').forEach(input => { input.checked = false; });
+    document.getElementById('app-sponsor-search').value = '';
+    updateAppAutoRotateFilterLabel();
+    updateAppStatusFilterLabel();
+    updateAppPolicyTypeFilterLabel();
+    document.getElementById('app-filter-panel').style.display = 'none';
+    document.getElementById('btn-toggle-app-filters').textContent = 'Add Filters';
+    applyFilters();
+}
+
 function getSelectedAppAutoRotateFilters() {
     return Array.from(document.querySelectorAll('.app-auto-rotate-filter-option-input:checked'))
         .map(input => input.value);
@@ -287,6 +334,11 @@ function getSelectedAppAutoRotateFilters() {
 
 function getSelectedAppStatusFilters() {
     return Array.from(document.querySelectorAll('.app-status-filter-option-input:checked'))
+        .map(input => input.value);
+}
+
+function getSelectedAppPolicyTypeFilters() {
+    return Array.from(document.querySelectorAll('.app-policy-type-filter-option-input:checked'))
         .map(input => input.value);
 }
 
@@ -322,9 +374,24 @@ function updateAppStatusFilterLabel() {
     }
 }
 
+function updateAppPolicyTypeFilterLabel() {
+    const selected = getSelectedAppPolicyTypeFilters();
+    const label = document.getElementById('app-policy-type-filter-label');
+    if (!label) return;
+
+    if (selected.length === 0) {
+        label.textContent = 'Policy Type';
+    } else if (selected.length <= 2) {
+        label.textContent = selected.join(', ');
+    } else {
+        label.textContent = `${selected.length} selected`;
+    }
+}
+
 function onAppFilterChanged() {
     updateAppAutoRotateFilterLabel();
     updateAppStatusFilterLabel();
+    updateAppPolicyTypeFilterLabel();
     applyFilters();
 }
 
@@ -355,6 +422,7 @@ function getFilteredApps() {
     const sponsorTerm = (document.getElementById('app-sponsor-search')?.value || '').trim().toLowerCase();
     const selectedAutoRotateFilters = getSelectedAppAutoRotateFilters();
     const selectedStatusFilters = getSelectedAppStatusFilters();
+    const selectedPolicyTypeFilters = getSelectedAppPolicyTypeFilters();
 
     return allApps.filter(app => {
         const status = (app.autoRotateStatus || '').toLowerCase();
@@ -369,10 +437,11 @@ function getFilteredApps() {
 
         const autoRotateMatch = selectedAutoRotateFilters.length === 0 || selectedAutoRotateFilters.includes(autoRotateValue);
         const statusMatch = selectedStatusFilters.length === 0 || selectedStatusFilters.includes(computedStatus);
+        const policyTypeMatch = selectedPolicyTypeFilters.length === 0 || selectedPolicyTypeFilters.includes(app.policyType || 'Global');
         const nameMatch = !searchTerm || (app.displayName || '').toLowerCase().includes(searchTerm);
         const sponsorMatch = !sponsorTerm || (app.sponsor || '').toLowerCase().includes(sponsorTerm);
 
-        return autoRotateMatch && statusMatch && nameMatch && sponsorMatch;
+        return autoRotateMatch && statusMatch && policyTypeMatch && nameMatch && sponsorMatch;
     });
 }
 
@@ -1210,6 +1279,8 @@ function clearAuditFilters() {
         input.checked = false;
     });
     updateAuditActionFilterLabel();
+    document.getElementById('audit-filter-panel').style.display = 'none';
+    document.getElementById('btn-toggle-audit-filters').textContent = 'Add Filter';
     applyAuditFilters();
 }
 
@@ -1491,12 +1562,17 @@ document.getElementById('app-search').addEventListener('input', applyFilters);
 document.getElementById('app-sponsor-search').addEventListener('input', applyFilters);
 document.getElementById('app-sort-by').addEventListener('change', applyFilters);
 document.getElementById('app-sort-direction').addEventListener('change', applyFilters);
+document.getElementById('btn-toggle-app-filters').addEventListener('click', toggleAppFilterPanel);
+document.getElementById('btn-clear-app-filters').addEventListener('click', clearAppFilters);
 document.getElementById('app-auto-rotate-filter-toggle').addEventListener('click', function (e) { toggleAppAutoRotateFilterDropdown(e); });
 document.getElementById('app-auto-rotate-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
 document.querySelectorAll('.app-auto-rotate-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAppFilterChanged); });
 document.getElementById('app-status-filter-toggle').addEventListener('click', function (e) { toggleAppStatusFilterDropdown(e); });
 document.getElementById('app-status-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
 document.querySelectorAll('.app-status-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAppFilterChanged); });
+document.getElementById('app-policy-type-filter-toggle').addEventListener('click', function (e) { toggleAppPolicyTypeFilterDropdown(e); });
+document.getElementById('app-policy-type-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
+document.querySelectorAll('.app-policy-type-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAppFilterChanged); });
 
 // Columns filter
 document.getElementById('app-columns-filter-toggle').addEventListener('click', function (e) {
@@ -1521,10 +1597,11 @@ document.getElementById('btn-save-policy').addEventListener('click', savePolicy)
 document.getElementById('btn-refresh-audit').addEventListener('click', loadAuditLog);
 document.getElementById('audit-from-date').addEventListener('change', loadAuditLog);
 document.getElementById('audit-to-date').addEventListener('change', loadAuditLog);
+document.getElementById('btn-toggle-audit-filters').addEventListener('click', toggleAuditFilterPanel);
 document.getElementById('audit-action-filter-toggle').addEventListener('click', function (e) { toggleAuditActionFilterDropdown(e); });
 document.getElementById('audit-action-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
 document.querySelectorAll('.audit-action-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAuditActionFilterChanged); });
-document.getElementById('btn-add-audit-filter').addEventListener('click', addAuditFilterRow);
+document.getElementById('btn-add-audit-column-filter').addEventListener('click', addAuditFilterRow);
 document.getElementById('btn-clear-audit-filters').addEventListener('click', clearAuditFilters);
 document.getElementById('audit-sort-by').addEventListener('change', applyAuditFilters);
 document.getElementById('audit-sort-direction').addEventListener('change', applyAuditFilters);
@@ -1575,6 +1652,7 @@ document.addEventListener('click', function (e) {
     updateAuditActionFilterLabel();
     updateAppAutoRotateFilterLabel();
     updateAppStatusFilterLabel();
+    updateAppPolicyTypeFilterLabel();
     setDefaultAuditDateRange();
     await loadCurrentUserRoles();
     if (!enforceRoleAccessOrRedirect()) {

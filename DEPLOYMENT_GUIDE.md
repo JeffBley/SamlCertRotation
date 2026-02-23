@@ -276,8 +276,7 @@ $graphSP = Get-MgServicePrincipal -Filter "displayName eq 'Microsoft Graph'" | S
 
 # Define required permissions
 $requiredPermissions = @(
-    "Application.ReadWrite.All",
-    "CustomSecAttributeAssignment.Read.All"
+    "Application.ReadWrite.All"
 )
 
 # Grant each permission
@@ -415,22 +414,7 @@ Write-Host "Client ID: $CLIENT_ID"
 Write-Host "App Object ID: $APP_OBJECT_ID"
 ```
 
-### 7.2 Create Client Secret
-
-```powershell
-# Create client secret (valid for 2 years)
-$CLIENT_SECRET = az ad app credential reset `
-    --id $CLIENT_ID `
-    --display-name "SWA Auth Secret" `
-    --years 2 `
-    --query "password" -o tsv
-
-Write-Host "Client secret generated successfully. Length: $($CLIENT_SECRET.Length)"
-Write-Host "Client Secret: $CLIENT_SECRET"
-Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!" -ForegroundColor Red
-```
-
-### 7.3 Configure App Roles in the App Registration
+### 7.2 Configure App Roles in the App Registration
 
 Configure the two app roles used by dashboard authorization.
 
@@ -448,7 +432,7 @@ Configure the two app roles used by dashboard authorization.
     - **Value**: `SamlCertRotation.Reader`
     - **Description**: `Read-only dashboard access`
 
-### 7.4 Create Service Principal (Enterprise App)
+### 7.3 Create Service Principal (Enterprise App)
 This will create the Enterprise App that will control who has access to the app's portal.
 
 ```powershell
@@ -474,7 +458,7 @@ az rest --method PATCH `
     --body '{"appRoleAssignmentRequired": true}'
 ```
 
-### 7.5 Grant Admin Consent for Microsoft Graph Permissions (Optional)
+### 7.4 Grant Admin Consent for Microsoft Graph Permissions (Optional)
 
 Grant admin consent for delegated Microsoft Graph permissions (`openid`, `profile`, `email`) used during SWA authentication. This avoids users seeing a consent prompt on first sign-in.
 
@@ -509,7 +493,7 @@ foreach ($perm in $PERMISSIONS) {
 
 > **Note**: If you skip this step, users will be prompted to consent to these permissions on their first sign-in. This is harmless but may confuse users.
 
-### 7.6 Configure User/Group Assignment
+### 7.5 Configure User/Group Assignment
 
 Now assign users or groups to the application in the Entra Portal (assumes your group already exists):
 
@@ -524,6 +508,21 @@ Now assign users or groups to the application in the Entra Portal (assumes your 
 7. Click **Assign**
 
 > **Important**: Users who are not assigned to the Enterprise Application will receive an "Access Denied" error when trying to access the dashboard.
+
+### 7.6 Create Client Secret
+
+```powershell
+# Create client secret (valid for 2 years)
+$CLIENT_SECRET = az ad app credential reset `
+    --id $CLIENT_ID `
+    --display-name "SWA Auth Secret" `
+    --years 2 `
+    --query "password" -o tsv
+
+Write-Host "Client secret generated successfully. Length: $($CLIENT_SECRET.Length)"
+Write-Host "Client Secret: $CLIENT_SECRET"
+Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!" -ForegroundColor Red
+```
 
 ### 7.7 Store Client Secret in Key Vault
 

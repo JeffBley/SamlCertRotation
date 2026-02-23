@@ -712,34 +712,10 @@
                     </div>
                 </div>
                 <div class="filter-bar">
-                    <label>Filter:</label>
                     <div class="filter-group">
                         <input type="text" id="app-search" placeholder="Search application name..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:240px;">
-                        <div class="multi-select-filter-wrapper">
-                            <button type="button" id="app-auto-rotate-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
-                                <span id="app-auto-rotate-filter-label">Auto-Rotate</span>
-                                <span>▾</span>
-                            </button>
-                            <div id="app-auto-rotate-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="on">On</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="off">Off</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notify">Notify Only</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notset">Not Set</label>
-                            </div>
-                        </div>
-                        <div class="multi-select-filter-wrapper">
-                            <button type="button" id="app-status-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
-                                <span id="app-status-filter-label">Status</span>
-                                <span>▾</span>
-                            </button>
-                            <div id="app-status-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="expired">Expired</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="critical">Critical</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="warning">Warning</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="ok">OK</label>
-                            </div>
-                        </div>
-                        <input type="text" id="app-sponsor-search" placeholder="Filter by sponsor..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
+                        <button class="btn btn-secondary" id="btn-toggle-app-filters">Add Filters</button>
+                        <button class="btn btn-secondary" id="btn-clear-app-filters">Clear Filters</button>
                         <select id="app-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
                             <option value="name">Sort: Name</option>
                             <option value="daysRemaining">Sort: Days Remaining</option>
@@ -766,6 +742,45 @@
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="activateCertDays">Activate Cert (days)</label>
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div id="app-filter-panel" style="display:none;padding:12px 16px;background:#f8f8f8;border-radius:6px;margin-bottom:16px;">
+                    <div class="filter-group" style="flex-wrap:wrap;gap:12px;align-items:center;">
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="app-auto-rotate-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="app-auto-rotate-filter-label">Auto-Rotate</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="app-auto-rotate-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="on">On</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="off">Off</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notify">Notify Only</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-auto-rotate-filter-option-input" value="notset">Not Set</label>
+                            </div>
+                        </div>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="app-status-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="app-status-filter-label">Status</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="app-status-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="expired">Expired</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="critical">Critical</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="warning">Warning</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-status-filter-option-input" value="ok">OK</label>
+                            </div>
+                        </div>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="app-policy-type-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="app-policy-type-filter-label">Policy Type</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="app-policy-type-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-policy-type-filter-option-input" value="Global">Global</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-policy-type-filter-option-input" value="App-Specific">App-Specific</label>
+                            </div>
+                        </div>
+                        <input type="text" id="app-sponsor-search" placeholder="Filter by sponsor..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
                     </div>
                 </div>
                 <div id="apps-table-container">
@@ -829,22 +844,7 @@
                             To
                             <input type="date" id="audit-to-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;">
                         </label>
-                        <div class="multi-select-filter-wrapper">
-                            <button type="button" id="audit-action-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
-                                <span id="audit-action-filter-label">Actions</span>
-                                <span>▾</span>
-                            </button>
-                            <div id="audit-action-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompleted">ScanCompleted</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompletedReportOnly">ScanCompletedReportOnly</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreated">CertificateCreated</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreatedReportOnly">CertificateCreatedReportOnly</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivated">CertificateActivated</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivatedReportOnly">CertificateActivatedReportOnly</label>
-                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="Error">Error</label>
-                            </div>
-                        </div>
-                        <button class="btn btn-secondary" id="btn-add-audit-filter">Add Filter</button>
+                        <button class="btn btn-secondary" id="btn-toggle-audit-filters">Add Filter</button>
                         <button class="btn btn-secondary" id="btn-clear-audit-filters">Clear Filters</button>
                         <select id="audit-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
                             <option value="time">Sort: Time</option>
@@ -859,7 +859,28 @@
                         </select>
                     </div>
                 </div>
-                <div id="audit-dynamic-filters" class="filter-group" style="margin-bottom: 16px;"></div>
+                <div id="audit-filter-panel" style="display:none;padding:12px 16px;background:#f8f8f8;border-radius:6px;margin-bottom:16px;">
+                    <div class="filter-group" style="flex-wrap:wrap;gap:12px;align-items:center;">
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="audit-action-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="audit-action-filter-label">Actions</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="audit-action-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompleted">ScanCompleted</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="ScanCompletedReportOnly">ScanCompletedReportOnly</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreated">CertificateCreated</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateCreatedReportOnly">CertificateCreatedReportOnly</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivated">CertificateActivated</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivatedReportOnly">CertificateActivatedReportOnly</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="SettingsUpdated">SettingsUpdated</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="Error">Error</label>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary" id="btn-add-audit-column-filter">+ Add Column Filter</button>
+                    </div>
+                    <div id="audit-dynamic-filters" class="filter-group" style="margin-top:12px;flex-direction:column;gap:8px;"></div>
+                </div>
                 <div id="audit-table-container">
                     <div class="loading">Loading audit log...</div>
                 </div>
