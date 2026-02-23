@@ -28,6 +28,7 @@ public class DashboardFunctions
     private readonly IPolicyService _policyService;
     private readonly IAuditService _auditService;
     private readonly INotificationService _notificationService;
+    private readonly IReportService _reportService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<DashboardFunctions> _logger;
     private readonly string? _tenantId;
@@ -46,6 +47,7 @@ public class DashboardFunctions
         IPolicyService policyService,
         IAuditService auditService,
         INotificationService notificationService,
+        IReportService reportService,
         IConfiguration configuration,
         ILogger<DashboardFunctions> logger)
     {
@@ -54,6 +56,7 @@ public class DashboardFunctions
         _policyService = policyService;
         _auditService = auditService;
         _notificationService = notificationService;
+        _reportService = reportService;
         _configuration = configuration;
         _logger = logger;
 
@@ -577,6 +580,7 @@ public class DashboardFunctions
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
             var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
             var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
+            var reportsRetentionPolicyDays = await _policyService.GetReportsRetentionPolicyDaysAsync();
 
             var settings = new
             {
@@ -593,7 +597,8 @@ public class DashboardFunctions
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
                 sessionTimeoutMinutes,
-                createCertsForNotifyApps
+                createCertsForNotifyApps,
+                reportsRetentionPolicyDays
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -644,6 +649,7 @@ public class DashboardFunctions
             var beforeReminders = await _policyService.GetSponsorReminderDaysAsync();
             var beforeTimeout = await _policyService.GetSessionTimeoutMinutesAsync();
             var beforeCreateCertsForNotify = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
+            var beforeReportsRetention = await _policyService.GetReportsRetentionPolicyDaysAsync();
 
             // Note: We can't actually update Azure App Settings from within the function
             // This would require Azure Management API access. For now, we'll store in Table Storage
@@ -720,6 +726,15 @@ public class DashboardFunctions
                 await _policyService.UpdateCreateCertsForNotifyAppsEnabledAsync(settings.CreateCertsForNotifyApps.Value);
             }
 
+            if (settings.ReportsRetentionPolicyDays.HasValue)
+            {
+                if (settings.ReportsRetentionPolicyDays.Value < 1)
+                {
+                    return await CreateErrorResponse(req, "Reports retention policy must be at least 1 day", HttpStatusCode.BadRequest);
+                }
+                await _policyService.UpdateReportsRetentionPolicyDaysAsync(settings.ReportsRetentionPolicyDays.Value);
+            }
+
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
@@ -729,6 +744,7 @@ public class DashboardFunctions
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
             var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
             var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
+            var reportsRetentionPolicyDays = await _policyService.GetReportsRetentionPolicyDaysAsync();
 
             // Build list of changed fields
             var changes = new List<string>();
@@ -756,6 +772,8 @@ public class DashboardFunctions
                 changes.Add($"SessionTimeoutMinutes: {beforeTimeout} → {settings.SessionTimeoutMinutes.Value}");
             if (settings.CreateCertsForNotifyApps.HasValue && settings.CreateCertsForNotifyApps.Value != beforeCreateCertsForNotify)
                 changes.Add($"CreateCertsForNotifyApps: {beforeCreateCertsForNotify} → {settings.CreateCertsForNotifyApps.Value}");
+            if (settings.ReportsRetentionPolicyDays.HasValue && settings.ReportsRetentionPolicyDays.Value != beforeReportsRetention)
+                changes.Add($"ReportsRetentionPolicyDays: {beforeReportsRetention} → {settings.ReportsRetentionPolicyDays.Value}");
 
             if (changes.Count > 0)
             {
@@ -783,7 +801,8 @@ public class DashboardFunctions
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
                 sessionTimeoutMinutes,
-                createCertsForNotifyApps
+                createCertsForNotifyApps,
+                reportsRetentionPolicyDays
             });
         }
         catch (Exception ex)
@@ -825,6 +844,21 @@ public class DashboardFunctions
         {
             var results = await _rotationService.RunRotationAsync(true, performedBy);
             var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
+
+            // Save run report
+            var report = new RunReport
+            {
+                RunDate = DateTime.UtcNow,
+                Mode = "report-only",
+                TriggeredBy = performedBy ?? "Manual",
+                TotalProcessed = results.Count,
+                Successful = successful,
+                Skipped = skipped,
+                Failed = failed,
+                ResultsJson = JsonSerializer.Serialize(results, JsonOptions)
+            };
+            await _reportService.SaveRunReportAsync(report);
+
             return await CreateJsonResponse(req, new
             {
                 message = "Report-only run completed",
@@ -875,6 +909,21 @@ public class DashboardFunctions
         {
             var results = await _rotationService.RunRotationAsync(false, performedBy);
             var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
+
+            // Save run report
+            var report = new RunReport
+            {
+                RunDate = DateTime.UtcNow,
+                Mode = "prod",
+                TriggeredBy = performedBy ?? "Manual",
+                TotalProcessed = results.Count,
+                Successful = successful,
+                Skipped = skipped,
+                Failed = failed,
+                ResultsJson = JsonSerializer.Serialize(results, JsonOptions)
+            };
+            await _reportService.SaveRunReportAsync(report);
+
             return await CreateJsonResponse(req, new
             {
                 message = "Completed production rotation run",
@@ -901,6 +950,93 @@ public class DashboardFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "rotation/trigger/prod")] HttpRequestData req)
     {
         return TriggerRotationProd(req);
+    }
+
+    /// <summary>
+    /// Get all run reports within the configured retention window.
+    /// Returns a list of report summaries (without per-app detail).
+    /// </summary>
+    [Function("GetRunReports")]
+    public async Task<HttpResponseData> GetRunReports(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "reports")] HttpRequestData req)
+    {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        try
+        {
+            var retentionDays = await _policyService.GetReportsRetentionPolicyDaysAsync();
+            var reports = await _reportService.GetRunReportsAsync(retentionDays);
+
+            // Return summaries without the full ResultsJson
+            var summaries = reports.Select(r => new
+            {
+                id = r.RowKey,
+                runDate = r.RunDate,
+                mode = r.Mode,
+                triggeredBy = r.TriggeredBy,
+                totalProcessed = r.TotalProcessed,
+                successful = r.Successful,
+                skipped = r.Skipped,
+                failed = r.Failed
+            });
+
+            return await CreateJsonResponse(req, summaries);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting run reports");
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Get a single run report with full per-app detail.
+    /// </summary>
+    [Function("GetRunReport")]
+    public async Task<HttpResponseData> GetRunReport(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "reports/{id}")] HttpRequestData req,
+        string id)
+    {
+        var authError = await AuthorizeRequestAsync(req);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        try
+        {
+            var report = await _reportService.GetRunReportAsync(id);
+            if (report == null)
+            {
+                return await CreateErrorResponse(req, "Report not found", HttpStatusCode.NotFound);
+            }
+
+            // Deserialize the results JSON for the response
+            var results = JsonSerializer.Deserialize<List<RotationResult>>(report.ResultsJson, JsonOptions)
+                ?? new List<RotationResult>();
+
+            return await CreateJsonResponse(req, new
+            {
+                id = report.RowKey,
+                runDate = report.RunDate,
+                mode = report.Mode,
+                triggeredBy = report.TriggeredBy,
+                totalProcessed = report.TotalProcessed,
+                successful = report.Successful,
+                skipped = report.Skipped,
+                failed = report.Failed,
+                results
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting run report {Id}", id);
+            return await CreateErrorResponse(req, ex.Message);
+        }
     }
 
     /// <summary>

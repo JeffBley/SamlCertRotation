@@ -745,6 +745,8 @@ document.querySelectorAll('.tab').forEach(tab => {
             loadCleanupData();
         } else if (tab.dataset.tab === 'testing') {
             loadTestEmailTemplates();
+        } else if (tab.dataset.tab === 'reports') {
+            loadReports();
         }
     });
 });
@@ -1042,6 +1044,7 @@ async function loadSettings() {
         document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
         document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
         document.getElementById('sessionTimeoutMinutes').value = typeof settings.sessionTimeoutMinutes === 'number' ? settings.sessionTimeoutMinutes : 0;
+        document.getElementById('reportsRetentionPolicyDays').value = settings.reportsRetentionPolicyDays || 14;
         toggleSponsorReminderSettings();
         toggleSponsorReminderCount();
     } catch (error) {
@@ -1078,6 +1081,13 @@ async function saveSettings() {
             return;
         }
 
+        const reportsRetentionPolicyDays = parseInt(document.getElementById('reportsRetentionPolicyDays').value, 10);
+
+        if (Number.isNaN(reportsRetentionPolicyDays) || reportsRetentionPolicyDays < 1) {
+            showError('Reports retention policy must be at least 1 day.');
+            return;
+        }
+
         const sponsorRemindersEnabled = document.getElementById('sponsorRemindersEnabled').value === 'enabled';
         const sponsorReminderCount = parseInt(document.getElementById('sponsorReminderCount').value, 10) || 3;
 
@@ -1105,6 +1115,7 @@ async function saveSettings() {
             sponsorSecondReminderDays,
             sponsorThirdReminderDays,
             retentionPolicyDays,
+            reportsRetentionPolicyDays,
             sessionTimeoutMinutes: parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0
         };
         await apiCall('settings', {
@@ -1148,6 +1159,104 @@ function toggleSponsorReminderCount() {
     if (reminder1) reminder1.style.display = count >= 1 ? 'block' : 'none';
     if (reminder2) reminder2.style.display = count >= 2 ? 'block' : 'none';
     if (reminder3) reminder3.style.display = count >= 3 ? 'block' : 'none';
+}
+
+// ── Reports tab ──────────────────────────────────────────────────
+async function loadReports() {
+    const tbody = document.getElementById('reports-table-body');
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">Loading...</td></tr>';
+    // Always show list view and hide detail view when loading
+    document.getElementById('reports-list-view').style.display = '';
+    document.getElementById('reports-detail-view').style.display = 'none';
+    try {
+        const reports = await apiCall('reports');
+        if (!reports || reports.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">No reports found.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        reports.forEach(r => {
+            const tr = document.createElement('tr');
+            const modeLabel = r.mode === 'prod' ? '<span style="color:#d83b01;font-weight:600;">Prod</span>' : '<span style="color:#0078d4;">Report-only</span>';
+            tr.innerHTML = `
+                <td>${new Date(r.runDate).toLocaleString()}</td>
+                <td>${modeLabel}</td>
+                <td>${escapeHtml(r.triggeredBy || 'Scheduled')}</td>
+                <td>${r.totalProcessed}</td>
+                <td>${r.successful}</td>
+                <td>${r.skipped}</td>
+                <td>${r.failed > 0 ? '<span style="color:#d83b01;font-weight:600;">' + r.failed + '</span>' : r.failed}</td>
+                <td><button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="viewReport('${r.id}')">View Report</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (error) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#d83b01;">Failed to load reports.</td></tr>';
+        console.error('Failed to load reports:', error);
+    }
+}
+
+async function viewReport(id) {
+    document.getElementById('reports-list-view').style.display = 'none';
+    const detailView = document.getElementById('reports-detail-view');
+    detailView.style.display = '';
+
+    const summaryDiv = document.getElementById('report-detail-summary');
+    const tbody = document.getElementById('report-detail-table-body');
+    summaryDiv.innerHTML = '<span style="color:#888;">Loading...</span>';
+    tbody.innerHTML = '';
+
+    try {
+        const report = await apiCall(`reports/${id}`);
+        const modeLabel = report.mode === 'prod' ? 'Production' : 'Report-only';
+        document.getElementById('report-detail-title').textContent = `Run Report — ${new Date(report.runDate).toLocaleString()}`;
+
+        summaryDiv.innerHTML = `
+            <div><strong>Mode:</strong> ${modeLabel}</div>
+            <div><strong>Triggered By:</strong> ${escapeHtml(report.triggeredBy || 'Scheduled')}</div>
+            <div><strong>Date:</strong> ${new Date(report.runDate).toLocaleString()}</div>
+            <div><strong>Total:</strong> ${report.totalProcessed}</div>
+            <div><strong>Successful:</strong> ${report.successful}</div>
+            <div><strong>Skipped:</strong> ${report.skipped}</div>
+            <div><strong>Failed:</strong> ${report.failed}</div>
+        `;
+
+        if (!report.results || report.results.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;">No per-app details available.</td></tr>';
+            return;
+        }
+
+        // Sort: failures first, then actions, then skipped
+        const sorted = [...report.results].sort((a, b) => {
+            if (!a.success && b.success) return -1;
+            if (a.success && !b.success) return 1;
+            if (a.action === 'None' && b.action !== 'None') return 1;
+            if (a.action !== 'None' && b.action === 'None') return -1;
+            return (a.appDisplayName || '').localeCompare(b.appDisplayName || '');
+        });
+
+        sorted.forEach(r => {
+            const tr = document.createElement('tr');
+            const resultIcon = r.success ? '✅' : '❌';
+            const actionStyle = (r.action || 'None') === 'None' ? 'color:#888;' : '';
+            tr.innerHTML = `
+                <td>${escapeHtml(r.appDisplayName || '')}</td>
+                <td style="${actionStyle}">${escapeHtml(r.action || 'None')}</td>
+                <td>${resultIcon}</td>
+                <td style="font-size:12px;font-family:monospace;">${escapeHtml(r.newCertificateThumbprint || '—')}</td>
+                <td style="color:#d83b01;font-size:12px;">${escapeHtml(r.errorMessage || '')}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (error) {
+        summaryDiv.innerHTML = '<span style="color:#d83b01;">Failed to load report detail.</span>';
+        console.error('Failed to load report:', error);
+    }
+}
+
+function backToReportList() {
+    document.getElementById('reports-detail-view').style.display = 'none';
+    document.getElementById('reports-list-view').style.display = '';
 }
 
 // Audit log filters and rendering
@@ -1460,7 +1569,7 @@ function renderCleanupTable(apps) {
 }
 
 // Export cleanup list to JSON
-function exportCleanupList() {
+function exportCleanupListJson() {
     if (cleanupApps.length === 0) {
         showError('No cleanup data to export');
         return;
@@ -1477,13 +1586,43 @@ function exportCleanupList() {
     downloadJson(exportData, `certificate-cleanup-${formatDateForFilename()}.json`);
 }
 
-// Export currently visible applications to JSON
-function exportApplications() {
-    // Get current filter state to export only visible apps
-    const searchTerm = (document.getElementById('app-search')?.value || '').trim().toLowerCase();
-    const selectedAutoRotateFilters = getSelectedAppAutoRotateFilters();
-    const selectedStatusFilters = getSelectedAppStatusFilters();
+// Export cleanup list to CSV
+function exportCleanupListCsv() {
+    if (cleanupApps.length === 0) {
+        showError('No cleanup data to export');
+        return;
+    }
 
+    const rows = [];
+    rows.push('Application,Application ID,App ID,Expired Inactive Certs,Certificate Key ID,Thumbprint,Expiry Date');
+    for (const app of cleanupApps) {
+        if (app.certificates && app.certificates.length > 0) {
+            for (const cert of app.certificates) {
+                rows.push([
+                    escapeCsvField(app.displayName || ''),
+                    escapeCsvField(app.id || ''),
+                    escapeCsvField(app.appId || ''),
+                    app.expiredInactiveCertCount,
+                    escapeCsvField(cert.keyId || ''),
+                    escapeCsvField(cert.thumbprint || ''),
+                    cert.endDateTime ? new Date(cert.endDateTime).toISOString() : ''
+                ].join(','));
+            }
+        } else {
+            rows.push([
+                escapeCsvField(app.displayName || ''),
+                escapeCsvField(app.id || ''),
+                escapeCsvField(app.appId || ''),
+                app.expiredInactiveCertCount,
+                '', '', ''
+            ].join(','));
+        }
+    }
+    downloadCsvFile(rows.join('\n'), `certificate-cleanup-${formatDateForFilename()}.csv`);
+}
+
+// Export currently visible applications to JSON
+function exportApplicationsJson() {
     const filteredApps = getFilteredApps();
 
     if (filteredApps.length === 0) {
@@ -1494,11 +1633,6 @@ function exportApplications() {
     const exportData = {
         exportDate: new Date().toISOString(),
         exportType: 'saml-applications',
-        filters: {
-            search: searchTerm,
-            autoRotate: selectedAutoRotateFilters,
-            status: selectedStatusFilters
-        },
         totalApps: filteredApps.length,
         applications: filteredApps.map(app => ({
             displayName: app.displayName,
@@ -1507,11 +1641,145 @@ function exportApplications() {
             autoRotateStatus: app.autoRotateStatus,
             certExpiryDate: app.certExpiryDate,
             daysUntilExpiry: app.daysUntilExpiry,
-            expiryCategory: app.expiryCategory
+            expiryCategory: app.expiryCategory,
+            policyType: app.policyType || 'Global',
+            createCertDaysBeforeExpiry: app.createCertDaysBeforeExpiry,
+            activateCertDaysBeforeExpiry: app.activateCertDaysBeforeExpiry
         }))
     };
     
     downloadJson(exportData, `saml-applications-${formatDateForFilename()}.json`);
+}
+
+// Export currently visible applications to CSV
+function exportApplicationsCsv() {
+    const filteredApps = getFilteredApps();
+
+    if (filteredApps.length === 0) {
+        showError('No applications to export');
+        return;
+    }
+
+    const rows = [];
+    rows.push('Application,Application ID,Sponsor,Auto-Rotate,Certificate Expiry,Days Remaining,Status,Policy Type,Create Cert (days),Activate Cert (days)');
+    for (const app of filteredApps) {
+        rows.push([
+            escapeCsvField(app.displayName || ''),
+            escapeCsvField(app.id || ''),
+            escapeCsvField(app.sponsor || ''),
+            escapeCsvField(app.autoRotateStatus || ''),
+            app.certExpiryDate ? new Date(app.certExpiryDate).toISOString() : '',
+            app.daysUntilExpiry != null ? app.daysUntilExpiry : '',
+            escapeCsvField(app.expiryCategory || ''),
+            escapeCsvField(app.policyType || 'Global'),
+            app.createCertDaysBeforeExpiry != null ? app.createCertDaysBeforeExpiry : '',
+            app.activateCertDaysBeforeExpiry != null ? app.activateCertDaysBeforeExpiry : ''
+        ].join(','));
+    }
+    downloadCsvFile(rows.join('\n'), `saml-applications-${formatDateForFilename()}.csv`);
+}
+
+// Export audit log to JSON
+function exportAuditLogJson() {
+    const entries = getFilteredAuditEntries();
+    if (entries.length === 0) {
+        showError('No audit entries to export');
+        return;
+    }
+
+    const exportData = {
+        exportDate: new Date().toISOString(),
+        exportType: 'audit-log',
+        totalEntries: entries.length,
+        entries: entries.map(e => ({
+            timestamp: e.timestamp,
+            appDisplayName: e.appDisplayName,
+            servicePrincipalId: e.servicePrincipalId,
+            performedBy: e.performedBy || 'System',
+            actionType: e.actionType,
+            isSuccess: e.isSuccess,
+            description: e.description,
+            errorMessage: e.errorMessage || '',
+            certificateThumbprint: e.certificateThumbprint || '',
+            newCertificateThumbprint: e.newCertificateThumbprint || ''
+        }))
+    };
+
+    downloadJson(exportData, `audit-log-${formatDateForFilename()}.json`);
+}
+
+// Export audit log to CSV
+function exportAuditLogCsv() {
+    const entries = getFilteredAuditEntries();
+    if (entries.length === 0) {
+        showError('No audit entries to export');
+        return;
+    }
+
+    const rows = [];
+    rows.push('Time,Application,Application ID,Initiated By,Action,Result,Details,Error,Certificate Thumbprint,New Certificate Thumbprint');
+    for (const e of entries) {
+        rows.push([
+            e.timestamp ? new Date(e.timestamp).toISOString() : '',
+            escapeCsvField(e.appDisplayName || ''),
+            escapeCsvField(e.servicePrincipalId || ''),
+            escapeCsvField(e.performedBy || 'System'),
+            escapeCsvField(e.actionType || ''),
+            e.isSuccess ? 'Success' : 'Failed',
+            escapeCsvField(e.description || ''),
+            escapeCsvField(e.errorMessage || ''),
+            escapeCsvField(e.certificateThumbprint || ''),
+            escapeCsvField(e.newCertificateThumbprint || '')
+        ].join(','));
+    }
+    downloadCsvFile(rows.join('\n'), `audit-log-${formatDateForFilename()}.csv`);
+}
+
+// Get filtered audit entries (applies current filters)
+function getFilteredAuditEntries() {
+    const selectedActionFilters = Array.from(document.querySelectorAll('.audit-action-filter-option-input:checked')).map(cb => cb.value);
+    const selectedResultFilters = Array.from(document.querySelectorAll('.audit-result-filter-option-input:checked')).map(cb => cb.value);
+    const selectedInitiatedByFilters = Array.from(document.querySelectorAll('.audit-initiatedby-filter-option-input:checked')).map(cb => cb.value);
+
+    return allAuditEntries.filter(entry => {
+        const actionMatch = selectedActionFilters.length === 0 || selectedActionFilters.includes(entry.actionType || '');
+        let resultMatch = true;
+        if (selectedResultFilters.length > 0) {
+            const resultVal = entry.isSuccess ? 'success' : 'failed';
+            resultMatch = selectedResultFilters.includes(resultVal);
+        }
+        let initiatedByMatch = true;
+        if (selectedInitiatedByFilters && selectedInitiatedByFilters.length > 0) {
+            const performedBy = (entry.performedBy || 'System').toLowerCase();
+            initiatedByMatch = selectedInitiatedByFilters.some(f => performedBy.includes(f.toLowerCase()));
+        }
+        return actionMatch && resultMatch && initiatedByMatch;
+    });
+}
+
+// Toggle export dropdown helpers
+function toggleExportAppsDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('export-apps-dropdown');
+    const wasOpen = dd.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) dd.classList.add('show');
+}
+
+function toggleExportCleanupDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('export-cleanup-dropdown');
+    const wasOpen = dd.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) dd.classList.add('show');
+}
+
+function toggleExportAuditDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('export-audit-dropdown');
+    const wasOpen = dd.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) dd.classList.add('show');
 }
 
 // Download JSON file helper
@@ -1825,7 +2093,9 @@ async function applyBulkSponsorUpdates() {
 document.getElementById('btn-sign-out').addEventListener('click', signOut);
 
 // Applications tab buttons
-document.getElementById('btn-export-apps').addEventListener('click', exportApplications);
+document.getElementById('btn-export-apps').addEventListener('click', function(e) { toggleExportAppsDropdown(e); });
+document.getElementById('btn-export-apps-csv').addEventListener('click', function() { document.getElementById('export-apps-dropdown').classList.remove('show'); exportApplicationsCsv(); });
+document.getElementById('btn-export-apps-json').addEventListener('click', function() { document.getElementById('export-apps-dropdown').classList.remove('show'); exportApplicationsJson(); });
 document.getElementById('btn-refresh-apps').addEventListener('click', loadData);
 document.getElementById('btn-report-only').addEventListener('click', triggerReportOnlyRun);
 document.getElementById('btn-prod-run').addEventListener('click', triggerProdRun);
@@ -1867,13 +2137,22 @@ document.getElementById('btn-edit-policy-cancel').addEventListener('click', clos
 document.getElementById('btn-edit-policy-save').addEventListener('click', saveAppPolicy);
 
 // Cleanup tab buttons
-document.getElementById('btn-export-cleanup').addEventListener('click', exportCleanupList);
+document.getElementById('btn-export-cleanup').addEventListener('click', function(e) { toggleExportCleanupDropdown(e); });
+document.getElementById('btn-export-cleanup-csv').addEventListener('click', function() { document.getElementById('export-cleanup-dropdown').classList.remove('show'); exportCleanupListCsv(); });
+document.getElementById('btn-export-cleanup-json').addEventListener('click', function() { document.getElementById('export-cleanup-dropdown').classList.remove('show'); exportCleanupListJson(); });
 document.getElementById('btn-refresh-cleanup').addEventListener('click', loadCleanupData);
 
 // Policy tab
 document.getElementById('btn-save-policy').addEventListener('click', savePolicy);
 
+// Reports tab
+document.getElementById('btn-refresh-reports').addEventListener('click', loadReports);
+document.getElementById('btn-back-to-reports').addEventListener('click', backToReportList);
+
 // Audit tab
+document.getElementById('btn-export-audit').addEventListener('click', function(e) { toggleExportAuditDropdown(e); });
+document.getElementById('btn-export-audit-csv').addEventListener('click', function() { document.getElementById('export-audit-dropdown').classList.remove('show'); exportAuditLogCsv(); });
+document.getElementById('btn-export-audit-json').addEventListener('click', function() { document.getElementById('export-audit-dropdown').classList.remove('show'); exportAuditLogJson(); });
 document.getElementById('btn-refresh-audit').addEventListener('click', loadAuditLog);
 document.getElementById('audit-from-date').addEventListener('change', loadAuditLog);
 document.getElementById('audit-to-date').addEventListener('change', loadAuditLog);

@@ -64,4 +64,9 @@ public class SettingsUpdateRequest
     /// Whether to automatically create (but not activate) new certificates for notify-only apps
     /// </summary>
     public bool? CreateCertsForNotifyApps { get; set; }
+
+    /// <summary>
+    /// Reports retention policy in days (default 14)
+    /// </summary>
+    public int? ReportsRetentionPolicyDays { get; set; }
 }

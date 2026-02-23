@@ -656,51 +656,60 @@
     <div class="container">
         <div id="error-container"></div>
 
-        <div class="stats-grid" id="stats-grid">
-            <div class="stats-row">
-                <div class="stat-card">
-                    <div class="stat-value" id="stat-total">-</div>
-                    <div class="stat-label">Total SAML Apps</div>
-                </div>
-                <div class="stat-card expiring">
-                    <div class="stat-value" id="stat-expiring-30">-</div>
-                    <div class="stat-label" id="stat-expiring-label">Expiring ≤30 Days</div>
-                </div>
-                <div class="stat-card expired">
-                    <div class="stat-value" id="stat-expired">-</div>
-                    <div class="stat-label">Expired</div>
-                </div>
-            </div>
-            <div class="stats-row">
-                <div class="stat-card on">
-                    <div class="stat-value" id="stat-on">-</div>
-                    <div class="stat-label">Auto-Rotate ON</div>
-                </div>
-                <div class="stat-card notify">
-                    <div class="stat-value" id="stat-notify">-</div>
-                    <div class="stat-label">Notify</div>
-                </div>
-                <div class="stat-card off">
-                    <div class="stat-value" id="stat-off">-</div>
-                    <div class="stat-label">Auto-Rotate OFF</div>
-                </div>
-                <div class="stat-card null">
-                    <div class="stat-value" id="stat-null">-</div>
-                    <div class="stat-label">Not Configured</div>
-                </div>
-            </div>
-        </div>
-
         <div class="tabs">
-            <button class="tab active" data-tab="applications">Applications</button>
+            <button class="tab active" data-tab="overview">Overview</button>
+            <button class="tab" data-tab="applications">Applications</button>
             <button class="tab" data-tab="cleanup">Certificate Clean-up</button>
             <button class="tab" data-tab="policy">Policy Settings</button>
             <button class="tab" data-tab="settings">Settings</button>
             <button class="tab" data-tab="audit">Audit Log</button>
+            <button class="tab" data-tab="reports">Reports</button>
             <button class="tab" data-tab="testing">Testing</button>
         </div>
 
-        <div id="tab-applications" class="tab-content active">
+        <div id="tab-overview" class="tab-content active">
+            <div class="section">
+                <div class="section-header">
+                    <h2>Overview</h2>
+                </div>
+                <div class="stats-grid" id="stats-grid">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-value" id="stat-total">-</div>
+                            <div class="stat-label">Total SAML Apps</div>
+                        </div>
+                        <div class="stat-card expiring">
+                            <div class="stat-value" id="stat-expiring-30">-</div>
+                            <div class="stat-label" id="stat-expiring-label">Expiring ≤30 Days</div>
+                        </div>
+                        <div class="stat-card expired">
+                            <div class="stat-value" id="stat-expired">-</div>
+                            <div class="stat-label">Expired</div>
+                        </div>
+                    </div>
+                    <div class="stats-row">
+                        <div class="stat-card on">
+                            <div class="stat-value" id="stat-on">-</div>
+                            <div class="stat-label">Auto-Rotate ON</div>
+                        </div>
+                        <div class="stat-card notify">
+                            <div class="stat-value" id="stat-notify">-</div>
+                            <div class="stat-label">Notify</div>
+                        </div>
+                        <div class="stat-card off">
+                            <div class="stat-value" id="stat-off">-</div>
+                            <div class="stat-label">Auto-Rotate OFF</div>
+                        </div>
+                        <div class="stat-card null">
+                            <div class="stat-value" id="stat-null">-</div>
+                            <div class="stat-label">Not Configured</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-applications" class="tab-content">
             <div class="section">
                 <div class="section-header">
                     <h2>SAML Applications</h2>
@@ -715,7 +724,13 @@
                             </div>
                         </div>
                         <input type="file" id="bulk-csv-file-input" accept=".csv" style="display:none;">
-                        <button class="btn btn-secondary" id="btn-export-apps">Export</button>
+                        <div style="position:relative;display:inline-block;">
+                            <button class="btn btn-secondary" id="btn-export-apps">Export ▾</button>
+                            <div id="export-apps-dropdown" class="dropdown-menu" style="min-width:180px;">
+                                <button class="dropdown-item" id="btn-export-apps-csv">Download as CSV</button>
+                                <button class="dropdown-item" id="btn-export-apps-json">Download as JSON</button>
+                            </div>
+                        </div>
                         <button class="btn btn-secondary" id="btn-refresh-apps">Refresh</button>
                         <button id="btn-report-only" class="btn btn-secondary">Run - Report-only</button>
                         <button id="btn-prod-run" class="btn btn-primary">Run - Prod</button>
@@ -805,7 +820,13 @@
                 <div class="section-header">
                     <h2>Certificate Clean-up</h2>
                     <div>
-                        <button class="btn btn-secondary" id="btn-export-cleanup">Export</button>
+                        <div style="position:relative;display:inline-block;">
+                            <button class="btn btn-secondary" id="btn-export-cleanup">Export ▾</button>
+                            <div id="export-cleanup-dropdown" class="dropdown-menu" style="min-width:180px;">
+                                <button class="dropdown-item" id="btn-export-cleanup-csv">Download as CSV</button>
+                                <button class="dropdown-item" id="btn-export-cleanup-json">Download as JSON</button>
+                            </div>
+                        </div>
                         <button class="btn btn-secondary" id="btn-refresh-cleanup">Refresh</button>
                     </div>
                 </div>
@@ -850,7 +871,16 @@
             <div class="section">
                 <div class="section-header">
                     <h2>Audit Log</h2>
-                    <button class="btn btn-secondary" id="btn-refresh-audit">Refresh</button>
+                    <div>
+                        <div style="position:relative;display:inline-block;">
+                            <button class="btn btn-secondary" id="btn-export-audit">Export ▾</button>
+                            <div id="export-audit-dropdown" class="dropdown-menu" style="min-width:180px;">
+                                <button class="dropdown-item" id="btn-export-audit-csv">Download as CSV</button>
+                                <button class="dropdown-item" id="btn-export-audit-json">Download as JSON</button>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary" id="btn-refresh-audit">Refresh</button>
+                    </div>
                 </div>
                 <div class="filter-bar" style="margin-bottom: 16px;">
                     <div class="filter-group">
@@ -927,6 +957,60 @@
                 </div>
                 <div id="audit-table-container">
                     <div class="loading">Loading audit log...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-reports" class="tab-content">
+            <!-- Report list view -->
+            <div id="reports-list-view">
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Run Reports</h2>
+                        <button class="btn btn-secondary" id="btn-refresh-reports">Refresh</button>
+                    </div>
+                    <p style="font-size:13px;color:#666;margin-bottom:16px;">History of automation runs. Click "View Report" to see the full per-application detail for any run.</p>
+                    <table class="data-table" id="reports-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Mode</th>
+                                <th>Triggered By</th>
+                                <th>Total</th>
+                                <th>Successful</th>
+                                <th>Skipped</th>
+                                <th>Failed</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="reports-table-body">
+                            <tr><td colspan="8" style="text-align:center;color:#888;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Report detail view (hidden by default) -->
+            <div id="reports-detail-view" style="display:none;">
+                <div class="section">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                        <button class="btn btn-secondary" id="btn-back-to-reports">← Back to Reports</button>
+                        <h2 style="margin:0;" id="report-detail-title">Run Report</h2>
+                    </div>
+                    <div id="report-detail-summary" style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px;padding:16px;background:#f8f8f8;border-radius:6px;">
+                    </div>
+                    <table class="data-table" id="report-detail-table">
+                        <thead>
+                            <tr>
+                                <th>Application</th>
+                                <th>Action</th>
+                                <th>Result</th>
+                                <th>New Thumbprint</th>
+                                <th>Error</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-detail-table-body">
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1038,6 +1122,11 @@
                         <label for="retentionPolicyDays">Audit Log Retention policy (days)</label>
                         <input type="number" id="retentionPolicyDays" min="1" value="180" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
                         <p style="font-size:11px;color:#888;margin-top:4px;">Daily purge deletes audit logs older than this many days.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="reportsRetentionPolicyDays">Reports Retention policy (days)</label>
+                        <input type="number" id="reportsRetentionPolicyDays" min="1" value="14" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <p style="font-size:11px;color:#888;margin-top:4px;">Daily purge deletes run reports older than this many days. Default: 14 days.</p>
                     </div>
                 </div>
             </div>

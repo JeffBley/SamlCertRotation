@@ -683,4 +683,56 @@ public class PolicyService : IPolicyService
             throw;
         }
     }
+
+    private const int DefaultReportsRetentionPolicyDays = 14;
+
+    /// <inheritdoc />
+    public async Task<int> GetReportsRetentionPolicyDaysAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "ReportsRetentionPolicyDays");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Days");
+                if (int.TryParse(value, out var days) && days > 0)
+                {
+                    return days;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting reports retention policy setting from storage");
+        }
+
+        return DefaultReportsRetentionPolicyDays;
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateReportsRetentionPolicyDaysAsync(int days)
+    {
+        if (days < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(days), "Reports retention policy must be at least 1 day.");
+        }
+
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "ReportsRetentionPolicyDays")
+            {
+                { "Days", days.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated reports retention policy days: {Days}", days);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating reports retention policy setting");
+            throw;
+        }
+    }
 }

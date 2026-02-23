@@ -48,6 +48,7 @@ var host = new HostBuilder()
         services.AddSingleton<IPolicyService, PolicyService>();
         services.AddSingleton<INotificationService, NotificationService>();
         services.AddSingleton<IAuditService, AuditService>();
+        services.AddSingleton<IReportService, ReportService>();
         services.AddSingleton<ICertificateRotationService, CertificateRotationService>();
 
         // Register HttpClient for any external calls

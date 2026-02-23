@@ -136,4 +136,14 @@ public interface IPolicyService
     /// Update the create-certs-for-notify-apps setting
     /// </summary>
     Task UpdateCreateCertsForNotifyAppsEnabledAsync(bool enabled);
+
+    /// <summary>
+    /// Get reports retention policy in days (default 14)
+    /// </summary>
+    Task<int> GetReportsRetentionPolicyDaysAsync();
+
+    /// <summary>
+    /// Update reports retention policy in days
+    /// </summary>
+    Task UpdateReportsRetentionPolicyDaysAsync(int days);
 }
