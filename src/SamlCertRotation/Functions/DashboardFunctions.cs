@@ -279,9 +279,32 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Invalid policy format", HttpStatusCode.BadRequest);
             }
 
+            // Snapshot current values before applying changes
+            var beforePolicy = await _policyService.GetGlobalPolicyAsync();
+
             var success = await _policyService.UpdateGlobalPolicyAsync(policy);
             if (success)
             {
+                var changes = new List<string>();
+                if (policy.CreateCertDaysBeforeExpiry != beforePolicy.CreateCertDaysBeforeExpiry)
+                    changes.Add($"CreateCertDaysBeforeExpiry: {beforePolicy.CreateCertDaysBeforeExpiry} → {policy.CreateCertDaysBeforeExpiry}");
+                if (policy.ActivateCertDaysBeforeExpiry != beforePolicy.ActivateCertDaysBeforeExpiry)
+                    changes.Add($"ActivateCertDaysBeforeExpiry: {beforePolicy.ActivateCertDaysBeforeExpiry} → {policy.ActivateCertDaysBeforeExpiry}");
+                if (policy.IsEnabled != beforePolicy.IsEnabled)
+                    changes.Add($"IsEnabled: {beforePolicy.IsEnabled} → {policy.IsEnabled}");
+
+                if (changes.Count > 0)
+                {
+                    var identity = await ParseClientPrincipalAsync(req);
+                    var performedBy = identity?.UserPrincipalName;
+                    await _auditService.LogSuccessAsync(
+                        "SYSTEM",
+                        "Global Policy",
+                        AuditActionType.SettingsUpdated,
+                        string.Join("; ", changes),
+                        performedBy: performedBy);
+                }
+
                 return await CreateJsonResponse(req, new { message = "Policy updated successfully" });
             }
             else
@@ -379,10 +402,38 @@ public class DashboardFunctions
             }
 
             policy.RowKey = id;
+
+            // Snapshot current values before applying changes
+            var beforePolicy = await _policyService.GetAppPolicyAsync(id);
+
             var success = await _policyService.UpsertAppPolicyAsync(policy);
             
             if (success)
             {
+                var changes = new List<string>();
+                var beforeCreate = beforePolicy?.CreateCertDaysBeforeExpiry;
+                var beforeActivate = beforePolicy?.ActivateCertDaysBeforeExpiry;
+                var beforeAdditionalEmails = beforePolicy?.AdditionalNotificationEmails ?? "";
+
+                if (policy.CreateCertDaysBeforeExpiry != beforeCreate)
+                    changes.Add($"CreateCertDaysBeforeExpiry: {beforeCreate?.ToString() ?? "global default"} → {policy.CreateCertDaysBeforeExpiry?.ToString() ?? "global default"}");
+                if (policy.ActivateCertDaysBeforeExpiry != beforeActivate)
+                    changes.Add($"ActivateCertDaysBeforeExpiry: {beforeActivate?.ToString() ?? "global default"} → {policy.ActivateCertDaysBeforeExpiry?.ToString() ?? "global default"}");
+                if ((policy.AdditionalNotificationEmails ?? "") != beforeAdditionalEmails)
+                    changes.Add($"AdditionalNotificationEmails: \"{beforeAdditionalEmails}\" → \"{policy.AdditionalNotificationEmails ?? ""}\"]");
+
+                if (changes.Count > 0)
+                {
+                    var identity = await ParseClientPrincipalAsync(req);
+                    var performedBy = identity?.UserPrincipalName;
+                    await _auditService.LogSuccessAsync(
+                        id,
+                        policy.AppDisplayName ?? id,
+                        AuditActionType.SettingsUpdated,
+                        string.Join("; ", changes),
+                        performedBy: performedBy);
+                }
+
                 return await CreateJsonResponse(req, new { message = "App policy updated successfully" });
             }
             else
@@ -570,6 +621,15 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Invalid settings data", HttpStatusCode.BadRequest);
             }
 
+            // Snapshot current values before applying changes
+            var beforeEmails = await _policyService.GetNotificationEmailsAsync();
+            var beforeReportOnly = await _policyService.GetReportOnlyModeEnabledAsync();
+            var beforeRetention = await _policyService.GetRetentionPolicyDaysAsync();
+            var beforeSponsorsNotify = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+            var beforeNotifyOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
+            var beforeReminders = await _policyService.GetSponsorReminderDaysAsync();
+            var beforeTimeout = await _policyService.GetSessionTimeoutMinutesAsync();
+
             // Note: We can't actually update Azure App Settings from within the function
             // This would require Azure Management API access. For now, we'll store in Table Storage
             // alongside policies, or return instructions.
@@ -632,6 +692,39 @@ public class DashboardFunctions
             var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
             var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
             var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
+
+            // Build list of changed fields
+            var changes = new List<string>();
+            if ((settings.NotificationEmails ?? "") != beforeEmails)
+                changes.Add($"NotificationEmails: \"{beforeEmails}\" → \"{settings.NotificationEmails ?? ""}\"]");
+            if (settings.ReportOnlyModeEnabled.HasValue && settings.ReportOnlyModeEnabled.Value != beforeReportOnly)
+                changes.Add($"ReportOnlyMode: {beforeReportOnly} → {settings.ReportOnlyModeEnabled.Value}");
+            if (settings.RetentionPolicyDays.HasValue && settings.RetentionPolicyDays.Value != beforeRetention)
+                changes.Add($"RetentionPolicyDays: {beforeRetention} → {settings.RetentionPolicyDays.Value}");
+            if (settings.SponsorsReceiveNotifications.HasValue && settings.SponsorsReceiveNotifications.Value != beforeSponsorsNotify)
+                changes.Add($"SponsorsReceiveNotifications: {beforeSponsorsNotify} → {settings.SponsorsReceiveNotifications.Value}");
+            if (settings.NotifySponsorsOnExpiration.HasValue && settings.NotifySponsorsOnExpiration.Value != beforeNotifyOnExpiration)
+                changes.Add($"NotifySponsorsOnExpiration: {beforeNotifyOnExpiration} → {settings.NotifySponsorsOnExpiration.Value}");
+            if (settings.SponsorFirstReminderDays.HasValue && settings.SponsorFirstReminderDays.Value != beforeReminders.firstReminderDays)
+                changes.Add($"SponsorFirstReminderDays: {beforeReminders.firstReminderDays} → {settings.SponsorFirstReminderDays.Value}");
+            if (settings.SponsorSecondReminderDays.HasValue && settings.SponsorSecondReminderDays.Value != beforeReminders.secondReminderDays)
+                changes.Add($"SponsorSecondReminderDays: {beforeReminders.secondReminderDays} → {settings.SponsorSecondReminderDays.Value}");
+            if (settings.SponsorThirdReminderDays.HasValue && settings.SponsorThirdReminderDays.Value != beforeReminders.thirdReminderDays)
+                changes.Add($"SponsorThirdReminderDays: {beforeReminders.thirdReminderDays} → {settings.SponsorThirdReminderDays.Value}");
+            if (settings.SessionTimeoutMinutes.HasValue && settings.SessionTimeoutMinutes.Value != beforeTimeout)
+                changes.Add($"SessionTimeoutMinutes: {beforeTimeout} → {settings.SessionTimeoutMinutes.Value}");
+
+            if (changes.Count > 0)
+            {
+                var identity = await ParseClientPrincipalAsync(req);
+                var performedBy = identity?.UserPrincipalName;
+                await _auditService.LogSuccessAsync(
+                    "SYSTEM",
+                    "Settings",
+                    AuditActionType.SettingsUpdated,
+                    string.Join("; ", changes),
+                    performedBy: performedBy);
+            }
 
             return await CreateJsonResponse(req, new 
             { 

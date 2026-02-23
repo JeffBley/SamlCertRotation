@@ -88,6 +88,7 @@ public static class AuditActionType
     public const string PolicyUpdated = "PolicyUpdated";
     public const string ScanCompleted = "ScanCompleted";
     public const string ScanCompletedReportOnly = "ScanCompletedReportOnly";
+    public const string SettingsUpdated = "SettingsUpdated";
     public const string SponsorUpdated = "SponsorUpdated";
     public const string SponsorExpirationReminderSent = "SponsorExpirationReminderSent";
     public const string Error = "Error";
