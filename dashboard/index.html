@@ -732,6 +732,7 @@
                             </button>
                             <div id="app-columns-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="application" checked disabled>Application</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="applicationId">Application ID</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="sponsor" checked>Sponsor</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="autoRotate" checked>Auto-Rotate</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="certExpiry">Certificate Expiry</label>
@@ -834,7 +835,6 @@
                     <button class="btn btn-secondary" id="btn-refresh-audit">Refresh</button>
                 </div>
                 <div class="filter-bar" style="margin-bottom: 16px;">
-                    <label>Filters:</label>
                     <div class="filter-group">
                         <label style="display:flex;align-items:center;gap:6px;">
                             From
@@ -857,6 +857,21 @@
                             <option value="desc">Desc</option>
                             <option value="asc">Asc</option>
                         </select>
+                        <div class="multi-select-filter-wrapper" style="margin-left:auto;">
+                            <button type="button" id="audit-columns-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="audit-columns-filter-label">Columns</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="audit-columns-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-columns-filter-option-input" value="time" checked disabled>Time</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-columns-filter-option-input" value="application" checked>Application</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-columns-filter-option-input" value="applicationId">Application ID</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-columns-filter-option-input" value="initiatedBy" checked>Initiated By</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-columns-filter-option-input" value="action" checked>Action</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-columns-filter-option-input" value="result" checked>Result</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-columns-filter-option-input" value="details" checked>Details</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="audit-filter-panel" style="display:none;padding:12px 16px;background:#f8f8f8;border-radius:6px;margin-bottom:16px;">
@@ -877,9 +892,20 @@
                                 <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="Error">Error</label>
                             </div>
                         </div>
-                        <button class="btn btn-secondary" id="btn-add-audit-column-filter">+ Add Column Filter</button>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="audit-result-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="audit-result-filter-label">Result</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="audit-result-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-result-filter-option-input" value="success">Success</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-result-filter-option-input" value="failed">Failed</label>
+                            </div>
+                        </div>
+                        <input type="text" id="audit-initiated-by-search" placeholder="Filter by Initiated By..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
+                        <input type="text" id="audit-application-search" placeholder="Filter by Application..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
+                        <input type="text" id="audit-details-search" placeholder="Filter by Details..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
                     </div>
-                    <div id="audit-dynamic-filters" class="filter-group" style="margin-top:12px;flex-direction:column;gap:8px;"></div>
                 </div>
                 <div id="audit-table-container">
                     <div class="loading">Loading audit log...</div>

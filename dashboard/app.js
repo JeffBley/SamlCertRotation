@@ -5,7 +5,6 @@ const API_BASE_URL = ''; // Leave empty for same-origin, or set to your Function
 // Store apps data for filtering
 let allApps = [];
 let allAuditEntries = [];
-let nextAuditFilterId = 1;
 let createCertDaysThreshold = 60;
 let activateCertDaysThreshold = 30;
 let currentUserRoles = [];
@@ -16,12 +15,6 @@ let countdownTimer = null;
 let countdownSeconds = 120;
 const ADMIN_APP_ROLE_VALUE = 'SamlCertRotation.Admin';
 const READER_APP_ROLE_VALUE = 'SamlCertRotation.Reader';
-const auditFilterColumns = [
-    { value: 'application', label: 'Application' },
-    { value: 'initiatedBy', label: 'Initiated By' },
-    { value: 'result', label: 'Result' },
-    { value: 'details', label: 'Details' }
-];
 
 // Current action for confirmation modal
 let pendingAction = null;
@@ -29,6 +22,7 @@ let pendingAction = null;
 // Column visibility state (keys match checkbox values)
 const visibleColumns = {
     application: true,
+    applicationId: false,
     sponsor: true,
     autoRotate: true,
     certExpiry: false,
@@ -37,6 +31,17 @@ const visibleColumns = {
     policyType: false,
     createCertDays: false,
     activateCertDays: false
+};
+
+// Audit column visibility state
+const auditVisibleColumns = {
+    time: true,
+    application: true,
+    applicationId: false,
+    initiatedBy: true,
+    action: true,
+    result: true,
+    details: true
 };
 
 // Edit policy modal state
@@ -584,6 +589,7 @@ async function saveAppPolicy() {
         await apiCall(`policy/app/${editPolicyAppId}`, {
             method: 'PUT',
             body: JSON.stringify({
+                appDisplayName: editPolicyAppName,
                 createCertDaysBeforeExpiry: createDays,
                 activateCertDaysBeforeExpiry: activateDays
             })
@@ -880,6 +886,7 @@ function renderApps(apps) {
             <thead>
                 <tr>
                     <th${hide('application')}>Application</th>
+                    <th${hide('applicationId')}>Application ID</th>
                     <th${hide('sponsor')}>Sponsor</th>
                     <th${hide('autoRotate')}>Auto-Rotate</th>
                     <th${hide('certExpiry')}>Certificate Expiry</th>
@@ -901,6 +908,7 @@ function renderApps(apps) {
                     return `
                     <tr>
                         <td${hide('application')}>${escapeHtml(app.displayName)}</td>
+                        <td${hide('applicationId')} style="${col('applicationId') ? '' : 'display:none;'}font-size:12px;">${escapeHtml(app.id)}</td>
                         <td${hide('sponsor')}>${escapeHtml(app.sponsor) || 'Not Set'}</td>
                         <td${hide('autoRotate')}>
                             <span class="status-badge status-${autoRotateStatusClass}">
@@ -1125,160 +1133,52 @@ function setDefaultAuditDateRange() {
     }
 }
 
-function getAuditFilterPlaceholder(column) {
-    if (column === 'result') return 'success or failed';
-    if (column === 'time') return 'contains date/time text';
-    return 'contains text';
-}
-
-function getAuditFieldValue(entry, column) {
-    switch (column) {
-        case 'time':
-            return `${new Date(entry.timestamp || 0).toLocaleString()} ${entry.timestamp || ''}`;
-        case 'application':
-            return entry.appDisplayName || '';
-        case 'initiatedBy':
-            return entry.performedBy || 'System';
-        case 'action':
-            return entry.actionType || '';
-        case 'result':
-            return entry.isSuccess ? 'success' : 'failed';
-        case 'details':
-            return `${entry.description || ''} ${entry.errorMessage || ''}`;
-        default:
-            return '';
+function toggleAuditResultFilterDropdown(event) {
+    event.stopPropagation();
+    const dropdown = document.getElementById('audit-result-filter-dropdown');
+    const wasOpen = dropdown.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) {
+        dropdown.classList.add('show');
     }
 }
 
-function getUsedAuditColumns(excludeFilterId = null) {
-    const rows = Array.from(document.querySelectorAll('#audit-dynamic-filters .audit-filter-row'));
-    return rows
-        .filter(row => row.dataset.filterId !== String(excludeFilterId))
-        .map(row => row.querySelector('.audit-filter-column')?.value)
-        .filter(Boolean);
+function getSelectedAuditResultFilters() {
+    return Array.from(document.querySelectorAll('.audit-result-filter-option-input:checked'))
+        .map(input => input.value);
 }
 
-function buildAuditColumnOptions(selectedColumn, excludeFilterId = null) {
-    const usedColumns = new Set(getUsedAuditColumns(excludeFilterId));
-    return auditFilterColumns.map(column => {
-        const isSelected = column.value === selectedColumn;
-        const isDisabled = usedColumns.has(column.value) && !isSelected;
-        return {
-            value: column.value,
-            label: column.label,
-            selected: isSelected,
-            disabled: isDisabled
-        };
-    });
-}
-
-function populateAuditColumnOptions(select, selectedColumn, excludeFilterId = null) {
-    if (!select) return;
-
-    const options = buildAuditColumnOptions(selectedColumn, excludeFilterId);
-    select.replaceChildren();
-
-    options.forEach(optionDef => {
-        const option = document.createElement('option');
-        option.value = optionDef.value;
-        option.textContent = optionDef.label;
-        option.selected = optionDef.selected;
-        option.disabled = optionDef.disabled;
-        select.appendChild(option);
-    });
-}
-
-function refreshAuditFilterColumnOptions() {
-    const rows = Array.from(document.querySelectorAll('#audit-dynamic-filters .audit-filter-row'));
-    rows.forEach(row => {
-        const filterId = row.dataset.filterId;
-        const select = row.querySelector('.audit-filter-column');
-        const selectedColumn = select?.value || 'application';
-        if (select) {
-            populateAuditColumnOptions(select, selectedColumn, filterId);
-        }
-    });
-}
-
-function onAuditFilterColumnChanged(filterId) {
-    const row = document.querySelector(`#audit-filter-row-${filterId}`);
-    if (!row) return;
-
-    const column = row.querySelector('.audit-filter-column')?.value || 'application';
-    const input = row.querySelector('.audit-filter-value');
-    if (input) {
-        input.placeholder = getAuditFilterPlaceholder(column);
+function updateAuditResultFilterLabel() {
+    const selected = getSelectedAuditResultFilters();
+    const label = document.getElementById('audit-result-filter-label');
+    if (!label) return;
+    if (selected.length === 0) {
+        label.textContent = 'Result';
+    } else {
+        label.textContent = selected.map(v => v.charAt(0).toUpperCase() + v.slice(1)).join(', ');
     }
+}
 
-    refreshAuditFilterColumnOptions();
+function onAuditResultFilterChanged() {
+    updateAuditResultFilterLabel();
     applyAuditFilters();
 }
 
-function addAuditFilterRow() {
-    const usedColumns = new Set(getUsedAuditColumns());
-    const firstAvailableColumn = auditFilterColumns.find(column => !usedColumns.has(column.value));
-
-    if (!firstAvailableColumn) {
-        showError('All available audit columns already have filters.');
-        return;
-    }
-
-    const filterId = nextAuditFilterId++;
-    const row = document.createElement('div');
-    row.id = `audit-filter-row-${filterId}`;
-    row.className = 'audit-filter-row';
-    row.dataset.filterId = String(filterId);
-    row.style.display = 'flex';
-    row.style.gap = '8px';
-    row.style.alignItems = 'center';
-
-    const select = document.createElement('select');
-    select.className = 'audit-filter-column';
-    select.style.padding = '6px 10px';
-    select.style.border = '1px solid #d2d0ce';
-    select.style.borderRadius = '4px';
-    populateAuditColumnOptions(select, firstAvailableColumn.value, filterId);
-    select.addEventListener('change', () => onAuditFilterColumnChanged(filterId));
-
-    const input = document.createElement('input');
-    input.className = 'audit-filter-value';
-    input.type = 'text';
-    input.placeholder = getAuditFilterPlaceholder(firstAvailableColumn.value);
-    input.style.padding = '6px 10px';
-    input.style.border = '1px solid #d2d0ce';
-    input.style.borderRadius = '4px';
-    input.style.minWidth = '220px';
-    input.addEventListener('input', () => applyAuditFilters());
-
-    const removeButton = document.createElement('button');
-    removeButton.className = 'btn btn-secondary';
-    removeButton.textContent = 'Remove';
-    removeButton.addEventListener('click', () => removeAuditFilterRow(filterId));
-
-    row.appendChild(select);
-    row.appendChild(input);
-    row.appendChild(removeButton);
-
-    document.getElementById('audit-dynamic-filters').appendChild(row);
-    refreshAuditFilterColumnOptions();
+function updateAuditColumnVisibility() {
+    document.querySelectorAll('.audit-columns-filter-option-input').forEach(cb => {
+        auditVisibleColumns[cb.value] = cb.checked;
+    });
     applyAuditFilters();
-}
-
-function removeAuditFilterRow(filterId) {
-    const row = document.getElementById(`audit-filter-row-${filterId}`);
-    if (row) {
-        row.remove();
-        refreshAuditFilterColumnOptions();
-        applyAuditFilters();
-    }
 }
 
 function clearAuditFilters() {
-    document.getElementById('audit-dynamic-filters').innerHTML = '';
-    document.querySelectorAll('.audit-action-filter-option-input').forEach(input => {
-        input.checked = false;
-    });
+    document.querySelectorAll('.audit-action-filter-option-input').forEach(input => { input.checked = false; });
+    document.querySelectorAll('.audit-result-filter-option-input').forEach(input => { input.checked = false; });
+    document.getElementById('audit-initiated-by-search').value = '';
+    document.getElementById('audit-application-search').value = '';
+    document.getElementById('audit-details-search').value = '';
     updateAuditActionFilterLabel();
+    updateAuditResultFilterLabel();
     document.getElementById('audit-filter-panel').style.display = 'none';
     document.getElementById('btn-toggle-audit-filters').textContent = 'Add Filter';
     applyAuditFilters();
@@ -1288,31 +1188,41 @@ function applyAuditFilters() {
     const sortBy = (document.getElementById('audit-sort-by')?.value || 'time').toLowerCase();
     const sortDirection = (document.getElementById('audit-sort-direction')?.value || 'desc').toLowerCase();
     const selectedActionFilters = getSelectedAuditActionFilters();
-
-    const activeFilters = Array.from(document.querySelectorAll('#audit-dynamic-filters .audit-filter-row'))
-        .map(row => {
-            const column = row.querySelector('.audit-filter-column')?.value;
-            const value = (row.querySelector('.audit-filter-value')?.value || '').trim().toLowerCase();
-            return { column, value };
-        })
-        .filter(filter => filter.column && filter.value);
+    const selectedResultFilters = getSelectedAuditResultFilters();
+    const initiatedByTerm = (document.getElementById('audit-initiated-by-search')?.value || '').trim().toLowerCase();
+    const applicationTerm = (document.getElementById('audit-application-search')?.value || '').trim().toLowerCase();
+    const detailsTerm = (document.getElementById('audit-details-search')?.value || '').trim().toLowerCase();
 
     let filtered = allAuditEntries.filter(entry => {
+        // Actions filter
         const actionMatch = selectedActionFilters.length === 0 || selectedActionFilters.includes(entry.actionType || '');
-        if (!actionMatch) {
-            return false;
+        if (!actionMatch) return false;
+
+        // Result filter
+        if (selectedResultFilters.length > 0) {
+            const resultVal = entry.isSuccess ? 'success' : 'failed';
+            if (!selectedResultFilters.includes(resultVal)) return false;
         }
 
-        return activeFilters.every(filter => {
-            const fieldValue = getAuditFieldValue(entry, filter.column).toLowerCase();
+        // Initiated By text filter
+        if (initiatedByTerm) {
+            const performedBy = (entry.performedBy || 'System').toLowerCase();
+            if (!performedBy.includes(initiatedByTerm)) return false;
+        }
 
-            if (filter.column === 'result') {
-                if (filter.value === 'success') return entry.isSuccess === true;
-                if (filter.value === 'failed') return entry.isSuccess === false;
-            }
+        // Application text filter
+        if (applicationTerm) {
+            const appName = (entry.appDisplayName || '').toLowerCase();
+            if (!appName.includes(applicationTerm)) return false;
+        }
 
-            return fieldValue.includes(filter.value);
-        });
+        // Details text filter
+        if (detailsTerm) {
+            const details = `${entry.description || ''} ${entry.errorMessage || ''}`.toLowerCase();
+            if (!details.includes(detailsTerm)) return false;
+        }
+
+        return true;
     });
 
     filtered.sort((a, b) => {
@@ -1358,33 +1268,42 @@ function renderAuditLogTable(entries) {
         return;
     }
 
+    const ac = (key) => auditVisibleColumns[key];
+    const ahide = (key) => ac(key) ? '' : ' style="display:none;"';
+
     const tableHtml = `
         <table>
             <thead>
                 <tr>
-                    <th>Time</th>
-                    <th>Application</th>
-                    <th>Initiated By</th>
-                    <th>Action</th>
-                    <th>Result</th>
-                    <th>Details</th>
+                    <th${ahide('time')}>Time</th>
+                    <th${ahide('application')}>Application</th>
+                    <th${ahide('applicationId')}>Application ID</th>
+                    <th${ahide('initiatedBy')}>Initiated By</th>
+                    <th${ahide('action')}>Action</th>
+                    <th${ahide('result')}>Result</th>
+                    <th${ahide('details')}>Details</th>
                 </tr>
             </thead>
             <tbody>
-                ${entries.map(entry => `
+                ${entries.map(entry => {
+                    const spId = entry.servicePrincipalId || '';
+                    const showId = spId && spId !== 'SYSTEM' ? spId : '-';
+                    return `
                     <tr>
-                        <td>${new Date(entry.timestamp).toLocaleString()}</td>
-                        <td>${escapeHtml(entry.appDisplayName)}</td>
-                        <td>${escapeHtml(entry.performedBy || 'System')}</td>
-                        <td>${escapeHtml(entry.actionType)}</td>
-                        <td>
+                        <td${ahide('time')}>${new Date(entry.timestamp).toLocaleString()}</td>
+                        <td${ahide('application')}>${escapeHtml(entry.appDisplayName || '-')}</td>
+                        <td${ahide('applicationId')} style="${ac('applicationId') ? '' : 'display:none;'}font-size:12px;">${escapeHtml(showId)}</td>
+                        <td${ahide('initiatedBy')}>${escapeHtml(entry.performedBy || 'System')}</td>
+                        <td${ahide('action')}>${escapeHtml(entry.actionType)}</td>
+                        <td${ahide('result')}>
                             <span class="status-badge ${entry.isSuccess ? 'status-on' : 'status-off'}">
                                 ${entry.isSuccess ? 'Success' : 'Failed'}
                             </span>
                         </td>
-                        <td>${escapeHtml(entry.description)}${entry.errorMessage ? ` - ${escapeHtml(entry.errorMessage)}` : ''}</td>
+                        <td${ahide('details')}>${escapeHtml(entry.description)}${entry.errorMessage ? ` - ${escapeHtml(entry.errorMessage)}` : ''}</td>
                     </tr>
-                `).join('')}
+                `;
+                }).join('')}
             </tbody>
         </table>
     `;
@@ -1598,13 +1517,24 @@ document.getElementById('btn-refresh-audit').addEventListener('click', loadAudit
 document.getElementById('audit-from-date').addEventListener('change', loadAuditLog);
 document.getElementById('audit-to-date').addEventListener('change', loadAuditLog);
 document.getElementById('btn-toggle-audit-filters').addEventListener('click', toggleAuditFilterPanel);
+document.getElementById('btn-clear-audit-filters').addEventListener('click', clearAuditFilters);
 document.getElementById('audit-action-filter-toggle').addEventListener('click', function (e) { toggleAuditActionFilterDropdown(e); });
 document.getElementById('audit-action-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
 document.querySelectorAll('.audit-action-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAuditActionFilterChanged); });
-document.getElementById('btn-add-audit-column-filter').addEventListener('click', addAuditFilterRow);
-document.getElementById('btn-clear-audit-filters').addEventListener('click', clearAuditFilters);
+document.getElementById('audit-result-filter-toggle').addEventListener('click', function (e) { toggleAuditResultFilterDropdown(e); });
+document.getElementById('audit-result-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
+document.querySelectorAll('.audit-result-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAuditResultFilterChanged); });
+document.getElementById('audit-initiated-by-search').addEventListener('input', applyAuditFilters);
+document.getElementById('audit-application-search').addEventListener('input', applyAuditFilters);
+document.getElementById('audit-details-search').addEventListener('input', applyAuditFilters);
 document.getElementById('audit-sort-by').addEventListener('change', applyAuditFilters);
 document.getElementById('audit-sort-direction').addEventListener('change', applyAuditFilters);
+document.getElementById('audit-columns-filter-toggle').addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.getElementById('audit-columns-filter-dropdown').classList.toggle('show');
+});
+document.getElementById('audit-columns-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
+document.querySelectorAll('.audit-columns-filter-option-input').forEach(function (cb) { cb.addEventListener('change', updateAuditColumnVisibility); });
 
 // Settings tab
 document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
