@@ -78,6 +78,21 @@ public class SamlAppSummary
     public DateTime? CertExpiryDate { get; set; }
     public int? DaysUntilExpiry { get; set; }
     public string ExpiryCategory { get; set; } = string.Empty; // "Expired", "Critical", "Warning", "OK"
+
+    /// <summary>
+    /// Whether an app-specific policy override exists ("Global" or "App-Specific")
+    /// </summary>
+    public string PolicyType { get; set; } = "Global";
+
+    /// <summary>
+    /// Effective days before expiry to create a new certificate
+    /// </summary>
+    public int CreateCertDaysBeforeExpiry { get; set; }
+
+    /// <summary>
+    /// Effective days before expiry to activate the new certificate
+    /// </summary>
+    public int ActivateCertDaysBeforeExpiry { get; set; }
 }
 
 /// <summary>

@@ -26,6 +26,23 @@ const auditFilterColumns = [
 // Current action for confirmation modal
 let pendingAction = null;
 
+// Column visibility state (keys match checkbox values)
+const visibleColumns = {
+    application: true,
+    sponsor: true,
+    autoRotate: true,
+    certExpiry: false,
+    daysRemaining: true,
+    status: true,
+    policyType: false,
+    createCertDays: false,
+    activateCertDays: false
+};
+
+// Edit policy modal state
+let editPolicyAppId = null;
+let editPolicyAppName = null;
+
 // HTML escape function to prevent XSS
 function escapeHtml(text) {
     if (text == null) return '';
@@ -444,6 +461,85 @@ async function resendReminderEmail(appId, appName) {
     }
 }
 
+// Open the edit policy modal for an app
+async function editPolicy(appId, appName) {
+    closeAllDropdowns();
+    editPolicyAppId = appId;
+    editPolicyAppName = appName;
+    document.getElementById('editPolicyTitle').textContent = `Edit Policy — ${appName}`;
+    document.getElementById('editPolicyError').style.display = 'none';
+
+    try {
+        showLoading('Loading app policy...');
+        const result = await apiCall(`policy/app/${appId}`);
+        clearStatusBanner();
+
+        if (result.isAppSpecific) {
+            document.getElementById('editPolicyCreateDays').value = result.policy.createCertDaysBeforeExpiry ?? '';
+            document.getElementById('editPolicyActivateDays').value = result.policy.activateCertDaysBeforeExpiry ?? '';
+        } else {
+            // No app-specific policy — leave blank (will use global)
+            document.getElementById('editPolicyCreateDays').value = '';
+            document.getElementById('editPolicyActivateDays').value = '';
+        }
+
+        document.getElementById('editPolicyModal').classList.add('show');
+    } catch (error) {
+        showError(`Failed to load app policy: ${error.message}`);
+    }
+}
+
+// Save the app-specific policy from the modal
+async function saveAppPolicy() {
+    const createDaysVal = document.getElementById('editPolicyCreateDays').value.trim();
+    const activateDaysVal = document.getElementById('editPolicyActivateDays').value.trim();
+    const errorEl = document.getElementById('editPolicyError');
+
+    const createDays = createDaysVal === '' ? null : parseInt(createDaysVal, 10);
+    const activateDays = activateDaysVal === '' ? null : parseInt(activateDaysVal, 10);
+
+    if (createDays !== null && (isNaN(createDays) || createDays < 1 || createDays > 365)) {
+        errorEl.textContent = 'Create cert days must be between 1 and 365, or blank for global default.';
+        errorEl.style.display = 'block';
+        return;
+    }
+    if (activateDays !== null && (isNaN(activateDays) || activateDays < 1 || activateDays > 365)) {
+        errorEl.textContent = 'Activate cert days must be between 1 and 365, or blank for global default.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    try {
+        showLoading('Saving app policy...');
+        document.getElementById('editPolicyModal').classList.remove('show');
+        await apiCall(`policy/app/${editPolicyAppId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                createCertDaysBeforeExpiry: createDays,
+                activateCertDaysBeforeExpiry: activateDays
+            })
+        });
+        showSuccess(`Policy updated for ${editPolicyAppName}`);
+        await loadData();
+    } catch (error) {
+        showError(`Failed to update app policy: ${error.message}`);
+    }
+}
+
+function closeEditPolicyModal() {
+    document.getElementById('editPolicyModal').classList.remove('show');
+    editPolicyAppId = null;
+    editPolicyAppName = null;
+}
+
+// Update column visibility from checkboxes and re-render
+function updateColumnVisibility() {
+    document.querySelectorAll('.app-columns-filter-option-input').forEach(cb => {
+        visibleColumns[cb.value] = cb.checked;
+    });
+    applyFilters();
+}
+
 // Close the confirmation modal
 function closeModal() {
     document.getElementById('confirmModal').classList.remove('show');
@@ -707,16 +803,22 @@ function renderApps(apps) {
         return status.charAt(0).toUpperCase() + status.slice(1);
     };
 
+    const col = (key) => visibleColumns[key];
+    const hide = (key) => col(key) ? '' : ' style="display:none;"';
+
     const tableHtml = `
         <table>
             <thead>
                 <tr>
-                    <th>Application</th>
-                    <th>Sponsor</th>
-                    <th>Auto-Rotate</th>
-                    <th>Certificate Expiry</th>
-                    <th>Days Remaining</th>
-                    <th>Status</th>
+                    <th${hide('application')}>Application</th>
+                    <th${hide('sponsor')}>Sponsor</th>
+                    <th${hide('autoRotate')}>Auto-Rotate</th>
+                    <th${hide('certExpiry')}>Certificate Expiry</th>
+                    <th${hide('daysRemaining')}>Days Remaining</th>
+                    <th${hide('status')}>Status</th>
+                    <th${hide('policyType')}>Policy Type</th>
+                    <th${hide('createCertDays')}>Create Cert (days)</th>
+                    <th${hide('activateCertDays')}>Activate Cert (days)</th>
                     <th style="width:60px;">Actions</th>
                 </tr>
             </thead>
@@ -726,22 +828,28 @@ function renderApps(apps) {
                     const appIdToken = toDomIdToken(app.id, 'app');
                     const autoRotateStatusClass = toSafeClassToken(app.autoRotateStatus || 'null', 'null');
                     const computedStatusClass = toSafeClassToken(computedStatus, 'ok');
+                    const isAppSpecific = app.policyType === 'App-Specific';
                     return `
                     <tr>
-                        <td>${escapeHtml(app.displayName)}</td>
-                        <td>${escapeHtml(app.sponsor) || 'Not Set'}</td>
-                        <td>
+                        <td${hide('application')}>${escapeHtml(app.displayName)}</td>
+                        <td${hide('sponsor')}>${escapeHtml(app.sponsor) || 'Not Set'}</td>
+                        <td${hide('autoRotate')}>
                             <span class="status-badge status-${autoRotateStatusClass}">
                                 ${((app.autoRotateStatus || '').toLowerCase() === 'notify') ? 'Notify Only' : (escapeHtml(app.autoRotateStatus) || 'Not Set')}
                             </span>
                         </td>
-                        <td>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
-                        <td>${app.daysUntilExpiry ?? 'N/A'}</td>
-                        <td>
+                        <td${hide('certExpiry')}>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
+                        <td${hide('daysRemaining')}>${app.daysUntilExpiry ?? 'N/A'}</td>
+                        <td${hide('status')}>
                             <span class="expiry-badge expiry-${computedStatusClass}">
                                 ${formatComputedStatus(computedStatus)}
                             </span>
                         </td>
+                        <td${hide('policyType')}>
+                            <span class="status-badge ${isAppSpecific ? 'status-on' : ''}">${escapeHtml(app.policyType || 'Global')}</span>
+                        </td>
+                        <td${hide('createCertDays')}>${app.createCertDaysBeforeExpiry ?? 'N/A'}</td>
+                        <td${hide('activateCertDays')}>${app.activateCertDaysBeforeExpiry ?? 'N/A'}</td>
                         <td class="actions-cell">
                             <button class="actions-btn" data-action="toggle-menu" data-app-id-token="${appIdToken}">⋮</button>
                             <div id="actions-menu-${appIdToken}" class="dropdown-menu">
@@ -753,6 +861,9 @@ function renderApps(apps) {
                                 </button>
                                 <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} data-action="edit-sponsor" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}" data-sponsor="${escapeHtml(app.sponsor || '')}">
                                     Edit Sponsor
+                                </button>
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} data-action="edit-policy" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    Edit Policy
                                 </button>
                                 <button class="dropdown-item ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''}" ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''} ${!isAdminUser() ? 'style="opacity:0.5;cursor:not-allowed;"' : ''} data-action="resend-reminder" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Resend Reminder Email
@@ -1387,6 +1498,18 @@ document.getElementById('app-status-filter-toggle').addEventListener('click', fu
 document.getElementById('app-status-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
 document.querySelectorAll('.app-status-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAppFilterChanged); });
 
+// Columns filter
+document.getElementById('app-columns-filter-toggle').addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.getElementById('app-columns-filter-dropdown').classList.toggle('show');
+});
+document.getElementById('app-columns-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
+document.querySelectorAll('.app-columns-filter-option-input').forEach(function (cb) { cb.addEventListener('change', updateColumnVisibility); });
+
+// Edit policy modal
+document.getElementById('btn-edit-policy-cancel').addEventListener('click', closeEditPolicyModal);
+document.getElementById('btn-edit-policy-save').addEventListener('click', saveAppPolicy);
+
 // Cleanup tab buttons
 document.getElementById('btn-export-cleanup').addEventListener('click', exportCleanupList);
 document.getElementById('btn-refresh-cleanup').addEventListener('click', loadCleanupData);
@@ -1437,6 +1560,9 @@ document.addEventListener('click', function (e) {
             break;
         case 'edit-sponsor':
             editSponsor(appId, appName, btn.dataset.sponsor || '');
+            break;
+        case 'edit-policy':
+            editPolicy(appId, appName);
             break;
         case 'resend-reminder':
             resendReminderEmail(appId, appName);

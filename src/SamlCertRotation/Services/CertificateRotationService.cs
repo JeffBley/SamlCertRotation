@@ -472,6 +472,10 @@ public class CertificateRotationService : ICertificateRotationService
             var expiringSoonThresholdDays = Math.Max(1, globalPolicy.CreateCertDaysBeforeExpiry);
             stats.ExpiringSoonThresholdDays = expiringSoonThresholdDays;
 
+            // Fetch all app-specific policies in one call
+            var appPolicies = await _policyService.ListAppPoliciesAsync();
+            var appPolicyLookup = appPolicies.ToDictionary(p => p.RowKey, p => p, StringComparer.OrdinalIgnoreCase);
+
             stats.TotalSamlApps = apps.Count;
 
             foreach (var app in apps)
@@ -509,6 +513,7 @@ public class CertificateRotationService : ICertificateRotationService
                         stats.AppsExpiringIn90Days++;
 
                     // Add to summary list
+                    var hasAppPolicy1 = appPolicyLookup.TryGetValue(app.Id, out var appPolicy1);
                     stats.Apps.Add(new SamlAppSummary
                     {
                         Id = app.Id,
@@ -517,18 +522,25 @@ public class CertificateRotationService : ICertificateRotationService
                         AutoRotateStatus = app.AutoRotateStatus,
                         CertExpiryDate = activeCert.EndDateTime,
                         DaysUntilExpiry = daysUntilExpiry,
-                        ExpiryCategory = GetExpiryCategory(daysUntilExpiry)
+                        ExpiryCategory = GetExpiryCategory(daysUntilExpiry),
+                        PolicyType = hasAppPolicy1 ? "App-Specific" : "Global",
+                        CreateCertDaysBeforeExpiry = (hasAppPolicy1 ? appPolicy1!.CreateCertDaysBeforeExpiry : null) ?? globalPolicy.CreateCertDaysBeforeExpiry,
+                        ActivateCertDaysBeforeExpiry = (hasAppPolicy1 ? appPolicy1!.ActivateCertDaysBeforeExpiry : null) ?? globalPolicy.ActivateCertDaysBeforeExpiry
                     });
                 }
                 else
                 {
+                    var hasAppPolicy2 = appPolicyLookup.TryGetValue(app.Id, out var appPolicy2);
                     stats.Apps.Add(new SamlAppSummary
                     {
                         Id = app.Id,
                         DisplayName = app.DisplayName,
                         Sponsor = app.Sponsor,
                         AutoRotateStatus = app.AutoRotateStatus,
-                        ExpiryCategory = "Unknown"
+                        ExpiryCategory = "Unknown",
+                        PolicyType = hasAppPolicy2 ? "App-Specific" : "Global",
+                        CreateCertDaysBeforeExpiry = (hasAppPolicy2 ? appPolicy2!.CreateCertDaysBeforeExpiry : null) ?? globalPolicy.CreateCertDaysBeforeExpiry,
+                        ActivateCertDaysBeforeExpiry = (hasAppPolicy2 ? appPolicy2!.ActivateCertDaysBeforeExpiry : null) ?? globalPolicy.ActivateCertDaysBeforeExpiry
                     });
                 }
             }

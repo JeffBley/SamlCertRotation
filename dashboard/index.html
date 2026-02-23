@@ -749,6 +749,23 @@
                             <option value="asc">Asc</option>
                             <option value="desc">Desc</option>
                         </select>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="app-columns-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="app-columns-filter-label">Columns</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="app-columns-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="application" checked disabled>Application</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="sponsor" checked>Sponsor</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="autoRotate" checked>Auto-Rotate</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="certExpiry">Certificate Expiry</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="daysRemaining" checked>Days Remaining</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="status" checked>Status</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="policyType">Policy Type</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="createCertDays">Create Cert (days)</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="app-columns-filter-option-input" value="activateCertDays">Activate Cert (days)</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="apps-table-container">
@@ -947,6 +964,28 @@
             <div class="modal-buttons">
                 <button class="btn-cancel" id="btn-modal-cancel">Cancel</button>
                 <button class="btn btn-primary" id="modalConfirmBtn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit App Policy Modal -->
+    <div id="editPolicyModal" class="modal-overlay">
+        <div class="modal" style="min-width:380px;">
+            <h3 id="editPolicyTitle">Edit App Policy</h3>
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-weight:600;margin-bottom:4px;">Create cert (days before expiry)</label>
+                <input type="number" id="editPolicyCreateDays" min="1" max="365" style="width:100%;padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                <p style="font-size:11px;color:#888;margin-top:2px;">Leave blank to use the global default.</p>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-weight:600;margin-bottom:4px;">Activate cert (days before expiry)</label>
+                <input type="number" id="editPolicyActivateDays" min="1" max="365" style="width:100%;padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                <p style="font-size:11px;color:#888;margin-top:2px;">Leave blank to use the global default.</p>
+            </div>
+            <div id="editPolicyError" style="color:#d13438;font-size:12px;margin-bottom:8px;display:none;"></div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="btn-edit-policy-cancel">Cancel</button>
+                <button class="btn btn-primary" id="btn-edit-policy-save">Save</button>
             </div>
         </div>
     </div>
