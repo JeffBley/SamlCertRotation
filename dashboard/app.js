@@ -540,6 +540,7 @@ async function createNewCert(appId, appName) {
         await apiCall(`applications/${appId}/certificate`, { method: 'POST' });
         showSuccess(`New certificate created for ${appName}`);
         await loadData();
+        if (isSponsorUser()) loadMyApps();
     } catch (error) {
         showError(`Failed to create certificate: ${error.message}`);
     }
@@ -553,6 +554,7 @@ async function activateNewestCert(appId, appName) {
         await apiCall(`applications/${appId}/certificate/activate`, { method: 'POST' });
         showSuccess(`Newest certificate activated for ${appName}`);
         await loadData();
+        if (isSponsorUser()) loadMyApps();
     } catch (error) {
         showError(`Failed to activate certificate: ${error.message}`);
     }
@@ -700,6 +702,7 @@ async function saveSponsorModal() {
             await loadMyApps();
         } else {
             await loadData();
+            if (isSponsorUser()) loadMyApps();
         }
     } catch (error) {
         sponsorEditSponsorMode = false;
@@ -804,6 +807,7 @@ async function saveAppPolicy() {
             await loadMyApps();
         } else {
             await loadData();
+            if (isSponsorUser()) loadMyApps();
         }
     } catch (error) {
         sponsorEditPolicyMode = false;
@@ -1150,6 +1154,7 @@ function renderMyApps(apps) {
     const canUpdatePolicy = myAppsSponsorCanUpdatePolicy || isAdminUser();
     const canEditSponsors = myAppsSponsorCanEditSponsors || isAdminUser();
     const hasAnyAction = canRotate || canUpdatePolicy || canEditSponsors;
+    const adminMyApps = isAdminUser();
 
     const col = (key) => myAppsVisibleColumns[key];
     const hide = (key) => col(key) ? '' : ' style="display:none;"';
@@ -1177,7 +1182,7 @@ function renderMyApps(apps) {
                     const computedStatusClass = toSafeClassToken(computedStatus, 'ok');
                     const autoRotateStatusClass = toSafeClassToken(app.autoRotateStatus || 'null', 'null');
                     const deeplink = buildEntraDeeplink(app.id, app.appId || '');
-                    const appIdToken = toDomIdToken(app.id, 'myapp');
+                    const appIdToken = 'myapp-' + toDomIdToken(app.id, 'myapp');
                     const isAppSpecific = app.policyType === 'App-Specific';
                     return `
                     <tr>
@@ -1205,6 +1210,23 @@ function renderMyApps(apps) {
                         <td class="actions-cell">
                             <button class="actions-btn" data-action="toggle-menu" data-app-id-token="${appIdToken}">⋮</button>
                             <div id="actions-menu-${appIdToken}" class="dropdown-menu">
+                                ${adminMyApps ? `
+                                <button class="dropdown-item" data-action="create-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    Create new SAML certificate
+                                </button>
+                                <button class="dropdown-item" data-action="activate-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    Make newest cert active
+                                </button>
+                                <button class="dropdown-item" data-action="edit-sponsor" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}" data-sponsor="${escapeHtml(app.sponsor || '')}">
+                                    Edit Sponsor
+                                </button>
+                                <button class="dropdown-item" data-action="edit-policy" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    Edit Policy
+                                </button>
+                                <button class="dropdown-item ${computedStatus === 'ok' ? 'disabled' : ''}" ${computedStatus === 'ok' ? 'disabled' : ''} data-action="resend-reminder" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    Resend Reminder Email
+                                </button>
+                                ` : `
                                 ${canRotate ? `
                                 <button class="dropdown-item" data-action="sponsor-create-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Create new SAML certificate
@@ -1223,6 +1245,7 @@ function renderMyApps(apps) {
                                     Edit Sponsor
                                 </button>
                                 ` : ''}
+                                `}
                             </div>
                         </td>
                         ` : ''}
@@ -1302,7 +1325,7 @@ function renderApps(apps) {
             <tbody>
                 ${apps.map(app => {
                     const computedStatus = getComputedAppStatus(app);
-                    const appIdToken = toDomIdToken(app.id, 'app');
+                    const appIdToken = 'admin-' + toDomIdToken(app.id, 'app');
                     const autoRotateStatusClass = toSafeClassToken(app.autoRotateStatus || 'null', 'null');
                     const computedStatusClass = toSafeClassToken(computedStatus, 'ok');
                     const isAppSpecific = app.policyType === 'App-Specific';
