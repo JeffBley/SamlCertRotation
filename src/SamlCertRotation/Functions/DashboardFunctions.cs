@@ -2109,6 +2109,34 @@ public class DashboardFunctions
                     }
 
                     _logger.LogInformation("Extracted {RoleCount} roles from SWA prn claim: {Roles}", roles.Count, string.Join(", ", roles));
+
+                    // Extract app-role and group claims from prn payload for role mapping
+                    if (prnRoot.TryGetProperty("claims", out var prnClaimsArray) && prnClaimsArray.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var claimElement in prnClaimsArray.EnumerateArray())
+                        {
+                            if (claimElement.ValueKind != JsonValueKind.Object) continue;
+
+                            var ct = TryGetString(claimElement, "typ") ?? TryGetString(claimElement, "type");
+                            var cv = TryGetString(claimElement, "val") ?? TryGetString(claimElement, "value");
+                            if (string.IsNullOrWhiteSpace(ct) || string.IsNullOrWhiteSpace(cv)) continue;
+
+                            if (string.Equals(ct, "roles", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(ct, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role", StringComparison.OrdinalIgnoreCase))
+                            {
+                                claimRoleValues.Add(cv);
+                            }
+
+                            if (string.Equals(ct, "groups", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(ct, "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups", StringComparison.OrdinalIgnoreCase))
+                            {
+                                claimGroupValues.Add(cv);
+                            }
+                        }
+
+                        _logger.LogInformation("Extracted {RoleClaimCount} role claims and {GroupClaimCount} group claims from SWA prn payload",
+                            claimRoleValues.Count, claimGroupValues.Count);
+                    }
                 }
                 catch (Exception ex)
                 {

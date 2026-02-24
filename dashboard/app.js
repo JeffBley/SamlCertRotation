@@ -1279,7 +1279,7 @@ async function loadSettings() {
         document.getElementById('sessionTimeoutMinutes').value = typeof settings.sessionTimeoutMinutes === 'number' ? settings.sessionTimeoutMinutes : 0;
         document.getElementById('reportsRetentionPolicyDays').value = settings.reportsRetentionPolicyDays || 14;
         const sponsorsCanRotateEl = document.getElementById('sponsorsCanRotateCerts');
-        if (sponsorsCanRotateEl) sponsorsCanRotateEl.checked = settings.sponsorsCanRotateCerts === true;
+        if (sponsorsCanRotateEl) sponsorsCanRotateEl.value = settings.sponsorsCanRotateCerts === true ? 'enabled' : 'disabled';
         toggleSponsorReminderSettings();
         toggleSponsorReminderCount();
     } catch (error) {
@@ -1352,7 +1352,7 @@ async function saveSettings() {
             retentionPolicyDays,
             reportsRetentionPolicyDays,
             sessionTimeoutMinutes: parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0,
-            sponsorsCanRotateCerts: document.getElementById('sponsorsCanRotateCerts')?.checked ?? false
+            sponsorsCanRotateCerts: document.getElementById('sponsorsCanRotateCerts')?.value === 'enabled'
         };
         await apiCall('settings', {
             method: 'PUT',
