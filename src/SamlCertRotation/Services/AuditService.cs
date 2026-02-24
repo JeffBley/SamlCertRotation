@@ -113,6 +113,12 @@ public class AuditService : IAuditService
     {
         var entries = new List<AuditEntry>();
 
+        if (!Guid.TryParse(servicePrincipalId, out _))
+        {
+            _logger.LogWarning("Invalid GUID format for servicePrincipalId: {Id}", servicePrincipalId);
+            return entries;
+        }
+
         try
         {
             // Query last 30 days for the specific app using a range filter

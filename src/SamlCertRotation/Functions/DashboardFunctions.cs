@@ -860,7 +860,7 @@ public class DashboardFunctions
                 Successful = successful,
                 Skipped = skipped,
                 Failed = failed,
-                ResultsJson = JsonSerializer.Serialize(results, JsonOptions)
+                ResultsJson = JsonSerializer.Serialize(results.Where(r => r.IsActionable).ToList(), JsonOptions)
             };
             await _reportService.SaveRunReportAsync(report);
 
@@ -872,7 +872,7 @@ public class DashboardFunctions
                 successful,
                 skipped,
                 failed,
-                results = results
+                results = results.Where(r => r.IsActionable).ToList()
             });
         }
         catch (Exception ex)
@@ -925,7 +925,7 @@ public class DashboardFunctions
                 Successful = successful,
                 Skipped = skipped,
                 Failed = failed,
-                ResultsJson = JsonSerializer.Serialize(results, JsonOptions)
+                ResultsJson = JsonSerializer.Serialize(results.Where(r => r.IsActionable).ToList(), JsonOptions)
             };
             await _reportService.SaveRunReportAsync(report);
 
@@ -937,7 +937,7 @@ public class DashboardFunctions
                 successful,
                 skipped,
                 failed,
-                results = results
+                results = results.Where(r => r.IsActionable).ToList()
             });
         }
         catch (Exception ex)

@@ -108,6 +108,15 @@ public class RotationResult
     public string? ErrorMessage { get; set; }
 
     /// <summary>
+    /// Returns true when this result represents a meaningful action (not a skipped/no-op app).
+    /// Used to filter report detail listings to only show apps requiring attention.
+    /// </summary>
+    public bool IsActionable =>
+        !string.IsNullOrEmpty(Action) &&
+        !string.Equals(Action, "None", StringComparison.OrdinalIgnoreCase) &&
+        !Action.StartsWith("None ", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Computes successful/skipped/failed totals for rotation run summaries.
     /// </summary>
     public static (int successful, int skipped, int failed) GetOutcomeCounts(List<RotationResult> results)

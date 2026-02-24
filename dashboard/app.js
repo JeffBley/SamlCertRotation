@@ -1217,23 +1217,21 @@ async function viewReport(id) {
             <div><strong>Mode:</strong> ${modeLabel}</div>
             <div><strong>Triggered By:</strong> ${escapeHtml(report.triggeredBy || 'Scheduled')}</div>
             <div><strong>Date:</strong> ${new Date(report.runDate).toLocaleString()}</div>
-            <div><strong>Total:</strong> ${report.totalProcessed}</div>
+            <div><strong>Apps Evaluated:</strong> ${report.totalProcessed}</div>
             <div><strong>Successful:</strong> ${report.successful}</div>
-            <div><strong>Skipped:</strong> ${report.skipped}</div>
+            <div><strong>Apps Skipped (no action required):</strong> ${report.skipped}</div>
             <div><strong>Failed:</strong> ${report.failed}</div>
         `;
 
         if (!report.results || report.results.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;">No per-app details available.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;">No actionable apps — all certificates are healthy.</td></tr>';
             return;
         }
 
-        // Sort: failures first, then actions, then skipped
+        // Sort: failures first, then by name
         const sorted = [...report.results].sort((a, b) => {
             if (!a.success && b.success) return -1;
             if (a.success && !b.success) return 1;
-            if (a.action === 'None' && b.action !== 'None') return 1;
-            if (a.action !== 'None' && b.action === 'None') return -1;
             return (a.appDisplayName || '').localeCompare(b.appDisplayName || '');
         });
 
@@ -2215,7 +2213,7 @@ async function loadTestEmailTemplates() {
     if (testEmailTemplates.length > 0) return; // already loaded
 
     try {
-        const result = await apiCall('/testing/email-templates');
+        const result = await apiCall('testing/email-templates');
         if (result && result.templates) {
             testEmailTemplates = result.templates;
             templateSelect.innerHTML = '<option value="">— Select a template —</option>';

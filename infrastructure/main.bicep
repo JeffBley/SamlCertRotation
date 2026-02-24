@@ -434,7 +434,7 @@ resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
             body: {
               To: '@triggerBody()?[\'to\']'
               Subject: '@triggerBody()?[\'subject\']'
-              Body: '<p>@{triggerBody()?[\'body\']}</p>'
+              Body: '@{triggerBody()?[\'body\']}'
               Importance: 'Normal'
             }
           }

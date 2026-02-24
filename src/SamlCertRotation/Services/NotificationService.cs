@@ -15,6 +15,16 @@ public class NotificationService : INotificationService
     private readonly ILogger<NotificationService> _logger;
     private readonly string _adminEmails;
 
+    /// <summary>
+    /// Actions that count as "successful" in daily summary emails.
+    /// Must stay aligned with <see cref="RotationResult.GetOutcomeCounts"/>.
+    /// </summary>
+    private static readonly HashSet<string> SuccessActions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Created", "Activated", "Would Create", "Would Activate",
+        "Notified", "Would Notify", "Created (Notify)", "Would Create (Notify)"
+    };
+
     public NotificationService(
         IGraphService graphService,
         IPolicyService policyService,
@@ -362,23 +372,24 @@ public class NotificationService : INotificationService
 
     private string GenerateDailySummaryEmail(DashboardStats stats, List<RotationResult> results)
     {
-        var successCount = results.Count(r =>
-            r.Success && (
-                string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase)));
+        var successCount = results.Count(r => r.Success && SuccessActions.Contains(r.Action ?? string.Empty));
         var failureCount = results.Count(r => !r.Success);
         var skippedCount = Math.Max(0, results.Count - successCount - failureCount);
 
-        var resultsHtml = string.Join("", results.Select(r => $@"
+        var resultsHtml = string.Join("", results.Select(r =>
+        {
+            var isSuccess = r.Success && SuccessActions.Contains(r.Action ?? string.Empty);
+            var color = !r.Success ? "#d13438" : isSuccess ? "#107c10" : "#797775";
+            var label = !r.Success ? "✗ Failed" : isSuccess ? "✓ Success" : "↷ Skipped";
+            return $@"
             <tr>
                 <td style='padding: 8px; border-bottom: 1px solid #eee;'>{H(r.AppDisplayName)}</td>
                 <td style='padding: 8px; border-bottom: 1px solid #eee;'>{H(r.Action)}</td>
                 <td style='padding: 8px; border-bottom: 1px solid #eee;'>
-                    <span style='color: {(!r.Success ? "#d13438" : (string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase) ? "#107c10" : "#797775"))}'>{(!r.Success ? "✗ Failed" : (string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) || string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase) ? "✓ Success" : "↷ Skipped"))}</span>
+                    <span style='color: {color}'>{label}</span>
                 </td>
-            </tr>"));
+            </tr>";
+        }));
 
         return $@"
 <!DOCTYPE html>
