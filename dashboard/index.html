@@ -656,7 +656,7 @@
     <div class="container">
         <div id="error-container"></div>
 
-        <div class="tabs">
+        <div class="tabs" style="visibility:hidden;">
             <button class="tab active" data-tab="overview">Overview</button>
             <button class="tab" data-tab="applications">Applications</button>
             <button class="tab" data-tab="myapps" style="display:none;">My SAML Apps</button>
@@ -1065,7 +1065,7 @@
                     <h2>Authentication</h2>
                 </div>
                 <p style="font-size:13px;color:#666;margin-bottom:16px;">Inspect the authentication metadata returned by Azure Static Web Apps for your current session.</p>
-                <button class="btn btn-primary" onclick="window.open('/.auth/me', '_blank')" style="padding:8px 24px;font-size:14px;">View SWA Authentication Metadata</button>
+                <button class="btn btn-primary" id="btn-view-auth-metadata" style="padding:8px 24px;font-size:14px;">View SWA Authentication Metadata</button>
             </div>
         </div>
 
@@ -1271,6 +1271,21 @@
             <div class="modal-buttons">
                 <button class="btn-cancel" id="btn-timeout-signout">Sign Out</button>
                 <button class="btn btn-primary" id="btn-timeout-renew">Stay Signed In</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Sponsor Modal -->
+    <div id="editSponsorModal" class="modal-overlay">
+        <div class="modal" style="min-width:420px;max-width:520px;">
+            <h3 id="editSponsorTitle" style="color:#0078d4;">Edit Sponsors</h3>
+            <p id="editSponsorSubtitle" style="font-size:13px;color:#666;margin-bottom:12px;">Add or remove sponsor email addresses.</p>
+            <div id="sponsorEmailRows" style="margin-bottom:12px;"></div>
+            <button type="button" id="btn-add-sponsor-row" style="background:none;border:none;color:#0078d4;cursor:pointer;font-size:13px;padding:4px 0;">+ Add another sponsor</button>
+            <div id="editSponsorError" style="color:#d13438;font-size:12px;margin-top:8px;display:none;"></div>
+            <div class="modal-buttons" style="margin-top:16px;">
+                <button class="btn-cancel" id="btn-sponsor-cancel">Cancel</button>
+                <button class="btn btn-primary" id="btn-sponsor-save">Save</button>
             </div>
         </div>
     </div>

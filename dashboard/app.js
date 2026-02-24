@@ -222,6 +222,13 @@ function applyRoleBasedAccess() {
         }
         const myAppsContent = document.getElementById('tab-myapps');
         if (myAppsContent) myAppsContent.classList.add('active');
+    }
+
+    // Reveal tabs now that role-based visibility is applied (prevents flash)
+    const tabsContainer = document.querySelector('.tabs');
+    if (tabsContainer) tabsContainer.style.visibility = 'visible';
+
+    if (sponsorOnly) {
         loadMyApps();
         return;
     }
@@ -555,34 +562,83 @@ async function sponsorActivateCert(appId, appName) {
     }
 }
 
-// Edit sponsor tag for an app
-async function editSponsor(appId, appName, currentSponsor) {
+// Edit sponsor tag for an app — opens modal with per-sponsor input rows
+let editSponsorState = { appId: null, appName: null };
+
+function editSponsor(appId, appName, currentSponsor) {
     closeAllDropdowns();
+    editSponsorState = { appId, appName };
 
-    const enteredValue = prompt(`Enter sponsor email(s) for ${appName}:\n(Separate multiple sponsors with semicolons)`, currentSponsor || '');
-    if (enteredValue === null) {
-        return;
-    }
+    document.getElementById('editSponsorTitle').textContent = `Edit Sponsors — ${appName}`;
+    document.getElementById('editSponsorError').style.display = 'none';
 
-    const sponsorEmail = enteredValue.trim();
-    if (!sponsorEmail) {
-        showError('Sponsor email is required.');
+    const container = document.getElementById('sponsorEmailRows');
+    container.innerHTML = '';
+
+    // Parse existing sponsors (semicolon-separated)
+    const existing = (currentSponsor || '').split(';').map(e => e.trim()).filter(e => e.length > 0);
+    if (existing.length === 0) existing.push(''); // start with one empty row
+
+    existing.forEach(email => addSponsorRow(email));
+    document.getElementById('editSponsorModal').classList.add('show');
+}
+
+function addSponsorRow(value) {
+    const container = document.getElementById('sponsorEmailRows');
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+    row.innerHTML = `
+        <input type="email" placeholder="sponsor@example.com" value="${escapeHtml(value || '')}" 
+               class="sponsor-email-input" 
+               style="flex:1;padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;font-size:13px;">
+        <button type="button" class="btn-remove-sponsor" title="Remove"
+                style="background:none;border:none;color:#d13438;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;">&#x2715;</button>
+    `;
+    row.querySelector('.btn-remove-sponsor').addEventListener('click', () => {
+        row.remove();
+        // Keep at least one row
+        if (container.querySelectorAll('.sponsor-email-input').length === 0) {
+            addSponsorRow('');
+        }
+    });
+    container.appendChild(row);
+    // Focus the new input if it's empty
+    const input = row.querySelector('input');
+    if (!value) input.focus();
+}
+
+async function saveSponsorModal() {
+    const container = document.getElementById('sponsorEmailRows');
+    const inputs = container.querySelectorAll('.sponsor-email-input');
+    const emails = Array.from(inputs).map(i => i.value.trim()).filter(e => e.length > 0);
+
+    const errorEl = document.getElementById('editSponsorError');
+
+    if (emails.length === 0) {
+        errorEl.textContent = 'At least one sponsor email is required.';
+        errorEl.style.display = 'block';
         return;
     }
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(sponsorEmail)) {
-        showError('Please enter a valid sponsor email address.');
+    const invalid = emails.filter(e => !emailPattern.test(e));
+    if (invalid.length > 0) {
+        errorEl.textContent = `Invalid email: ${invalid.join(', ')}`;
+        errorEl.style.display = 'block';
         return;
     }
 
+    errorEl.style.display = 'none';
+    const sponsorEmail = emails.join(';');
+
     try {
         showLoading('Updating sponsor...');
-        await apiCall(`applications/${appId}/sponsor`, {
+        document.getElementById('editSponsorModal').classList.remove('show');
+        await apiCall(`applications/${editSponsorState.appId}/sponsor`, {
             method: 'PUT',
             body: JSON.stringify({ sponsorEmail })
         });
-        showSuccess(`Sponsor updated for ${appName}`);
+        showSuccess(`Sponsor updated for ${editSponsorState.appName}`);
         await loadData();
     } catch (error) {
         showError(`Failed to update sponsor: ${error.message}`);
@@ -825,7 +881,8 @@ document.querySelectorAll('.tab').forEach(tab => {
 async function apiCall(endpoint, options = {}) {
     try {
         const method = (options.method || 'GET').toUpperCase();
-        if (method !== 'GET' && !isAdminUser()) {
+        const isSponsorEndpoint = endpoint.startsWith('sponsor/') || endpoint.startsWith('dashboard/my-apps');
+        if (method !== 'GET' && !isAdminUser() && !isSponsorEndpoint) {
             throw new Error('Admin role is required for this action.');
         }
 
@@ -2381,6 +2438,14 @@ document.getElementById('sponsorReminderCount').addEventListener('change', toggl
 // Confirm modal
 document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
 document.getElementById('modalConfirmBtn').addEventListener('click', confirmModalAction);
+
+// Sponsor edit modal
+document.getElementById('btn-add-sponsor-row').addEventListener('click', () => addSponsorRow(''));
+document.getElementById('btn-sponsor-cancel').addEventListener('click', () => document.getElementById('editSponsorModal').classList.remove('show'));
+document.getElementById('btn-sponsor-save').addEventListener('click', saveSponsorModal);
+
+// Auth metadata button
+document.getElementById('btn-view-auth-metadata')?.addEventListener('click', () => window.open('/.auth/me', '_blank'));
 
 // Session timeout modal
 document.getElementById('btn-timeout-signout').addEventListener('click', endAppSession);

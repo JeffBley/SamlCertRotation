@@ -425,24 +425,44 @@ Write-Host "App Object ID: $APP_OBJECT_ID"
 
 Configure the three app roles used by dashboard authorization.
 
-1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
-2. Navigate to **Applications** → **App registrations**
-3. Open the app registration created in Step 6.1 (`SAML Certificate Rotation Dashboard v2`)
-4. Open **App roles** → **Create app role** and add:
-    - **Display name**: `SAML Cert Rotation Admin`
-    - **Allowed member types**: `Users/Groups`
-    - **Value**: `SamlCertRotation.Admin`
-    - **Description**: `Full dashboard access`
-5. Create a second role:
-    - **Display name**: `SAML Cert Rotation Reader`
-    - **Allowed member types**: `Users/Groups`
-    - **Value**: `SamlCertRotation.Reader`
-    - **Description**: `Read-only dashboard access`
-6. Create a third role:
-    - **Display name**: `SAML Cert Rotation Sponsor`
-    - **Allowed member types**: `Users/Groups`
-    - **Value**: `SamlCertRotation.Sponsor`
-    - **Description**: `Sponsor access — view and manage own sponsored apps`
+```powershell
+# Define the three app roles
+$appRoles = @(
+    @{
+        id          = [guid]::NewGuid().ToString()
+        displayName = "SAML Cert Rotation Admin"
+        description = "Full dashboard access"
+        value       = "SamlCertRotation.Admin"
+        allowedMemberTypes = @("User")
+        isEnabled   = $true
+    },
+    @{
+        id          = [guid]::NewGuid().ToString()
+        displayName = "SAML Cert Rotation Reader"
+        description = "Read-only dashboard access"
+        value       = "SamlCertRotation.Reader"
+        allowedMemberTypes = @("User")
+        isEnabled   = $true
+    },
+    @{
+        id          = [guid]::NewGuid().ToString()
+        displayName = "SAML Cert Rotation Sponsor"
+        description = "Sponsor access — view and manage own sponsored apps"
+        value       = "SamlCertRotation.Sponsor"
+        allowedMemberTypes = @("User")
+        isEnabled   = $true
+    }
+)
+
+$body = @{ appRoles = $appRoles } | ConvertTo-Json -Depth 4 -Compress
+
+az rest --method PATCH `
+    --uri "https://graph.microsoft.com/v1.0/applications/$APP_OBJECT_ID" `
+    --headers "Content-Type=application/json" `
+    --body $body
+
+Write-Host "App roles configured successfully" -ForegroundColor Green
+```
 
 ### 6.3 Create Service Principal (Enterprise App)
 This will create the Enterprise App that will control who has access to the app's portal.
