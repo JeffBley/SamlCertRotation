@@ -2,6 +2,8 @@ using Azure;
 using Azure.Data.Tables;
 using Microsoft.Extensions.Logging;
 using SamlCertRotation.Models;
+using System.IO.Compression;
+using System.Text;
 
 namespace SamlCertRotation.Services;
 
@@ -35,6 +37,11 @@ public class ReportService : IReportService
         try
         {
             await EnsureTableExistsAsync();
+
+            // Compress ResultsJson → byte[] to avoid the 32K-char (64KB UTF-16)
+            // string property limit in Azure Table Storage.
+            CompressResults(report);
+
             await _reportTable.AddEntityAsync(report);
             _logger.LogInformation("Run report saved: {RunId}, Mode={Mode}, Total={Total}",
                 report.RowKey, report.Mode, report.TotalProcessed);
@@ -81,6 +88,7 @@ public class ReportService : IReportService
             var filter = $"RowKey eq '{runId}'";
             await foreach (var report in _reportTable.QueryAsync<RunReport>(filter: filter, maxPerPage: 1))
             {
+                DecompressResults(report);
                 return report;
             }
         }
@@ -138,5 +146,43 @@ public class ReportService : IReportService
         }
 
         return deletedCount;
+    }
+
+    /// <summary>
+    /// Compresses <see cref="RunReport.ResultsJson"/> into
+    /// <see cref="RunReport.ResultsJsonCompressed"/> and clears the string
+    /// property so the entity stays within Table Storage limits.
+    /// </summary>
+    private static void CompressResults(RunReport report)
+    {
+        if (string.IsNullOrEmpty(report.ResultsJson) || report.ResultsJson == "[]")
+            return;
+
+        var rawBytes = Encoding.UTF8.GetBytes(report.ResultsJson);
+        using var ms = new MemoryStream();
+        using (var gzip = new GZipStream(ms, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            gzip.Write(rawBytes, 0, rawBytes.Length);
+        }
+
+        report.ResultsJsonCompressed = ms.ToArray();
+        report.ResultsJson = "[]"; // clear to avoid the 32K-char limit
+    }
+
+    /// <summary>
+    /// Restores <see cref="RunReport.ResultsJson"/> from the compressed
+    /// binary property if present. Falls back to the uncompressed string
+    /// for backward compatibility with older reports.
+    /// </summary>
+    private static void DecompressResults(RunReport report)
+    {
+        if (report.ResultsJsonCompressed is { Length: > 0 })
+        {
+            using var ms = new MemoryStream(report.ResultsJsonCompressed);
+            using var gzip = new GZipStream(ms, CompressionMode.Decompress);
+            using var reader = new StreamReader(gzip, Encoding.UTF8);
+            report.ResultsJson = reader.ReadToEnd();
+        }
+        // else: ResultsJson already has the data (old uncompressed format)
     }
 }

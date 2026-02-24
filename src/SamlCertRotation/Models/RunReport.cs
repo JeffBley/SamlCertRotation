@@ -55,9 +55,18 @@ public class RunReport : ITableEntity
     public int Failed { get; set; }
 
     /// <summary>
-    /// JSON-serialized List&lt;RotationResult&gt; with per-app details.
+    /// JSON-serialized List&lt;RotationResult&gt; — kept for backward compatibility
+    /// with reports saved before compression was added. New reports store data
+    /// in <see cref="ResultsJsonCompressed"/> and leave this empty.
     /// </summary>
     public string ResultsJson { get; set; } = "[]";
+
+    /// <summary>
+    /// GZip-compressed UTF-8 bytes of the JSON results.
+    /// Binary properties have a 64 KiB limit in Azure Table Storage measured in
+    /// actual bytes, avoiding the UTF-16 doubling that affects string properties.
+    /// </summary>
+    public byte[]? ResultsJsonCompressed { get; set; }
 
     /// <summary>
     /// Azure Table Storage timestamp (auto-populated).
