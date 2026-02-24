@@ -1117,7 +1117,7 @@ npx -y @azure/static-web-apps-cli deploy ./dist `
 
 # 4) Validate latest content is served
 $SWA_HOST = az staticwebapp show --resource-group $RESOURCE_GROUP --name $STATIC_WEB_APP_NAME --query "defaultHostname" -o tsv
-(Invoke-WebRequest "https://$SWA_HOST/index.html" -UseBasicParsing).Content | Select-String "Notify|Run - Report-only|Notification Settings"
+(Invoke-WebRequest "https://$SWA_HOST/index.html" -UseBasicParsing).Content | Select-String "Notify|Run - Report-only|Notification Settings|Reports|Testing|Overview"
 ```
 
 ### "Permission denied" or "Insufficient privileges"
@@ -1494,3 +1494,5 @@ the resource group, but the role assignments may persist briefly):
 2. Review audit logs periodically
 3. Adjust rotation policies as needed via the dashboard
 4. Tag additional SAML applications with `AutoRotate=on` as desired
+5. Review run reports in the Reports tab for historical rotation trends
+6. Use the Testing tab to verify email delivery and preview notification templates

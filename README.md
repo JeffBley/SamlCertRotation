@@ -37,11 +37,11 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 
 ### 6. Email Notification System via Logic App
 - Emails are sent via an **Azure Logic App** (Office 365 Outlook connector) triggered by HTTP POST from the Function App.
-- **Six notification types** (all HTML-formatted with Segoe UI styling):
-  - **Certificate Created** — Sent to app sponsor when a new cert is generated (AutoRotate=on only).
+- **Six notification types** (all HTML-formatted with Segoe UI styling, previewable in the Testing tab):
+  - **Certificate Created** — Sent to app sponsor when a new cert is generated (AutoRotate=on, or notify apps with Create Certs for Notify enabled).
   - **Certificate Activated** — Sent to sponsor when a cert is made active. Includes an "Action May Be Required" warning about updating the SAML SP (AutoRotate=on only).
   - **Error** — Sent to all notification recipients when rotation fails.
-  - **Daily Summary** — Sent to admin recipients after each timer run with stats and per-app results table.
+  - **Daily Summary** — Sent to admin recipients after each timer run with stats and per-app results table. Uses a `SuccessActions` set for accurate success/failure counting.
   - **Notify-Only Reminder** — For AutoRotate=notify apps: milestone-based reminders sent to the sponsor with Entra portal deep-link.
   - **Sponsor Expiration Notification** — Sent once per cert when it actually expires (AutoRotate=on or notify only).
 - All user-supplied values are **HTML-encoded** before embedding in email templates.
@@ -55,7 +55,7 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 ### 8. Manual Trigger Runs from Dashboard
 - **Report-Only Run** button — triggers an instant rotation scan, returning detailed per-app results without making changes.
 - **Prod Run** button — triggers live certificate operations.
-- Both require a **confirmation modal** before executing. Results show total processed, successful, skipped, and failed counts.
+- Both require a **confirmation modal** before executing. Results only include **actionable apps** (those requiring attention) with counts for apps evaluated and apps skipped (no action required).
 - Only accessible to admin-role users.
 
 ### 9. Manual Certificate Operations
@@ -80,7 +80,7 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 - Identifies applications with **inactive AND expired certificates** that should be removed.
 - Shows app name, app ID, and count of expired inactive certs.
 - Notes that deletion must be done manually in Azure Portal.
-- Exportable as JSON.
+- Exportable as **JSON or CSV**.
 
 ### 13. Audit Log System
 - Every significant action logged to Azure Table Storage with: ServicePrincipalId, AppDisplayName, ActionType, Description, IsSuccess, ErrorMessage, CertificateThumbprint, NewCertificateThumbprint, PerformedBy (user UPN or "System").
@@ -118,8 +118,9 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 - On timeout, shows a **modal prompt** with a 2-minute countdown. "Stay Signed In" resets; countdown expiry signs out.
 
 ### 19. Export Capabilities
-- **Export Applications** — Downloads currently filtered apps as JSON with filter metadata.
-- **Export Cleanup List** — Downloads certificate cleanup list as JSON.
+- **Export Applications** — Downloads currently filtered apps as **JSON or CSV** with filter metadata.
+- **Export Cleanup List** — Downloads certificate cleanup list as **JSON or CSV**.
+- **Export Audit Log** — Downloads filtered audit entries as JSON.
 
 ### 20. Security Hardening
 - **XSS prevention**: `escapeHtml()`, `toSafeClassToken()`, `toDomIdToken()`, `toJsStringLiteral()` on all rendered user content.
@@ -146,7 +147,28 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 - Function App telemetry with sampling (excludes Request type).
 - Log levels: Default=Information, Host.Results=Error, Function=Information, Host.Aggregator=Warning.
 
-### 23. Additional Dashboard Features
+### 23. Reports Tab — Run History
+- Lists all timer-triggered and manual rotation runs with timestamp, mode, total/actionable/error counts.
+- **Detail view** shows per-app results filtered to actionable apps only (those requiring attention).
+- `ResultsJson` stored **GZip-compressed** in Azure Table Storage `RunReports` table to stay within the 64 KB entity limit.
+- **Reports retention policy** (default: 14 days) — after each timer run, reports older than the retention period are purged.
+
+### 24. Testing Tab — Email Preview & Test Send
+- **Preview all 6 email templates** — Renders HTML previews of every notification type with sample data.
+- **Send test email** — Sends a real test email to the configured notification recipients via the Logic App.
+- Only accessible to admin-role users.
+
+### 25. Bulk Sponsor Management
+- **Bulk update sponsors** — `POST /api/applications/bulk-update-sponsors` accepts a JSON array of `{ id, sponsor }` objects.
+- Returns counts of updated, cleared, skipped, and failed entries.
+- Only accessible to admin-role users.
+
+### 26. Create Certs for Notify Apps
+- **Global toggle** — When enabled, apps with `AutoRotate=notify` will also have new certificates created (but not activated) when within the creation threshold.
+- **Per-app override** — Each app can override the global setting via app-specific policy (`CreateCertsForNotifyOverride`).
+- Default: disabled.
+
+### 27. Additional Dashboard Features
 - **User identity display** — Logged-in user's UPN shown in header.
 - **Sign out** — Clears SWA auth cookie and redirects to login.
 - **Unauthorized access page** — Shown when a user lacks admin/reader role.
@@ -174,6 +196,7 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 │          │                │  (Secrets)  │  │ Storage  │                     │
 │          │                └─────────────┘  │(Policies)│                     │
 │          │                                 │(Audit)   │                     │
+│          │                                 │(Reports) │                     │
 │          │                                 └──────────┘                     │
 │          │                                                                   │
 │          │                ┌─────────────────────────────┐                   │
@@ -266,6 +289,11 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName <FUNCTION_APP_NAME> -Reso
 | `/api/settings` | PUT | Admin | Update settings |
 | `/api/admin/trigger-rotation/prod` | POST | Admin | Trigger production rotation run |
 | `/api/admin/trigger-rotation/report-only` | POST | Admin | Trigger report-only rotation run |
+| `/api/reports` | GET | Reader | List all run reports |
+| `/api/reports/{id}` | GET | Reader | Get specific run report with detailed results |
+| `/api/applications/bulk-update-sponsors` | POST | Admin | Bulk update sponsor emails |
+| `/api/testing/send-test-email` | POST | Admin | Send test notification email |
+| `/api/testing/email-templates` | GET | Admin | Preview all email template HTML |
 | `/api/GetRoles` | GET/POST | — | Get current user's roles (SWA rolesSource) |
 
 ## Configuration
@@ -296,7 +324,9 @@ Create in Microsoft Entra Admin Center:
 | 1st/2nd/3rd Sponsor Reminder Days | 30/7/1 | Milestone days for notify-only app reminders |
 | Notify Sponsors on Expiration | Enabled | Send one-time email to sponsor when cert expires |
 | Report-Only Mode | Enabled | Log what would happen without making changes |
+| Create Certs for Notify Apps | Disabled | Create certificates for AutoRotate=notify apps (without activating) |
 | Retention Policy Days | 180 | Days to retain audit log entries before purging |
+| Reports Retention Policy Days | 14 | Days to retain run reports before purging |
 | Session Timeout Minutes | 15 | Idle timeout for dashboard sessions (0 = disabled) |
 | Rotation Schedule | `0 0 6 * * *` | CRON schedule (configured in Function App settings) |
 
@@ -314,7 +344,8 @@ Create in Microsoft Entra Admin Center:
 │   │   ├── PolicyService.cs                 # Policy storage (Table)
 │   │   ├── AuditService.cs                  # Audit logging (Table)
 │   │   ├── NotificationService.cs           # Email notifications
-│   │   └── SwaSettingsService.cs            # SWA settings persistence
+│   │   ├── ReportService.cs                 # Run report storage (GZip compressed)
+│   │   └── IReportService.cs                # Report service interface
 │   └── Models/                              # Data models
 ├── dashboard/
 │   ├── index.html                           # Single-page dashboard
