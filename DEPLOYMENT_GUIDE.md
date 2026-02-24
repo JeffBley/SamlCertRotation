@@ -423,7 +423,7 @@ Write-Host "App Object ID: $APP_OBJECT_ID"
 
 ### 6.2 Configure App Roles in the App Registration
 
-Configure the two app roles used by dashboard authorization.
+Configure the three app roles used by dashboard authorization.
 
 1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Applications** → **App registrations**
@@ -438,6 +438,11 @@ Configure the two app roles used by dashboard authorization.
     - **Allowed member types**: `Users/Groups`
     - **Value**: `SamlCertRotation.Reader`
     - **Description**: `Read-only dashboard access`
+6. Create a third role:
+    - **Display name**: `SAML Cert Rotation Sponsor`
+    - **Allowed member types**: `Users/Groups`
+    - **Value**: `SamlCertRotation.Sponsor`
+    - **Description**: `Sponsor access — view and manage own sponsored apps`
 
 ### 6.3 Create Service Principal (Enterprise App)
 This will create the Enterprise App that will control who has access to the app's portal.
@@ -499,6 +504,7 @@ Now assign users or groups to the application in the Entra Portal (assumes your 
 6. Under **Select a role**, choose one:
    - `SAML Cert Rotation Admin` (`SamlCertRotation.Admin`) for full access
    - `SAML Cert Rotation Reader` (`SamlCertRotation.Reader`) for read-only access
+   - `SAML Cert Rotation Sponsor` (`SamlCertRotation.Sponsor`) for sponsor access (view/manage own apps)
 7. Click **Assign**
 
 > **Important**: Users who are not assigned to the Enterprise Application will receive an "Access Denied" error when trying to access the dashboard.
@@ -607,13 +613,13 @@ Write-Host "NOTE: staticwebapp.config.json tenant replacement is performed in St
 az functionapp config appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --settings "SWA_ADMIN_APP_ROLE=SamlCertRotation.Admin" "SWA_READER_APP_ROLE=SamlCertRotation.Reader"
+    --settings "SWA_ADMIN_APP_ROLE=SamlCertRotation.Admin" "SWA_READER_APP_ROLE=SamlCertRotation.Reader" "SWA_SPONSOR_APP_ROLE=SamlCertRotation.Sponsor"
 
 # Verify role mapping settings exist on Function App
 az functionapp config appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --query "[?name=='SWA_ADMIN_APP_ROLE' || name=='SWA_READER_APP_ROLE'].[name,value]" -o table
+    --query "[?name=='SWA_ADMIN_APP_ROLE' || name=='SWA_READER_APP_ROLE' || name=='SWA_SPONSOR_APP_ROLE'].[name,value]" -o table
 
 # Verify the Key Vault reference is set
 az staticwebapp appsettings list `
@@ -698,6 +704,7 @@ Set-Content -Path "$HOME/SamlCertRotationv2/infrastructure/access-control-config
 | `SWA_HOSTNAME` | Function App Settings | *(Optional)* Custom domain hostname, if configured |
 | `SWA_ADMIN_APP_ROLE` | Function App Settings | App role value for admin access (default: `SamlCertRotation.Admin`) |
 | `SWA_READER_APP_ROLE` | Function App Settings | App role value for reader access (default: `SamlCertRotation.Reader`) |
+| `SWA_SPONSOR_APP_ROLE` | Function App Settings | App role value for sponsor access (default: `SamlCertRotation.Sponsor`) |
 | `RotationSchedule` | Function App Settings | CRON expression for rotation checks (default: `0 0 6 * * *` = 6 AM UTC daily) |
 | `appRoleAssignmentRequired` | Enterprise Application | `true` |
 | Easy Auth | Function App | Disabled (Step 6.11) |
