@@ -895,7 +895,7 @@ The dashboard client secret (`SamlDashboardClientSecret`) does not auto-rotate. 
 
 ```powershell
 # Set Variables
-$RESOURCE_GROUP = "<your-resource-group>"              # Example: "rg-saml-cert-rotation"
+$RESOURCE_GROUP = "<your-resource-group>" # Example: "rg-saml-cert-rotation"
 
 # Clone the repo (skip if already cloned)
 if (-not (Test-Path "$HOME/SamlCertRotation")) {
@@ -929,12 +929,18 @@ $CLIENT_ID = az staticwebapp appsettings list `
 
 Write-Host "Dashboard App Client ID: $CLIENT_ID"
 
-# 2) Create a new Entra client secret (valid 2 years)
-$NEW_CLIENT_SECRET = az ad app credential reset `
+# 2) Add a new Entra client secret (keeps existing credentials valid during rollover)
+$NEW_SECRET_JSON = az ad app credential reset `
     --id $CLIENT_ID `
     --display-name "SWA Auth Secret" `
     --years 2 `
-    --query "password" -o tsv
+    --append `
+    --query "{password:password, keyId:keyId}" -o json | ConvertFrom-Json
+
+$NEW_CLIENT_SECRET = $NEW_SECRET_JSON.password
+$NEW_KEY_ID = $NEW_SECRET_JSON.keyId
+
+Write-Host "New credential created (Key ID: $NEW_KEY_ID)"
 
 # 3) Store the new secret in Key Vault under the expected name
 az keyvault secret set `
@@ -944,21 +950,76 @@ az keyvault secret set `
     --expires (Get-Date).AddYears(2).ToString("yyyy-MM-ddTHH:mm:ssZ") `
     --tags "CreatedBy=ManualRotation"
 
-# 4) Verify SWA still points to Key Vault reference (not plaintext)
+# 4) Force SWA to re-resolve the Key Vault reference (flush cached secret)
+az staticwebapp appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --setting-names "AAD_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=$KEY_VAULT_NAME;SecretName=SamlDashboardClientSecret)"
+
+Write-Host "Waiting 30 seconds for SWA to pick up the new secret..."
+Start-Sleep -Seconds 30
+
+# 5) Verify SWA still points to Key Vault reference (not plaintext)
 az staticwebapp appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
     --query "properties.AAD_CLIENT_SECRET" -o tsv
+
+# 6) Remove old credentials from app registration (keep only the one we just created)
+$ALL_CREDS = az ad app credential list --id $CLIENT_ID -o json | ConvertFrom-Json
+$OLD_CREDS = $ALL_CREDS | Where-Object { $_.keyId -ne $NEW_KEY_ID }
+
+foreach ($cred in $OLD_CREDS) {
+    az ad app credential delete --id $CLIENT_ID --key-id $cred.keyId
+    Write-Host "Removed old credential: $($cred.keyId) ($($cred.displayName))"
+}
+
+Write-Host "Rotation complete. Old credentials removed."
 ```
 
-Expected result for step 4:
+Expected result for step 5:
 - `AAD_CLIENT_SECRET` should be an `@Microsoft.KeyVault(...)` reference string — not a plaintext secret value.
 
 Recommended cadence:
 - Rotate every 90-180 days, or per your security policy.
-- Keep the previous secret briefly during cutover, then remove old credentials from the app registration after validation.
 
 > **No code changes required.** The SWA references the secret via Key Vault, so updating the Key Vault secret is all that's needed.
+
+#### Rollback to a Previous Secret
+
+If the new secret causes authentication issues, you can restore the previous Key Vault secret version:
+
+```powershell
+# List recent versions of the secret
+az keyvault secret list-versions `
+    --vault-name $KEY_VAULT_NAME `
+    --name "SamlDashboardClientSecret" `
+    --query "reverse(sort_by(@, &attributes.created))[0:5].{Version:id, Created:attributes.created, Enabled:attributes.enabled}" `
+    -o table
+
+# Copy the previous version's full ID from the table above and restore it
+$PREVIOUS_VERSION_ID = "<paste-full-secret-id-from-table>"  # e.g., https://myvault.vault.azure.net/secrets/SamlDashboardClientSecret/abc123
+
+$OLD_SECRET_VALUE = az keyvault secret show `
+    --id $PREVIOUS_VERSION_ID `
+    --query "value" -o tsv
+
+az keyvault secret set `
+    --vault-name $KEY_VAULT_NAME `
+    --name "SamlDashboardClientSecret" `
+    --value $OLD_SECRET_VALUE `
+    --tags "CreatedBy=Rollback"
+
+# Force SWA to pick up the restored secret
+az staticwebapp appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $STATIC_WEB_APP_NAME `
+    --setting-names "AAD_CLIENT_SECRET=@Microsoft.KeyVault(VaultName=$KEY_VAULT_NAME;SecretName=SamlDashboardClientSecret)"
+
+Write-Host "Rollback complete. Verify sign-in works before removing the newer credential from the app registration."
+```
+
+> **Important**: This only works if the old credential still exists in the Entra app registration. If step 6 above already removed it, you must create a new secret instead.
 
 ---
 

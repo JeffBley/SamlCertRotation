@@ -1060,11 +1060,29 @@ function formatCronSchedule(cron) {
     const parts = cron.split(' ');
     if (parts.length !== 6) return cron;
     
-    const hour = parseInt(parts[2]);
-    const minute = parseInt(parts[1]);
+    const hourField = parts[2];
+    const minuteField = parts[1];
     
-    // Check if it's a daily schedule
-    if (parts[3] === '*' && parts[4] === '*' && parts[5] === '*') {
+    // Every N hours (e.g., */12)
+    const everyHoursMatch = hourField.match(/^\*\/(\d+)$/);
+    if (everyHoursMatch && parts[3] === '*' && parts[4] === '*' && parts[5] === '*') {
+        return `Every ${everyHoursMatch[1]} hours (${cron})`;
+    }
+
+    // Weekly on a specific day (e.g., dayOfWeek = 1 for Monday)
+    const dayOfWeek = parseInt(parts[5]);
+    const hour = parseInt(hourField);
+    const minute = parseInt(minuteField);
+    if (!isNaN(dayOfWeek) && !isNaN(hour) && parts[3] === '*' && parts[4] === '*') {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const dayName = days[dayOfWeek] || `day ${dayOfWeek}`;
+        const hourStr = hour.toString().padStart(2, '0');
+        const minStr = minute.toString().padStart(2, '0');
+        return `Every ${dayName} at ${hourStr}:${minStr} UTC (${cron})`;
+    }
+
+    // Daily at a fixed time
+    if (!isNaN(hour) && !isNaN(minute) && parts[3] === '*' && parts[4] === '*' && parts[5] === '*') {
         const hourStr = hour.toString().padStart(2, '0');
         const minStr = minute.toString().padStart(2, '0');
         return `Daily at ${hourStr}:${minStr} UTC (${cron})`;
