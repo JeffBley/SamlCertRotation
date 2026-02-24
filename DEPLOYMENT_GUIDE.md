@@ -925,25 +925,15 @@ Keep the original `azurestaticapps.net` redirect URI as a fallback
 The Function App must trust the custom domain as an additional SWA token issuer, and the domain must be added to CORS. Run the following in **Cloud Shell**:
 
 ```powershell
-# Set Variables
-$RESOURCE_GROUP = "<your-resource-group>" # Example: "rg-saml-cert-rotation"
+# Set your custom domain
 $CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>" # Example: "samldashboard.contoso.com"
 
-# Clone the repo (skip if already cloned)
+# Restore session variables (clone repo first if this is a fresh shell)
 if (-not (Test-Path "$HOME/SamlCertRotation")) {
     git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
 Set-Location "$HOME/SamlCertRotation/infrastructure"
-
-# Load Function App name from deployment outputs
-$FUNCTION_APP_NAME = az deployment group list `
-    --resource-group $RESOURCE_GROUP `
-    --query "[?properties.provisioningState=='Succeeded' && properties.outputs.functionAppName != null] | sort_by(@, &properties.timestamp) | [-1].properties.outputs.functionAppName.value" `
-    -o tsv
-
-if (-not $FUNCTION_APP_NAME) {
-    throw "No infrastructure deployment found in '$RESOURCE_GROUP'. Deploy infrastructure (Step 3.2) first."
-}
+. ./session-vars.ps1
 
 Write-Host "Function App: $FUNCTION_APP_NAME"
 
@@ -991,6 +981,13 @@ The automatic certificate rotation check runs daily at 6:00 AM UTC by default. T
 Or via CLI:
 
 ```powershell
+# Restore session variables (clone repo first if this is a fresh shell)
+if (-not (Test-Path "$HOME/SamlCertRotation")) {
+    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
+}
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+. ./session-vars.ps1
+
 az functionapp config appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
@@ -1008,28 +1005,12 @@ az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAM
 The dashboard client secret (`SamlDashboardClientSecret`) does not auto-rotate. Use this runbook to rotate it. This script is self-contained and works from a fresh Cloud Shell session.
 
 ```powershell
-# Set Variables
-$RESOURCE_GROUP = "<your-resource-group>" # Example: "rg-saml-cert-rotation"
-
-# Clone the repo (skip if already cloned)
+# Restore session variables (clone repo first if this is a fresh shell)
 if (-not (Test-Path "$HOME/SamlCertRotation")) {
     git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
 Set-Location "$HOME/SamlCertRotation/infrastructure"
-
-# Load resource names from deployment outputs
-$DEPLOYMENT = az deployment group list `
-    --resource-group $RESOURCE_GROUP `
-    --query "[?properties.provisioningState=='Succeeded' && properties.outputs.functionAppName != null] | sort_by(@, &properties.timestamp) | [-1]" `
-    -o json | ConvertFrom-Json
-
-if (-not $DEPLOYMENT) {
-    throw "No infrastructure deployment found in '$RESOURCE_GROUP'. Deploy infrastructure (Step 3.2) first."
-}
-
-$FUNCTION_APP_NAME   = $DEPLOYMENT.properties.outputs.functionAppName.value
-$STATIC_WEB_APP_NAME = $DEPLOYMENT.properties.outputs.staticWebAppName.value
-$KEY_VAULT_NAME      = $DEPLOYMENT.properties.outputs.keyVaultName.value
+. ./session-vars.ps1
 
 Write-Host "Function App:   $FUNCTION_APP_NAME"
 Write-Host "Static Web App: $STATIC_WEB_APP_NAME"
@@ -1145,6 +1126,13 @@ Write-Host "Rollback complete. Verify sign-in works before removing the newer cr
 During Step 6.7, the deploying user was granted **Key Vault Secrets Officer**. To remove it after deployment:
 
 ```powershell
+# Restore session variables (clone repo first if this is a fresh shell)
+if (-not (Test-Path "$HOME/SamlCertRotation")) {
+    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
+}
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+. ./session-vars.ps1
+
 $USER_OBJECT_ID = az ad signed-in-user show --query id -o tsv
 
 az role assignment delete `
