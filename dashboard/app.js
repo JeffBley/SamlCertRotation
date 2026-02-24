@@ -151,6 +151,10 @@ function isAdminUser() {
     return currentUserRoles.includes('admin');
 }
 
+function isReaderUser() {
+    return currentUserRoles.includes('reader');
+}
+
 function isSponsorUser() {
     return currentUserRoles.includes('sponsor');
 }
@@ -213,38 +217,38 @@ function applyRoleBasedAccess() {
 
     const readOnly = !isAdminUser();
     const sponsorOnly = isSponsorOnly();
+    const isSponsor = isSponsorUser();
+    const isAdminOrReader = isAdminUser() || isReaderUser();
 
-    // Show/hide tabs based on roles
-    const myAppsTab = document.querySelector('.tab[data-tab="myapps"]');
-    if (myAppsTab) {
-        myAppsTab.style.display = isSponsorUser() ? '' : 'none';
-    }
-    const myStaleCertsTab = document.querySelector('.tab[data-tab="mystalecerts"]');
-    if (myStaleCertsTab) {
-        myStaleCertsTab.style.display = isSponsorUser() ? '' : 'none';
-    }
+    const adminTabsRow = document.getElementById('admin-tabs');
+    const sponsorTabsRow = document.getElementById('sponsor-tabs');
+    const tabsWrapper = document.getElementById('tabs-wrapper');
 
-    // For sponsor-only users, hide all admin/reader tabs and auto-select My SAML Apps
+    // Show/hide tab rows based on roles
+    if (adminTabsRow) adminTabsRow.style.display = isAdminOrReader ? 'flex' : 'none';
+    if (sponsorTabsRow) sponsorTabsRow.style.display = isSponsor ? 'flex' : 'none';
+
+    // For sponsor-only users, hide admin row and auto-select My SAML Apps
     if (sponsorOnly) {
-        const adminReaderTabs = ['overview', 'applications', 'cleanup', 'policy', 'settings', 'audit', 'reports', 'testing'];
-        adminReaderTabs.forEach(tabName => {
-            const tabBtn = document.querySelector(`.tab[data-tab="${tabName}"]`);
-            if (tabBtn) tabBtn.style.display = 'none';
+        // Remove active from any admin tabs/content
+        document.querySelectorAll('#admin-tabs .tab').forEach(t => t.classList.remove('active'));
+        const adminContentTabs = ['overview', 'applications', 'cleanup', 'policy', 'settings', 'audit', 'reports', 'testing'];
+        adminContentTabs.forEach(tabName => {
             const tabContent = document.getElementById(`tab-${tabName}`);
             if (tabContent) tabContent.classList.remove('active');
         });
         // Activate myapps tab
+        const myAppsTab = sponsorTabsRow?.querySelector('.tab[data-tab="myapps"]');
         if (myAppsTab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             myAppsTab.classList.add('active');
-            document.querySelectorAll('.tab').forEach(t => { if (t !== myAppsTab) t.classList.remove('active'); });
         }
         const myAppsContent = document.getElementById('tab-myapps');
         if (myAppsContent) myAppsContent.classList.add('active');
     }
 
     // Reveal tabs now that role-based visibility is applied (prevents flash)
-    const tabsContainer = document.querySelector('.tabs');
-    if (tabsContainer) tabsContainer.style.visibility = 'visible';
+    if (tabsWrapper) tabsWrapper.style.visibility = 'visible';
 
     if (sponsorOnly) {
         loadMyApps();

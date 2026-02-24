@@ -300,11 +300,28 @@
             margin-bottom: 16px;
         }
 
+        #tabs-wrapper {
+            margin-bottom: 20px;
+        }
+
         .tabs {
             display: flex;
             gap: 4px;
-            margin-bottom: 20px;
             border-bottom: 2px solid #edebe9;
+        }
+
+        .sponsor-tabs {
+            align-items: center;
+        }
+
+        .tab-row-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #605e5c;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 8px 12px 8px 4px;
+            white-space: nowrap;
         }
 
         .tab {
@@ -656,17 +673,22 @@
     <div class="container">
         <div id="error-container"></div>
 
-        <div class="tabs" style="visibility:hidden;">
-            <button class="tab active" data-tab="overview">Overview</button>
-            <button class="tab" data-tab="applications">Applications</button>
-            <button class="tab" data-tab="myapps" style="display:none;">My SAML Apps</button>
-            <button class="tab" data-tab="mystalecerts" style="display:none;">My Stale Certs</button>
-            <button class="tab" data-tab="cleanup">Certificate Clean-up</button>
-            <button class="tab" data-tab="policy">Policy Settings</button>
-            <button class="tab" data-tab="settings">Settings</button>
-            <button class="tab" data-tab="audit">Audit Log</button>
-            <button class="tab" data-tab="reports">Reports</button>
-            <button class="tab" data-tab="testing">Testing</button>
+        <div id="tabs-wrapper" style="visibility:hidden;">
+            <div class="tabs" id="admin-tabs">
+                <button class="tab active" data-tab="overview">Overview</button>
+                <button class="tab" data-tab="applications">Applications</button>
+                <button class="tab" data-tab="cleanup">Certificate Clean-up</button>
+                <button class="tab" data-tab="policy">Policy Settings</button>
+                <button class="tab" data-tab="settings">Settings</button>
+                <button class="tab" data-tab="audit">Audit Log</button>
+                <button class="tab" data-tab="reports">Reports</button>
+                <button class="tab" data-tab="testing">Testing</button>
+            </div>
+            <div class="tabs sponsor-tabs" id="sponsor-tabs" style="display:none;">
+                <span class="tab-row-label">My Apps</span>
+                <button class="tab" data-tab="myapps">My SAML Apps</button>
+                <button class="tab" data-tab="mystalecerts">My Stale Certs</button>
+            </div>
         </div>
 
         <div id="tab-overview" class="tab-content active">
@@ -1288,24 +1310,24 @@
                     <div class="form-group">
                         <label for="sponsorsCanRotateCerts">Sponsors can create and rotate certificates</label>
                         <select id="sponsorsCanRotateCerts" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;background:white;">
-                            <option value="disabled">Disabled</option>
                             <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
                         </select>
                         <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, users with the Sponsor role can create new certificates and activate the newest certificate for applications they sponsor. Disabled by default.</p>
                     </div>
                     <div class="form-group">
                         <label for="sponsorsCanUpdatePolicy">Sponsors can update policy for their apps</label>
                         <select id="sponsorsCanUpdatePolicy" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;background:white;">
-                            <option value="disabled">Disabled</option>
                             <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
                         </select>
                         <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, users with the Sponsor role can edit the rotation policy for applications they sponsor. Disabled by default.</p>
                     </div>
                     <div class="form-group">
                         <label for="sponsorsCanEditSponsors">Sponsors can add/remove sponsors for their apps</label>
                         <select id="sponsorsCanEditSponsors" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;background:white;">
-                            <option value="disabled">Disabled</option>
                             <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
                         </select>
                         <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, users with the Sponsor role can add or remove sponsors for applications they sponsor. Enabled by default.</p>
                     </div>
