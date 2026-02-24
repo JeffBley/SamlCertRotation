@@ -837,7 +837,7 @@ Now that deployment is complete, review the following items and address them acc
 
 During deployment, your user account was granted **Key Vault Secrets Officer** on the Key Vault (Step 6.7) so you could store the dashboard client secret. This is more access than the deploying user typically needs long-term.
 
-**Action**: Consider removing or downgrading your personal Key Vault role assignment after deployment is complete. 
+**Action**: Consider removing or downgrading your personal Key Vault role assignment after deployment is complete. See [Remove Deployer Key Vault Access](#Remove Deployer Key Vault Access) below for instructions.
 
 #### 2. Key Vault Secrets Inventory
 
@@ -858,17 +858,17 @@ The Static Web App is created with an auto-generated hostname (e.g., `happy-isla
 
 **Action**: If you want a custom domain, see [Configure a Custom Domain](#configure-a-custom-domain) below. This requires updates in multiple places.
 
-#### 4. Logic App Email Sender
-
-The Logic App sends emails from whichever account was authorized in Step 8.2. If you used a personal account, consider switching to a shared mailbox.
-
-**Action**: Re-authorize the Logic App email connector with a shared mailbox (e.g., `saml-notifications@yourdomain.com`). This can be changed at any time via the Logic App designer without redeployment.
-
-#### 5. Rotation Schedule
+#### 4. Rotation Schedule
 
 The automatic certificate rotation check runs daily at **6:00 AM UTC** by default. Depending on your environment, you may want to adjust the frequency.
 
 **Action**: If the default schedule doesn't suit your needs, see [Customize the Rotation Schedule](#customize-the-rotation-schedule) below.
+
+#### 5. Logic App Email Sender
+
+The Logic App sends emails from whichever account was authorized in Step 8.2. If you used a personal account, consider switching to a shared mailbox.
+
+**Action**: Re-authorize the Logic App email connector with a shared mailbox (e.g., `saml-notifications@yourdomain.com`). This can be changed at any time via the Logic App designer without redeployment. 
 
 ---
 
@@ -894,14 +894,33 @@ az role assignment delete `
 The dashboard client secret (`SamlDashboardClientSecret`) does not auto-rotate. Use this runbook to rotate it. This script is self-contained and works from a fresh Cloud Shell session.
 
 ```powershell
-# Load deployment variables (works from a fresh Cloud Shell session)
+# Set Variables
+$RESOURCE_GROUP = "<your-resource-group>"              # Example: "rg-saml-cert-rotation"
+$CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>"    # Example: "samldashboard.contoso.com"
+
+# Clone the repo (skip if already cloned)
+if (-not (Test-Path "$HOME/SamlCertRotation")) {
+    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
+}
 Set-Location "$HOME/SamlCertRotation/infrastructure"
 
-$RESOURCE_GROUP = "<your-resource-group>" # Example: "rg-saml-cert-rotation"
+# Load resource names from deployment outputs
+$DEPLOYMENT = az deployment group list `
+    --resource-group $RESOURCE_GROUP `
+    --query "[?properties.provisioningState=='Succeeded' && properties.outputs.functionAppName != null] | sort_by(@, &properties.timestamp) | [-1]" `
+    -o json | ConvertFrom-Json
 
-$outputs = Get-Content deployment-outputs.json -Raw | ConvertFrom-Json
-$STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
-$KEY_VAULT_NAME = $outputs.keyVaultName.value
+if (-not $DEPLOYMENT) {
+    throw "No infrastructure deployment found in '$RESOURCE_GROUP'. Deploy infrastructure (Step 3.2) first."
+}
+
+$FUNCTION_APP_NAME   = $DEPLOYMENT.properties.outputs.functionAppName.value
+$STATIC_WEB_APP_NAME = $DEPLOYMENT.properties.outputs.staticWebAppName.value
+$KEY_VAULT_NAME      = $DEPLOYMENT.properties.outputs.keyVaultName.value
+
+Write-Host "Function App:   $FUNCTION_APP_NAME"
+Write-Host "Static Web App: $STATIC_WEB_APP_NAME"
+Write-Host "Key Vault:      $KEY_VAULT_NAME"
 
 # 1) Get dashboard app registration client ID from SWA settings
 $CLIENT_ID = az staticwebapp appsettings list `
@@ -931,6 +950,28 @@ az staticwebapp appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
     --query "properties.AAD_CLIENT_SECRET" -o tsv
+
+# 5) Update Function App settings and CORS for custom domain
+az functionapp config appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --settings "SWA_HOSTNAME=$CUSTOM_DOMAIN"
+
+az functionapp cors add `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --allowed-origins "https://$CUSTOM_DOMAIN"
+
+# 6) Verify Function App settings and CORS
+az functionapp config appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "[?name=='SWA_HOSTNAME'].[name,value]" -o table
+
+az functionapp cors show `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "allowedOrigins" -o table
 ```
 
 Expected result for step 4:
@@ -988,14 +1029,15 @@ Keep the original `azurestaticapps.net` redirect URI as a fallback
 The Function App must trust the custom domain as an additional SWA token issuer, and the domain must be added to CORS. Run the following in **Cloud Shell**:
 
 ```powershell
+# Set Variables
+$RESOURCE_GROUP = "<your-resource-group>" # Example: "rg-saml-cert-rotation"
+$CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>" # Example: "samldashboard.contoso.com"
+
 # Clone the repo (skip if already cloned)
 if (-not (Test-Path "$HOME/SamlCertRotation")) {
     git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
 Set-Location "$HOME/SamlCertRotation/infrastructure"
-
-$RESOURCE_GROUP = "<your-resource-group>" # Example: "rg-saml-cert-rotation"
-$CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>" # Ex: samldashboard.domain.com
 
 # Load Function App name from deployment outputs
 $FUNCTION_APP_NAME = az deployment group list `
