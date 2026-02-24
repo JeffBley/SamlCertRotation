@@ -34,6 +34,20 @@ const visibleColumns = {
     activateCertDays: false
 };
 
+// My Apps column visibility state
+const myAppsVisibleColumns = {
+    application: true,
+    applicationId: false,
+    autoRotate: true,
+    certExpiry: false,
+    daysRemaining: true,
+    status: true,
+    policyType: false,
+    createCertDays: false,
+    activateCertDays: false,
+    deeplink: true
+};
+
 // Audit column visibility state
 const auditVisibleColumns = {
     time: true,
@@ -204,6 +218,10 @@ function applyRoleBasedAccess() {
     const myAppsTab = document.querySelector('.tab[data-tab="myapps"]');
     if (myAppsTab) {
         myAppsTab.style.display = isSponsorUser() ? '' : 'none';
+    }
+    const myStaleCertsTab = document.querySelector('.tab[data-tab="mystalecerts"]');
+    if (myStaleCertsTab) {
+        myStaleCertsTab.style.display = isSponsorUser() ? '' : 'none';
     }
 
     // For sponsor-only users, hide all admin/reader tabs and auto-select My SAML Apps
@@ -928,6 +946,8 @@ document.querySelectorAll('.tab').forEach(tab => {
             loadReports();
         } else if (tab.dataset.tab === 'myapps') {
             loadMyApps();
+        } else if (tab.dataset.tab === 'mystalecerts') {
+            loadMyStaleCerts();
         }
     });
 });
@@ -1056,16 +1076,52 @@ async function loadMyApps() {
 }
 
 function applyMyAppsFilter() {
-    const searchValue = (document.getElementById('myapp-search')?.value || '').toLowerCase();
-    const filtered = myAppsData.filter(app =>
-        !searchValue || (app.displayName || '').toLowerCase().includes(searchValue)
-    );
+    const filtered = getFilteredMyApps();
+    const sortBy = (document.getElementById('myapp-sort-by')?.value || 'daysRemaining').toLowerCase();
+    const sortDirection = (document.getElementById('myapp-sort-direction')?.value || 'asc').toLowerCase();
+
     filtered.sort((a, b) => {
-        const left = typeof a.daysUntilExpiry === 'number' ? a.daysUntilExpiry : Infinity;
-        const right = typeof b.daysUntilExpiry === 'number' ? b.daysUntilExpiry : Infinity;
-        return left - right;
+        let left, right;
+        switch (sortBy) {
+            case 'daysremaining':
+                left = typeof a.daysUntilExpiry === 'number' ? a.daysUntilExpiry : Infinity;
+                right = typeof b.daysUntilExpiry === 'number' ? b.daysUntilExpiry : Infinity;
+                break;
+            case 'expirydate':
+                left = a.certExpiryDate ? new Date(a.certExpiryDate).getTime() : Infinity;
+                right = b.certExpiryDate ? new Date(b.certExpiryDate).getTime() : Infinity;
+                break;
+            case 'name':
+            default:
+                left = (a.displayName || '').toLowerCase();
+                right = (b.displayName || '').toLowerCase();
+                break;
+        }
+        if (left < right) return sortDirection === 'asc' ? -1 : 1;
+        if (left > right) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
     });
     renderMyApps(filtered);
+}
+
+function getFilteredMyApps() {
+    const searchTerm = (document.getElementById('myapp-search')?.value || '').trim().toLowerCase();
+    const selectedAutoRotateFilters = Array.from(document.querySelectorAll('.myapp-auto-rotate-filter-option-input:checked')).map(i => i.value);
+    const selectedStatusFilters = Array.from(document.querySelectorAll('.myapp-status-filter-option-input:checked')).map(i => i.value);
+    const selectedPolicyTypeFilters = Array.from(document.querySelectorAll('.myapp-policy-type-filter-option-input:checked')).map(i => i.value);
+
+    return myAppsData.filter(app => {
+        const status = (app.autoRotateStatus || '').toLowerCase();
+        const autoRotateValue = status === 'on' ? 'on' : status === 'off' ? 'off' : status === 'notify' ? 'notify' : 'notset';
+        const computedStatus = getComputedAppStatus(app);
+
+        const autoRotateMatch = selectedAutoRotateFilters.length === 0 || selectedAutoRotateFilters.includes(autoRotateValue);
+        const statusMatch = selectedStatusFilters.length === 0 || selectedStatusFilters.includes(computedStatus);
+        const policyTypeMatch = selectedPolicyTypeFilters.length === 0 || selectedPolicyTypeFilters.includes(app.policyType || 'Global');
+        const nameMatch = !searchTerm || (app.displayName || '').toLowerCase().includes(searchTerm);
+
+        return autoRotateMatch && statusMatch && policyTypeMatch && nameMatch;
+    });
 }
 
 function buildEntraDeeplink(objectId, appId) {
@@ -1077,7 +1133,7 @@ function renderMyApps(apps) {
     if (!container) return;
 
     if (apps.length === 0) {
-        container.innerHTML = '<div style="text-align:center;padding:40px;color:#666;">No sponsored applications found.</div>';
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#666;">No sponsored applications match the selected filters.</div>';
         return;
     }
 
@@ -1091,15 +1147,23 @@ function renderMyApps(apps) {
     const canEditSponsors = myAppsSponsorCanEditSponsors || isAdminUser();
     const hasAnyAction = canRotate || canUpdatePolicy || canEditSponsors;
 
+    const col = (key) => myAppsVisibleColumns[key];
+    const hide = (key) => col(key) ? '' : ' style="display:none;"';
+
     const tableHtml = `
         <table>
             <thead>
                 <tr>
-                    <th>Application</th>
-                    <th>Auto-Rotate</th>
-                    <th>Days Remaining</th>
-                    <th>Status</th>
-                    <th>Deeplink</th>
+                    <th${hide('application')}>Application</th>
+                    <th${hide('applicationId')}>Application ID</th>
+                    <th${hide('autoRotate')}>Auto-Rotate</th>
+                    <th${hide('certExpiry')}>Certificate Expiry</th>
+                    <th${hide('daysRemaining')}>Days Remaining</th>
+                    <th${hide('status')}>Status</th>
+                    <th${hide('policyType')}>Policy Type</th>
+                    <th${hide('createCertDays')}>Create Cert (days)</th>
+                    <th${hide('activateCertDays')}>Activate Cert (days)</th>
+                    <th${hide('deeplink')}>Deeplink</th>
                     ${hasAnyAction ? '<th style="width:60px;">Actions</th>' : ''}
                 </tr>
             </thead>
@@ -1110,21 +1174,29 @@ function renderMyApps(apps) {
                     const autoRotateStatusClass = toSafeClassToken(app.autoRotateStatus || 'null', 'null');
                     const deeplink = buildEntraDeeplink(app.id, app.appId || '');
                     const appIdToken = toDomIdToken(app.id, 'myapp');
+                    const isAppSpecific = app.policyType === 'App-Specific';
                     return `
                     <tr>
-                        <td>${escapeHtml(app.displayName)}</td>
-                        <td>
+                        <td${hide('application')}>${escapeHtml(app.displayName)}</td>
+                        <td${hide('applicationId')} style="${col('applicationId') ? '' : 'display:none;'}font-size:12px;">${escapeHtml(app.id)}</td>
+                        <td${hide('autoRotate')}>
                             <span class="status-badge status-${autoRotateStatusClass}">
                                 ${((app.autoRotateStatus || '').toLowerCase() === 'notify') ? 'Notify' : (escapeHtml(app.autoRotateStatus) || 'Not Set')}
                             </span>
                         </td>
-                        <td>${app.daysUntilExpiry ?? 'N/A'}</td>
-                        <td>
+                        <td${hide('certExpiry')}>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
+                        <td${hide('daysRemaining')}>${app.daysUntilExpiry ?? 'N/A'}</td>
+                        <td${hide('status')}>
                             <span class="expiry-badge expiry-${computedStatusClass}">
                                 ${formatComputedStatus(computedStatus)}
                             </span>
                         </td>
-                        <td><a href="${escapeHtml(deeplink)}" target="_blank" rel="noopener noreferrer" title="Open in Entra admin center">Open in Entra ↗</a></td>
+                        <td${hide('policyType')}>
+                            <span class="status-badge ${isAppSpecific ? 'status-on' : ''}">${escapeHtml(app.policyType || 'Global')}</span>
+                        </td>
+                        <td${hide('createCertDays')}>${app.createCertDaysBeforeExpiry ?? 'N/A'}</td>
+                        <td${hide('activateCertDays')}>${app.activateCertDaysBeforeExpiry ?? 'N/A'}</td>
+                        <td${hide('deeplink')}><a href="${escapeHtml(deeplink)}" target="_blank" rel="noopener noreferrer" title="Open in Entra admin center">Open in Entra ↗</a></td>
                         ${hasAnyAction ? `
                         <td class="actions-cell">
                             <button class="actions-btn" data-action="toggle-menu" data-app-id-token="${appIdToken}">⋮</button>
@@ -1805,6 +1877,7 @@ function renderAuditLogTable(entries) {
 // Cleanup/export helpers
 // Store cleanup data for export
 let cleanupApps = [];
+let myStaleCerts = [];
 
 // Load certificate cleanup data
 async function loadCleanupData() {
@@ -1934,6 +2007,281 @@ function exportCleanupListCsv() {
         }
     }
     downloadCsvFile(rows.join('\n'), `certificate-cleanup-${formatDateForFilename()}.csv`);
+}
+
+// ── My SAML Apps filter helpers ──
+
+function toggleMyAppFilterPanel() {
+    const panel = document.getElementById('myapp-filter-panel');
+    const btn = document.getElementById('btn-toggle-myapp-filters');
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        btn.textContent = 'Hide Filters';
+    } else {
+        panel.style.display = 'none';
+        btn.textContent = 'Add Filters';
+    }
+}
+
+function clearMyAppFilters() {
+    document.querySelectorAll('.myapp-auto-rotate-filter-option-input').forEach(input => { input.checked = false; });
+    document.querySelectorAll('.myapp-status-filter-option-input').forEach(input => { input.checked = false; });
+    document.querySelectorAll('.myapp-policy-type-filter-option-input').forEach(input => { input.checked = false; });
+    updateMyAppAutoRotateFilterLabel();
+    updateMyAppStatusFilterLabel();
+    updateMyAppPolicyTypeFilterLabel();
+    document.getElementById('myapp-filter-panel').style.display = 'none';
+    document.getElementById('btn-toggle-myapp-filters').textContent = 'Add Filters';
+    applyMyAppsFilter();
+}
+
+function updateMyAppAutoRotateFilterLabel() {
+    const selected = Array.from(document.querySelectorAll('.myapp-auto-rotate-filter-option-input:checked')).map(i => i.value);
+    const label = document.getElementById('myapp-auto-rotate-filter-label');
+    if (!label) return;
+    if (selected.length === 0) { label.textContent = 'Auto-Rotate'; }
+    else if (selected.length <= 2) {
+        label.textContent = selected.map(v => v === 'notset' ? 'Not Set' : v === 'notify' ? 'Notify' : v.charAt(0).toUpperCase() + v.slice(1)).join(', ');
+    } else { label.textContent = `${selected.length} selected`; }
+}
+
+function updateMyAppStatusFilterLabel() {
+    const selected = Array.from(document.querySelectorAll('.myapp-status-filter-option-input:checked')).map(i => i.value);
+    const label = document.getElementById('myapp-status-filter-label');
+    if (!label) return;
+    if (selected.length === 0) { label.textContent = 'Status'; }
+    else if (selected.length <= 2) {
+        label.textContent = selected.map(v => v.toUpperCase() === 'OK' ? 'OK' : v.charAt(0).toUpperCase() + v.slice(1)).join(', ');
+    } else { label.textContent = `${selected.length} selected`; }
+}
+
+function updateMyAppPolicyTypeFilterLabel() {
+    const selected = Array.from(document.querySelectorAll('.myapp-policy-type-filter-option-input:checked')).map(i => i.value);
+    const label = document.getElementById('myapp-policy-type-filter-label');
+    if (!label) return;
+    if (selected.length === 0) { label.textContent = 'Policy Type'; }
+    else if (selected.length <= 2) { label.textContent = selected.join(', '); }
+    else { label.textContent = `${selected.length} selected`; }
+}
+
+function onMyAppFilterChanged() {
+    updateMyAppAutoRotateFilterLabel();
+    updateMyAppStatusFilterLabel();
+    updateMyAppPolicyTypeFilterLabel();
+    applyMyAppsFilter();
+}
+
+function toggleMyAppAutoRotateFilterDropdown(event) {
+    event.stopPropagation();
+    const dd = document.getElementById('myapp-auto-rotate-filter-dropdown');
+    const wasOpen = dd.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) dd.classList.add('show');
+}
+
+function toggleMyAppStatusFilterDropdown(event) {
+    event.stopPropagation();
+    const dd = document.getElementById('myapp-status-filter-dropdown');
+    const wasOpen = dd.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) dd.classList.add('show');
+}
+
+function toggleMyAppPolicyTypeFilterDropdown(event) {
+    event.stopPropagation();
+    const dd = document.getElementById('myapp-policy-type-filter-dropdown');
+    const wasOpen = dd.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) dd.classList.add('show');
+}
+
+function updateMyAppsColumnVisibility() {
+    document.querySelectorAll('.myapp-columns-filter-option-input').forEach(cb => {
+        myAppsVisibleColumns[cb.value] = cb.checked;
+    });
+    applyMyAppsFilter();
+}
+
+function toggleExportMyAppsDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('export-myapps-dropdown');
+    const wasOpen = dd.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) dd.classList.add('show');
+}
+
+// Export My Apps to JSON
+function exportMyAppsJson() {
+    const filteredApps = getFilteredMyApps();
+    if (filteredApps.length === 0) { showError('No applications to export'); return; }
+    const exportData = {
+        exportDate: new Date().toISOString(),
+        exportType: 'my-saml-applications',
+        totalApps: filteredApps.length,
+        applications: filteredApps.map(app => ({
+            displayName: app.displayName,
+            id: app.id,
+            autoRotateStatus: app.autoRotateStatus,
+            certExpiryDate: app.certExpiryDate,
+            daysUntilExpiry: app.daysUntilExpiry,
+            expiryCategory: app.expiryCategory,
+            policyType: app.policyType || 'Global',
+            createCertDaysBeforeExpiry: app.createCertDaysBeforeExpiry,
+            activateCertDaysBeforeExpiry: app.activateCertDaysBeforeExpiry
+        }))
+    };
+    downloadJson(exportData, `my-saml-applications-${formatDateForFilename()}.json`);
+}
+
+// Export My Apps to CSV
+function exportMyAppsCsv() {
+    const filteredApps = getFilteredMyApps();
+    if (filteredApps.length === 0) { showError('No applications to export'); return; }
+    const rows = [];
+    rows.push('Application,Application ID,Auto-Rotate,Certificate Expiry,Days Remaining,Status,Policy Type,Create Cert (days),Activate Cert (days)');
+    for (const app of filteredApps) {
+        rows.push([
+            escapeCsvField(app.displayName || ''),
+            escapeCsvField(app.id || ''),
+            escapeCsvField(app.autoRotateStatus || ''),
+            app.certExpiryDate ? new Date(app.certExpiryDate).toISOString() : '',
+            app.daysUntilExpiry != null ? app.daysUntilExpiry : '',
+            escapeCsvField(getComputedAppStatus(app) || ''),
+            escapeCsvField(app.policyType || 'Global'),
+            app.createCertDaysBeforeExpiry != null ? app.createCertDaysBeforeExpiry : '',
+            app.activateCertDaysBeforeExpiry != null ? app.activateCertDaysBeforeExpiry : ''
+        ].join(','));
+    }
+    downloadCsvFile(rows.join('\n'), `my-saml-applications-${formatDateForFilename()}.csv`);
+}
+
+// ── My Stale Certs ──
+
+async function loadMyStaleCerts() {
+    const container = document.getElementById('mystalecerts-table-container');
+    if (!container) return;
+    container.innerHTML = '<div class="loading">Loading stale certificate data...</div>';
+    try {
+        const result = await apiCall('dashboard/my-apps');
+        const apps = result.apps || [];
+        myStaleCerts = [];
+        const now = new Date();
+
+        for (const app of apps) {
+            if (app.certificates && app.certificates.length > 0) {
+                const expiredInactiveCerts = app.certificates.filter(cert => {
+                    const endDate = new Date(cert.endDateTime);
+                    return !cert.isActive && endDate < now;
+                });
+                if (expiredInactiveCerts.length > 0) {
+                    myStaleCerts.push({
+                        displayName: app.displayName,
+                        id: app.id,
+                        appId: app.appId,
+                        expiredInactiveCertCount: expiredInactiveCerts.length,
+                        certificates: expiredInactiveCerts.map(c => ({
+                            keyId: c.keyId,
+                            thumbprint: c.thumbprint,
+                            endDateTime: c.endDateTime
+                        }))
+                    });
+                }
+            }
+        }
+        renderMyStaleCerts(myStaleCerts);
+    } catch (error) {
+        container.innerHTML = `<div class="error">Failed to load stale certificate data: ${escapeHtml(error.message)}</div>`;
+    }
+}
+
+function renderMyStaleCerts(apps) {
+    const container = document.getElementById('mystalecerts-table-container');
+    if (!container) return;
+
+    if (apps.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#666;">None of your sponsored applications have inactive expired certificates. All clean!</div>';
+        return;
+    }
+
+    const tableHtml = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Application Name</th>
+                    <th>App ID</th>
+                    <th>Expired Inactive Certs</th>
+                    <th>Deeplink</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${apps.map(app => {
+                    const deeplink = buildEntraDeeplink(app.id, app.appId || '');
+                    return `
+                    <tr>
+                        <td>${escapeHtml(app.displayName)}</td>
+                        <td style="font-family:monospace;font-size:12px;">${escapeHtml(app.appId)}</td>
+                        <td>${app.expiredInactiveCertCount}</td>
+                        <td><a href="${escapeHtml(deeplink)}" target="_blank" rel="noopener noreferrer" title="Open in Entra admin center">Open in Entra ↗</a></td>
+                    </tr>
+                `;
+                }).join('')}
+            </tbody>
+        </table>
+        <p style="margin-top:16px;color:#666;font-size:13px;">
+            Total: ${apps.length} application(s) with ${apps.reduce((sum, a) => sum + a.expiredInactiveCertCount, 0)} expired inactive certificate(s)
+        </p>
+    `;
+    container.innerHTML = tableHtml;
+}
+
+function toggleExportMyStaleCertsDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('export-mystalecerts-dropdown');
+    const wasOpen = dd.classList.contains('show');
+    closeAllDropdowns();
+    if (!wasOpen) dd.classList.add('show');
+}
+
+function exportMyStaleCertsJson() {
+    if (myStaleCerts.length === 0) { showError('No stale certificate data to export'); return; }
+    const exportData = {
+        exportDate: new Date().toISOString(),
+        exportType: 'my-stale-certificates',
+        totalApps: myStaleCerts.length,
+        totalExpiredCerts: myStaleCerts.reduce((sum, a) => sum + a.expiredInactiveCertCount, 0),
+        applications: myStaleCerts
+    };
+    downloadJson(exportData, `my-stale-certificates-${formatDateForFilename()}.json`);
+}
+
+function exportMyStaleCertsCsv() {
+    if (myStaleCerts.length === 0) { showError('No stale certificate data to export'); return; }
+    const rows = [];
+    rows.push('Application,Application ID,App ID,Expired Inactive Certs,Certificate Key ID,Thumbprint,Expiry Date');
+    for (const app of myStaleCerts) {
+        if (app.certificates && app.certificates.length > 0) {
+            for (const cert of app.certificates) {
+                rows.push([
+                    escapeCsvField(app.displayName || ''),
+                    escapeCsvField(app.id || ''),
+                    escapeCsvField(app.appId || ''),
+                    app.expiredInactiveCertCount,
+                    escapeCsvField(cert.keyId || ''),
+                    escapeCsvField(cert.thumbprint || ''),
+                    cert.endDateTime ? new Date(cert.endDateTime).toISOString() : ''
+                ].join(','));
+            }
+        } else {
+            rows.push([
+                escapeCsvField(app.displayName || ''),
+                escapeCsvField(app.id || ''),
+                escapeCsvField(app.appId || ''),
+                app.expiredInactiveCertCount,
+                '', '', ''
+            ].join(','));
+        }
+    }
+    downloadCsvFile(rows.join('\n'), `my-stale-certificates-${formatDateForFilename()}.csv`);
 }
 
 // Export currently visible applications to JSON
@@ -2432,6 +2780,60 @@ const btnRefreshMyApps = document.getElementById('btn-refresh-myapps');
 if (btnRefreshMyApps) btnRefreshMyApps.addEventListener('click', loadMyApps);
 const myAppSearch = document.getElementById('myapp-search');
 if (myAppSearch) myAppSearch.addEventListener('input', applyMyAppsFilter);
+
+// My SAML Apps export
+const btnExportMyApps = document.getElementById('btn-export-myapps');
+if (btnExportMyApps) btnExportMyApps.addEventListener('click', function(e) { toggleExportMyAppsDropdown(e); });
+const btnExportMyAppsCsv = document.getElementById('btn-export-myapps-csv');
+if (btnExportMyAppsCsv) btnExportMyAppsCsv.addEventListener('click', function() { document.getElementById('export-myapps-dropdown').classList.remove('show'); exportMyAppsCsv(); });
+const btnExportMyAppsJson = document.getElementById('btn-export-myapps-json');
+if (btnExportMyAppsJson) btnExportMyAppsJson.addEventListener('click', function() { document.getElementById('export-myapps-dropdown').classList.remove('show'); exportMyAppsJson(); });
+
+// My SAML Apps filters
+const myAppSortBy = document.getElementById('myapp-sort-by');
+if (myAppSortBy) myAppSortBy.addEventListener('change', applyMyAppsFilter);
+const myAppSortDir = document.getElementById('myapp-sort-direction');
+if (myAppSortDir) myAppSortDir.addEventListener('change', applyMyAppsFilter);
+const btnToggleMyAppFilters = document.getElementById('btn-toggle-myapp-filters');
+if (btnToggleMyAppFilters) btnToggleMyAppFilters.addEventListener('click', toggleMyAppFilterPanel);
+const btnClearMyAppFilters = document.getElementById('btn-clear-myapp-filters');
+if (btnClearMyAppFilters) btnClearMyAppFilters.addEventListener('click', clearMyAppFilters);
+
+const myAppAutoRotateToggle = document.getElementById('myapp-auto-rotate-filter-toggle');
+if (myAppAutoRotateToggle) myAppAutoRotateToggle.addEventListener('click', function(e) { toggleMyAppAutoRotateFilterDropdown(e); });
+const myAppAutoRotateDropdown = document.getElementById('myapp-auto-rotate-filter-dropdown');
+if (myAppAutoRotateDropdown) myAppAutoRotateDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+document.querySelectorAll('.myapp-auto-rotate-filter-option-input').forEach(function(cb) { cb.addEventListener('change', onMyAppFilterChanged); });
+
+const myAppStatusToggle = document.getElementById('myapp-status-filter-toggle');
+if (myAppStatusToggle) myAppStatusToggle.addEventListener('click', function(e) { toggleMyAppStatusFilterDropdown(e); });
+const myAppStatusDropdown = document.getElementById('myapp-status-filter-dropdown');
+if (myAppStatusDropdown) myAppStatusDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+document.querySelectorAll('.myapp-status-filter-option-input').forEach(function(cb) { cb.addEventListener('change', onMyAppFilterChanged); });
+
+const myAppPolicyTypeToggle = document.getElementById('myapp-policy-type-filter-toggle');
+if (myAppPolicyTypeToggle) myAppPolicyTypeToggle.addEventListener('click', function(e) { toggleMyAppPolicyTypeFilterDropdown(e); });
+const myAppPolicyTypeDropdown = document.getElementById('myapp-policy-type-filter-dropdown');
+if (myAppPolicyTypeDropdown) myAppPolicyTypeDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+document.querySelectorAll('.myapp-policy-type-filter-option-input').forEach(function(cb) { cb.addEventListener('change', onMyAppFilterChanged); });
+
+// My SAML Apps columns filter
+const myAppColumnsToggle = document.getElementById('myapp-columns-filter-toggle');
+if (myAppColumnsToggle) myAppColumnsToggle.addEventListener('click', function(e) { e.stopPropagation(); document.getElementById('myapp-columns-filter-dropdown').classList.toggle('show'); });
+const myAppColumnsDropdown = document.getElementById('myapp-columns-filter-dropdown');
+if (myAppColumnsDropdown) myAppColumnsDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+document.querySelectorAll('.myapp-columns-filter-option-input').forEach(function(cb) { cb.addEventListener('change', updateMyAppsColumnVisibility); });
+
+// My Stale Certs tab buttons
+const btnRefreshMyStaleCerts = document.getElementById('btn-refresh-mystalecerts');
+if (btnRefreshMyStaleCerts) btnRefreshMyStaleCerts.addEventListener('click', loadMyStaleCerts);
+const btnExportMyStaleCerts = document.getElementById('btn-export-mystalecerts');
+if (btnExportMyStaleCerts) btnExportMyStaleCerts.addEventListener('click', function(e) { toggleExportMyStaleCertsDropdown(e); });
+const btnExportMyStaleCertsCsv = document.getElementById('btn-export-mystalecerts-csv');
+if (btnExportMyStaleCertsCsv) btnExportMyStaleCertsCsv.addEventListener('click', function() { document.getElementById('export-mystalecerts-dropdown').classList.remove('show'); exportMyStaleCertsCsv(); });
+const btnExportMyStaleCertsJson = document.getElementById('btn-export-mystalecerts-json');
+if (btnExportMyStaleCertsJson) btnExportMyStaleCertsJson.addEventListener('click', function() { document.getElementById('export-mystalecerts-dropdown').classList.remove('show'); exportMyStaleCertsJson(); });
+
 document.getElementById('btn-report-only').addEventListener('click', triggerReportOnlyRun);
 document.getElementById('btn-prod-run').addEventListener('click', triggerProdRun);
 document.getElementById('btn-bulk-sponsors').addEventListener('click', function(e) { e.stopPropagation(); toggleBulkSponsorsDropdown(); });

@@ -660,6 +660,7 @@
             <button class="tab active" data-tab="overview">Overview</button>
             <button class="tab" data-tab="applications">Applications</button>
             <button class="tab" data-tab="myapps" style="display:none;">My SAML Apps</button>
+            <button class="tab" data-tab="mystalecerts" style="display:none;">My Stale Certs</button>
             <button class="tab" data-tab="cleanup">Certificate Clean-up</button>
             <button class="tab" data-tab="policy">Policy Settings</button>
             <button class="tab" data-tab="settings">Settings</button>
@@ -821,16 +822,115 @@
                 <div class="section-header">
                     <h2>My SAML Apps</h2>
                     <div>
+                        <div style="position:relative;display:inline-block;">
+                            <button class="btn btn-secondary" id="btn-export-myapps">Export ▾</button>
+                            <div id="export-myapps-dropdown" class="dropdown-menu" style="min-width:180px;">
+                                <button class="dropdown-item" id="btn-export-myapps-csv">Download as CSV</button>
+                                <button class="dropdown-item" id="btn-export-myapps-json">Download as JSON</button>
+                            </div>
+                        </div>
                         <button class="btn btn-secondary" id="btn-refresh-myapps">Refresh</button>
                     </div>
                 </div>
                 <div class="filter-bar">
                     <div class="filter-group">
                         <input type="text" id="myapp-search" placeholder="Search application name..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:240px;">
+                        <button class="btn btn-secondary" id="btn-toggle-myapp-filters">Add Filters</button>
+                        <button class="btn btn-secondary" id="btn-clear-myapp-filters">Clear Filters</button>
+                        <select id="myapp-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                            <option value="name">Sort: Name</option>
+                            <option value="daysRemaining" selected>Sort: Days Remaining</option>
+                            <option value="expiryDate">Sort: Expiry Date</option>
+                        </select>
+                        <select id="myapp-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                            <option value="asc">Asc</option>
+                            <option value="desc">Desc</option>
+                        </select>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="myapp-columns-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="myapp-columns-filter-label">Columns</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="myapp-columns-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="application" checked disabled>Application</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="applicationId">Application ID</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="autoRotate" checked>Auto-Rotate</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="certExpiry">Certificate Expiry</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="daysRemaining" checked>Days Remaining</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="status" checked>Status</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="policyType">Policy Type</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="createCertDays">Create Cert (days)</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="activateCertDays">Activate Cert (days)</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-columns-filter-option-input" value="deeplink" checked>Deeplink</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="myapp-filter-panel" style="display:none;padding:12px 16px;background:#f8f8f8;border-radius:6px;margin-bottom:16px;">
+                    <div class="filter-group" style="flex-wrap:wrap;gap:12px;align-items:center;">
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="myapp-auto-rotate-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="myapp-auto-rotate-filter-label">Auto-Rotate</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="myapp-auto-rotate-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-auto-rotate-filter-option-input" value="on">On</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-auto-rotate-filter-option-input" value="off">Off</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-auto-rotate-filter-option-input" value="notify">Notify</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-auto-rotate-filter-option-input" value="notset">Not Set</label>
+                            </div>
+                        </div>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="myapp-status-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="myapp-status-filter-label">Status</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="myapp-status-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-status-filter-option-input" value="expired">Expired</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-status-filter-option-input" value="critical">Critical</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-status-filter-option-input" value="warning">Warning</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-status-filter-option-input" value="ok">OK</label>
+                            </div>
+                        </div>
+                        <div class="multi-select-filter-wrapper">
+                            <button type="button" id="myapp-policy-type-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
+                                <span id="myapp-policy-type-filter-label">Policy Type</span>
+                                <span>▾</span>
+                            </button>
+                            <div id="myapp-policy-type-filter-dropdown" class="dropdown-menu multi-select-filter-dropdown">
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-policy-type-filter-option-input" value="Global">Global</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="myapp-policy-type-filter-option-input" value="App-Specific">App-Specific</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="myapps-table-container">
                     <div class="loading">Loading your sponsored applications...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-mystalecerts" class="tab-content">
+            <div class="section">
+                <div class="section-header">
+                    <h2>My Stale Certs</h2>
+                    <div>
+                        <div style="position:relative;display:inline-block;">
+                            <button class="btn btn-secondary" id="btn-export-mystalecerts">Export ▾</button>
+                            <div id="export-mystalecerts-dropdown" class="dropdown-menu" style="min-width:180px;">
+                                <button class="dropdown-item" id="btn-export-mystalecerts-csv">Download as CSV</button>
+                                <button class="dropdown-item" id="btn-export-mystalecerts-json">Download as JSON</button>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary" id="btn-refresh-mystalecerts">Refresh</button>
+                    </div>
+                </div>
+                <p style="margin-bottom:16px;color:#666;">
+                    Your sponsored applications listed below have inactive certificates that are expired and should be removed.
+                    Use the deeplinks to open each application in Entra admin center for certificate management.
+                </p>
+                <div id="mystalecerts-table-container">
+                    <div class="loading">Loading stale certificate data...</div>
                 </div>
             </div>
         </div>

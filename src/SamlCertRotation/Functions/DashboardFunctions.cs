@@ -220,13 +220,48 @@ public class DashboardFunctions
                 .Where(a => IsSponsorOf(a.Sponsor, userEmail))
                 .ToList();
 
+            // Also fetch full app data to include certificates (for stale cert detection)
+            var fullApps = await _graphService.GetSamlApplicationsAsync();
+            var fullAppLookup = fullApps.ToDictionary(a => a.Id, a => a);
+
+            var appsWithCerts = myApps.Select(app =>
+            {
+                object[] certs = fullAppLookup.TryGetValue(app.Id, out var fullApp)
+                    ? fullApp.Certificates.Select(c => (object)new
+                    {
+                        c.KeyId,
+                        c.Thumbprint,
+                        c.StartDateTime,
+                        c.EndDateTime,
+                        c.IsActive,
+                        c.DaysUntilExpiry
+                    }).ToArray()
+                    : Array.Empty<object>();
+
+                return new
+                {
+                    app.Id,
+                    app.AppId,
+                    app.DisplayName,
+                    app.Sponsor,
+                    app.AutoRotateStatus,
+                    app.CertExpiryDate,
+                    app.DaysUntilExpiry,
+                    app.ExpiryCategory,
+                    app.PolicyType,
+                    app.CreateCertDaysBeforeExpiry,
+                    app.ActivateCertDaysBeforeExpiry,
+                    Certificates = certs
+                };
+            }).ToList();
+
             var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
             var sponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
             var sponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
 
             return await CreateJsonResponse(req, new
             {
-                apps = myApps,
+                apps = appsWithCerts,
                 sponsorsCanRotateCerts,
                 sponsorsCanUpdatePolicy,
                 sponsorsCanEditSponsors
