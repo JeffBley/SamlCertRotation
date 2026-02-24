@@ -26,6 +26,8 @@ Thumbs.db
 
 # Deployment outputs
 infrastructure/deployment-outputs.json
+infrastructure/session-vars.ps1
+infrastructure/access-control-config.json
 
 # Logs
 *.log

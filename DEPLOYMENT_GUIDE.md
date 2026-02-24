@@ -30,12 +30,13 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 
 > **Note**: Azure Cloud Shell already has Azure CLI, .NET SDK, PowerShell, and Node.js pre-installed.
 
+> **Important**: If you plan to use the built-in `code` editor (Step 3.1), switch to **Classic Cloud Shell** before running any commands. In Cloud Shell, go to **Settings** → **Go to Classic version**. If you prefer `nano` or `vi`, the new Cloud Shell works fine throughout this guide.
+
 ---
 
 ## Step 1: Prepare Your Environment
 Navigate to https://portal.azure.com/#cloudshell/
 - Ensure you're in PowerShell
-- Under **Settings** select **Go to Classic version** (Recommended)
 
 
 ### 1.1 Clone from Git Repository
@@ -96,6 +97,25 @@ $LOCATION = "eastus"
 az group create --name $RESOURCE_GROUP --location $LOCATION
 ```
 
+### 1.6 Save Session Variables
+
+Cloud Shell variables are lost when switching between Classic/New mode or on session timeout. Save them to a persistent file so every later step can recover automatically.
+
+```powershell
+# Persist session variables (re-run this after changing values)
+@"
+# Saved by Step 1.6 — sourced automatically by later steps
+`$RESOURCE_GROUP = "$RESOURCE_GROUP"
+`$LOCATION = "$LOCATION"
+"@ | Set-Content -Path "$HOME/SamlCertRotation/infrastructure/session-vars.ps1" -Encoding utf8
+
+Write-Host "Session variables saved to session-vars.ps1"
+```
+
+> **Tip**: If you ever switch Cloud Shell modes or return after a timeout, simply run:  
+> `. $HOME/SamlCertRotation/infrastructure/session-vars.ps1`  
+> to restore all variables. The remaining steps do this automatically.
+
 ---
 
 ## Step 2: Create Custom Security Attributes
@@ -131,8 +151,10 @@ Edit the parameters file with your values:
 ```powershell
 Set-Location "$HOME/SamlCertRotation/infrastructure"
 
-# Open in Cloud Shell editor
-code main.parameters.json
+# Open in the Cloud Shell editor (Classic) or nano (New Cloud Shell)
+# Use whichever editor is available in your shell:
+code main.parameters.json   # Classic Cloud Shell
+# nano main.parameters.json  # New Cloud Shell / Linux
 ```
 
 Update these values:
@@ -141,13 +163,23 @@ Update these values:
 - `customSecurityAttributeSet`: The Attribute Set you created in Step 2
 - `customSecurityAttributeName`: The Attribute Name you created in Step 2
 
-Save the file (Ctrl+S), then close the editor (Ctrl+Q).
+Save the file (`Ctrl+S` then `Ctrl+Q` in Classic; `Ctrl+O` then `Ctrl+X` in nano).
 
 ### 3.2 Deploy Infrastructure with Bicep
 
 ```powershell
 # Make sure you're in the infrastructure directory
 Set-Location "$HOME/SamlCertRotation/infrastructure"
+
+# Restore session variables (safe to re-run; handles Classic/New switch or session timeout)
+if (Test-Path "$HOME/SamlCertRotation/infrastructure/session-vars.ps1") {
+    . "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
+    Write-Host "Restored session variables (RESOURCE_GROUP=$RESOURCE_GROUP)"
+} elseif (-not $RESOURCE_GROUP) {
+    # Fallback: set inline if session-vars.ps1 was never created
+    $RESOURCE_GROUP = "rg-saml-cert-rotation"
+    Write-Host "Using default RESOURCE_GROUP=$RESOURCE_GROUP"
+}
 
 # Deploy the infrastructure
 az deployment group create `
@@ -161,7 +193,7 @@ az deployment group create `
 Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 ```
 
-> **Note**: If `Get-Content` showed no results, you most likely lost the variables set in Step 1.5. Ensure `$RESOURCE_GROUP` is populated and try 3.2 again.
+> **Note**: The block above automatically restores `$RESOURCE_GROUP` from the file saved in Step 1.6. If that file is missing (e.g., you cloned fresh), it falls back to the default value.
 
 ### 3.3 Save Output Values as Variables (Re-runnable)
 
@@ -171,10 +203,9 @@ Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 
 Set-Location "$HOME/SamlCertRotation/infrastructure"
 
-# Ensure resource group variable exists (set this to your RG if different)
-if (-not $RESOURCE_GROUP) {
-    $RESOURCE_GROUP = "rg-saml-cert-rotation"
-}
+# Restore session variables (handles Classic/New switch or session timeout)
+if (Test-Path "./session-vars.ps1") { . "./session-vars.ps1" }
+if (-not $RESOURCE_GROUP) { $RESOURCE_GROUP = "rg-saml-cert-rotation" }
 
 $outputsPath = "deployment-outputs.json"
 $outputs = $null
@@ -237,6 +268,25 @@ Write-Host "Key Vault: $KEY_VAULT_NAME"
 Write-Host "Key Vault URI: $KEY_VAULT_URI"
 Write-Host "Log Analytics Workspace: $LOG_ANALYTICS_NAME"
 Write-Host "Logic App: $LOGIC_APP_NAME"
+
+# Persist all variables for session recovery (extends session-vars.ps1 from Step 1.6)
+@"
+`$RESOURCE_GROUP = "$RESOURCE_GROUP"
+`$LOCATION = "$LOCATION"
+`$MANAGED_IDENTITY_PRINCIPAL_ID = "$MANAGED_IDENTITY_PRINCIPAL_ID"
+`$MANAGED_IDENTITY_CLIENT_ID = "$MANAGED_IDENTITY_CLIENT_ID"
+`$MANAGED_IDENTITY_NAME = "$MANAGED_IDENTITY_NAME"
+`$FUNCTION_APP_NAME = "$FUNCTION_APP_NAME"
+`$FUNCTION_APP_URL = "$FUNCTION_APP_URL"
+`$STATIC_WEB_APP_NAME = "$STATIC_WEB_APP_NAME"
+`$STORAGE_ACCOUNT_NAME = "$STORAGE_ACCOUNT_NAME"
+`$KEY_VAULT_NAME = "$KEY_VAULT_NAME"
+`$KEY_VAULT_URI = "$KEY_VAULT_URI"
+`$LOG_ANALYTICS_NAME = "$LOG_ANALYTICS_NAME"
+`$LOGIC_APP_NAME = "$LOGIC_APP_NAME"
+"@ | Set-Content -Path "$HOME/SamlCertRotation/infrastructure/session-vars.ps1" -Encoding utf8
+
+Write-Host "All variables saved to session-vars.ps1 for session recovery."
 
 # Save this value for Step 4.1
 "MANAGED_IDENTITY_PRINCIPAL_ID: $MANAGED_IDENTITY_PRINCIPAL_ID"
@@ -301,6 +351,9 @@ The managed identity needs the **Attribute Assignment Reader** role to read cust
 Switch back to the **Cloud Shell** and run the following:
 
 ```powershell
+# Restore session variables (in case you switched Cloud Shell modes)
+. "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
+
 # Assign the Attribute Assignment Reader role to the managed identity
 # This grants read access to custom security attributes on all objects
 
@@ -319,6 +372,9 @@ az rest --method POST `
 ```powershell
 # Navigate to project root
 Set-Location "$HOME/SamlCertRotation"
+
+# Restore session variables (safe to re-run after shell switch or timeout)
+. "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
 
 # Restore and build
 dotnet restore src/SamlCertRotation/SamlCertRotation.csproj
@@ -379,6 +435,9 @@ The dashboard uses Azure AD authentication with Enterprise Application assignmen
 ### 6.1 Create an App Registration
 
 ```powershell
+# Restore session variables (safe to re-run after shell switch or timeout)
+. "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
+
 # Get Static Web App hostname
 $SWA_HOSTNAME = az staticwebapp show `
     --resource-group $RESOURCE_GROUP `
@@ -712,6 +771,9 @@ Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.j
 ### 7.1 Get Static Web App Deployment Token
 
 ```powershell
+# Restore session variables (safe to re-run after shell switch or timeout)
+. "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
+
 # Get deployment token
 $SWA_TOKEN = az staticwebapp secrets list `
     --resource-group $RESOURCE_GROUP `
