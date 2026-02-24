@@ -15,8 +15,7 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 [Step 8: Configure Email Notifications](#step-8-configure-email-notifications) <br />
 [Step 9: Tag Applications for Auto-Rotation](#step-9-tag-applications-for-auto-rotation) <br />
 [Step 10: Verify the Deployment](#step-10-verify-the-deployment) <br />
-[Post-Deployment Steps](#post-deployment-steps) <br />
-[Cleanup / Teardown](#cleanup--teardown)
+[Post-Deployment Steps](#post-deployment-steps)
 
 ---
 
@@ -198,98 +197,51 @@ Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 ### 3.3 Save Output Values as Variables (Re-runnable)
 
 ```powershell
-# Re-run this block anytime (including after Cloud Shell session timeout)
-# If deployment-outputs.json is missing/empty, it will pull outputs from the latest deployment.
-
+# Re-run this block anytime (including after Cloud Shell session timeout or shell switch).
 Set-Location "$HOME/SamlCertRotation/infrastructure"
 
-# Restore session variables (handles Classic/New switch or session timeout)
+# Ensure resource group is set
 if (Test-Path "./session-vars.ps1") { . "./session-vars.ps1" }
 if (-not $RESOURCE_GROUP) { $RESOURCE_GROUP = "rg-saml-cert-rotation" }
 
-$outputsPath = "deployment-outputs.json"
+# Load deployment outputs — try local file first, fall back to Azure
 $outputs = $null
-
-# Try loading outputs from file first
-if (Test-Path $outputsPath) {
-    $raw = Get-Content $outputsPath -Raw
-    if (-not [string]::IsNullOrWhiteSpace($raw) -and $raw.Trim() -ne "null") {
-        $outputs = $raw | ConvertFrom-Json
-    }
+if (Test-Path "deployment-outputs.json") {
+    $raw = Get-Content "deployment-outputs.json" -Raw
+    if ($raw.Trim() -notin "", "null") { $outputs = $raw | ConvertFrom-Json }
 }
-
-# If file not usable, fetch outputs from latest deployment in the resource group
 if (-not $outputs) {
-    $latestDeploymentName = az deployment group list `
+    $outputs = az deployment group list `
         --resource-group $RESOURCE_GROUP `
-        --query "[?properties.provisioningState=='Succeeded' && properties.outputs.functionAppName != null] | sort_by(@, &properties.timestamp) | [-1].name" `
-        -o tsv
-
-    if (-not $latestDeploymentName) {
-        throw "No Bicep infrastructure deployment found in resource group '$RESOURCE_GROUP'. Run Step 3.2 first."
-    }
-
-    $outputs = az deployment group show `
-        --resource-group $RESOURCE_GROUP `
-        --name $latestDeploymentName `
-        --query "properties.outputs" `
+        --query "[?properties.provisioningState=='Succeeded' && properties.outputs.functionAppName != null] | sort_by(@, &properties.timestamp) | [-1].properties.outputs" `
         -o json | ConvertFrom-Json
 
-    if (-not $outputs) {
-        throw "Deployment outputs were empty for deployment '$latestDeploymentName'. Re-run Step 3.2."
-    }
-
-    # Rehydrate local file for future runs
-    $outputs | ConvertTo-Json -Depth 20 | Out-File -FilePath $outputsPath -Encoding utf8
+    if (-not $outputs) { throw "No successful deployment found in '$RESOURCE_GROUP'. Run Step 3.2 first." }
 }
 
-# Set variables
-$MANAGED_IDENTITY_PRINCIPAL_ID = $outputs.managedIdentityPrincipalId.value
-$MANAGED_IDENTITY_CLIENT_ID = $outputs.managedIdentityClientId.value
-$MANAGED_IDENTITY_NAME = $outputs.managedIdentityName.value
-$FUNCTION_APP_NAME = $outputs.functionAppName.value
-$FUNCTION_APP_URL = $outputs.functionAppUrl.value
-$STATIC_WEB_APP_NAME = $outputs.staticWebAppName.value
-$STORAGE_ACCOUNT_NAME = $outputs.storageAccountName.value
-$KEY_VAULT_NAME = $outputs.keyVaultName.value
-$KEY_VAULT_URI = $outputs.keyVaultUri.value
-$LOG_ANALYTICS_NAME = $outputs.logAnalyticsWorkspaceName.value
-$LOGIC_APP_NAME = $outputs.logicAppName.value
-
-# Verify variables are set
-Write-Host "Managed Identity Principal ID: $MANAGED_IDENTITY_PRINCIPAL_ID"
-Write-Host "Managed Identity Client ID: $MANAGED_IDENTITY_CLIENT_ID"
-Write-Host "Managed Identity Name: $MANAGED_IDENTITY_NAME"
-Write-Host "Function App: $FUNCTION_APP_NAME"
-Write-Host "Function App URL: $FUNCTION_APP_URL"
-Write-Host "Static Web App: $STATIC_WEB_APP_NAME"
-Write-Host "Storage Account: $STORAGE_ACCOUNT_NAME"
-Write-Host "Key Vault: $KEY_VAULT_NAME"
-Write-Host "Key Vault URI: $KEY_VAULT_URI"
-Write-Host "Log Analytics Workspace: $LOG_ANALYTICS_NAME"
-Write-Host "Logic App: $LOGIC_APP_NAME"
-
-# Persist all variables for session recovery (extends session-vars.ps1 from Step 1.6)
+# Persist all variables for session recovery
 @"
 `$RESOURCE_GROUP = "$RESOURCE_GROUP"
 `$LOCATION = "$LOCATION"
-`$MANAGED_IDENTITY_PRINCIPAL_ID = "$MANAGED_IDENTITY_PRINCIPAL_ID"
-`$MANAGED_IDENTITY_CLIENT_ID = "$MANAGED_IDENTITY_CLIENT_ID"
-`$MANAGED_IDENTITY_NAME = "$MANAGED_IDENTITY_NAME"
-`$FUNCTION_APP_NAME = "$FUNCTION_APP_NAME"
-`$FUNCTION_APP_URL = "$FUNCTION_APP_URL"
-`$STATIC_WEB_APP_NAME = "$STATIC_WEB_APP_NAME"
-`$STORAGE_ACCOUNT_NAME = "$STORAGE_ACCOUNT_NAME"
-`$KEY_VAULT_NAME = "$KEY_VAULT_NAME"
-`$KEY_VAULT_URI = "$KEY_VAULT_URI"
-`$LOG_ANALYTICS_NAME = "$LOG_ANALYTICS_NAME"
-`$LOGIC_APP_NAME = "$LOGIC_APP_NAME"
-"@ | Set-Content -Path "$HOME/SamlCertRotation/infrastructure/session-vars.ps1" -Encoding utf8
+`$MANAGED_IDENTITY_PRINCIPAL_ID = "$($outputs.managedIdentityPrincipalId.value)"
+`$MANAGED_IDENTITY_CLIENT_ID = "$($outputs.managedIdentityClientId.value)"
+`$MANAGED_IDENTITY_NAME = "$($outputs.managedIdentityName.value)"
+`$FUNCTION_APP_NAME = "$($outputs.functionAppName.value)"
+`$FUNCTION_APP_URL = "$($outputs.functionAppUrl.value)"
+`$STATIC_WEB_APP_NAME = "$($outputs.staticWebAppName.value)"
+`$STORAGE_ACCOUNT_NAME = "$($outputs.storageAccountName.value)"
+`$KEY_VAULT_NAME = "$($outputs.keyVaultName.value)"
+`$KEY_VAULT_URI = "$($outputs.keyVaultUri.value)"
+`$LOG_ANALYTICS_NAME = "$($outputs.logAnalyticsWorkspaceName.value)"
+`$LOGIC_APP_NAME = "$($outputs.logicAppName.value)"
+"@ | Set-Content -Path "./session-vars.ps1" -Encoding utf8
 
-Write-Host "All variables saved to session-vars.ps1 for session recovery."
+# Load and display saved variables
+. "./session-vars.ps1"
+Get-Content "./session-vars.ps1"
 
-# Save this value for Step 4.1
-"MANAGED_IDENTITY_PRINCIPAL_ID: $MANAGED_IDENTITY_PRINCIPAL_ID"
+# Display for easy copy-paste into Step 4.1
+Write-Host "`nMANAGED_IDENTITY_PRINCIPAL_ID: $MANAGED_IDENTITY_PRINCIPAL_ID" -ForegroundColor green
 ```
 
 ---
@@ -305,8 +257,10 @@ Switch to Windows PowerShell or Powershell 7+ and run the following:
 # Set variable
 $MANAGED_IDENTITY_PRINCIPAL_ID = "<Insert MANAGED_IDENTITY_PRINCIPAL_ID from Step 3.3>"
 
-# Install Microsoft Graph module if needed
-Install-Module Microsoft.Graph -Scope CurrentUser -Force
+# Install Microsoft Graph module if not already installed
+if (-not (Get-Module -ListAvailable -Name Microsoft.Graph)) {
+    Install-Module Microsoft.Graph -Scope CurrentUser -Force
+}
 
 # Connect to Microsoft Graph (will open browser for auth)
 Connect-MgGraph -Scopes "Application.Read.All","AppRoleAssignment.ReadWrite.All"
@@ -386,7 +340,7 @@ dotnet publish src/SamlCertRotation/SamlCertRotation.csproj `
     --output ./publish
 ```
 
-### 5.2 Deploy to Azure Function App (Recommended, Reliable)
+### 5.2 Deploy to Azure Function App
 
 ```powershell
 # IMPORTANT: Publish from the project directory using Functions Core Tools.
@@ -423,7 +377,7 @@ try {
 }
 ```
 
-You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). If you see `200`, Easy Auth is likely still enabled on the Function App — Step 6.11 disables it. A `404` indicates deployment or routing issues.
+You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). A `404` indicates deployment or routing issues.
 
 
 ---
@@ -435,6 +389,9 @@ The dashboard uses Azure AD authentication with Enterprise Application assignmen
 ### 6.1 Create an App Registration
 
 ```powershell
+#Set Variables
+$APP_NAME = "SAML Certificate Rotation Dashboard"
+
 # Restore session variables (safe to re-run after shell switch or timeout)
 . "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
 
@@ -445,8 +402,6 @@ $SWA_HOSTNAME = az staticwebapp show `
     --query "defaultHostname" -o tsv
 
 # Create app registration for SWA authentication
-$APP_NAME = "SAML Certificate Rotation Dashboard"
-
 $APP_JSON = az ad app create `
     --display-name $APP_NAME `
     --sign-in-audience AzureADMyOrg `
@@ -495,11 +450,7 @@ Write-Host "Service Principal ID: $SP_ID"
 az rest --method PATCH `
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID" `
     --body '{"tags": ["WindowsAzureActiveDirectoryIntegratedApp"]}'
-```
 
-This step restricts dashboard access to specific users or groups. 
-
-```powershell
 # Enable "Assignment required" on the Enterprise Application
 az rest --method PATCH `
     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$SP_ID" `
@@ -559,7 +510,7 @@ $CLIENT_SECRET = az ad app credential reset `
     --query "password" -o tsv
 
 Write-Host "Client secret generated successfully. Length: $($CLIENT_SECRET.Length)"
-Write-Host "Client Secret: $CLIENT_SECRET"
+Write-Host "Client Secret: $CLIENT_SECRET" -ForegroundColor Red
 Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!" -ForegroundColor Red
 ```
 
@@ -659,12 +610,8 @@ az functionapp config appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
     --query "[?name=='SWA_ADMIN_APP_ROLE' || name=='SWA_READER_APP_ROLE'].[name,value]" -o table
-```
 
-> **Important**: The `az staticwebapp appsettings set` command may display `null` for values due to security redaction. Use the `list` command to verify the settings were applied correctly.
-
-```powershell
-# Validation gate: these must be set before proceeding
+# Verify the Key Vault reference is set
 az staticwebapp appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
@@ -895,13 +842,19 @@ After sign-in, verify SWA is enriching roles via the auth metadata endpoint:
 
 Now that deployment is complete, review the following items and address them according to your organization's policies.
 
-### 1. Key Vault Access
+### 1. Customize the Static Web App Name
 
-During deployment, your user account was granted **Key Vault Secrets Officer** on the Key Vault (Step 6.7) so you could store the dashboard client secret. This is more access than the deploying user typically needs long-term.
+The Static Web App is created with an auto-generated hostname (e.g., `happy-island-01f529a0f.azurestaticapps.net`). Most organizations prefer a branded custom domain.
 
-**Action**: Consider removing or downgrading your personal Key Vault role assignment after deployment is complete. See [Remove Deployer Key Vault Access](#Remove Deployer Key Vault Access) below for instructions.
+**Action**: If you want a custom domain, see [Configure a Custom Domain](#configure-a-custom-domain) below. This requires updates in multiple places.
 
-### 2. Key Vault Secrets Inventory
+### 2. Rotation Schedule
+
+The automatic certificate rotation check runs daily at **6:00 AM UTC** by default. Depending on your environment, you may want to adjust the frequency.
+
+**Action**: If the default schedule doesn't suit your needs, see [Customize the Rotation Schedule](#customize-the-rotation-schedule) below.
+
+### 3. Key Vault Secrets Inventory
 
 The Key Vault contains two secrets that require periodic attention:
 
@@ -914,17 +867,11 @@ The Key Vault contains two secrets that require periodic attention:
 
 > **NOTE:** The **LogicAppEmailUrl** Key Vault secret will be updated automatically when you redeploy the Bicep template. The secret is defined declaratively in main.bicep:105-114 using listCallbackUrl() on the Logic App trigger. Each time you run `az deployment group create` with this template, Bicep evaluates listCallbackUrl() at deploy time — if the Logic App was regenerated and has a new SAS token, the new URL will be written to the LogicAppEmailUrl secret in Key Vault, creating a new secret version. <br > <br > If you regenerate the Logic App trigger URL outside of a Bicep deployment (e.g., via the portal's "Regenerate access keys"), the Key Vault secret will not update until you re-run the Bicep deployment or update the Key Vault value manually.
 
-### 3. Static Web App Name
+### 4. Key Vault Access
 
-The Static Web App is created with an auto-generated hostname (e.g., `happy-island-01f529a0f.azurestaticapps.net`). Most organizations prefer a branded custom domain.
+During deployment, your user account was granted **Key Vault Secrets Officer** on the Key Vault (Step 6.7) so you could store the dashboard client secret. This is more access than the deploying user typically needs long-term.
 
-**Action**: If you want a custom domain, see [Configure a Custom Domain](#configure-a-custom-domain) below. This requires updates in multiple places.
-
-### 4. Rotation Schedule
-
-The automatic certificate rotation check runs daily at **6:00 AM UTC** by default. Depending on your environment, you may want to adjust the frequency.
-
-**Action**: If the default schedule doesn't suit your needs, see [Customize the Rotation Schedule](#customize-the-rotation-schedule) below.
+**Action**: Consider removing or downgrading your personal Key Vault role assignment after deployment is complete. See [Remove Deployer Key Vault Access](#remove-deployer-key-vault-access) below for instructions.
 
 ### 5. Logic App Email Sender
 
@@ -934,20 +881,125 @@ The Logic App sends emails from whichever account was authorized in Step 8.2. If
 
 ---
 
-### Remove Deployer Key Vault Access
+### Configure a Custom Domain
 
-During Step 6.7, the deploying user was granted **Key Vault Secrets Officer**. To remove it after deployment:
+By default, your dashboard URL is auto-generated (e.g., `happy-island-01f529a0f.azurestaticapps.net`). To use a custom domain like `saml-dashboard.yourcompany.com`, you need to update **three** places:
+
+#### 1. Add the custom domain to the Static Web App
+
+**1.1. Validate domain ownership (TXT record)**
+
+1. Navigate to Azure Portal → Static Web App → **Settings** → **Custom domains** 
+2. Click **Add**.
+3. Select **Custom domain on other DNS**
+4. Enter your domain name (e.g., `saml.domain.com`) and click **Next**.
+5. Set **Hostname record type** to **TXT**.
+6. Click **Generate code**.
+7. In your DNS provider, add a **TXT** record:
+   - **Name/Host**: `saml` (or the subdomain portion of your domain)
+   - **Value**: the validation code generated by Azure
+8. Click **Verify** in Azure. DNS propagation may take a few minutes.
+
+**1.2. Route traffic to the Static Web App (CNAME record)**
+
+After validation succeeds, add a **CNAME** record in your DNS provider:
+
+| Type | Name/Host | Value |
+|------|-----------|-------|
+| CNAME | `saml` | `<original-swa-name>.azurestaticapps.net` |
+
+Replace `<original-swa-name>` with your Static Web App's auto-generated hostname.
+
+#### 2. Update the App Registration redirect URI
+
+1. Go to [Microsoft Entra admin center](https://entra.microsoft.com) → **App registrations** → `SAML Certificate Rotation Dashboard`
+2. Click **Authentication**
+3. Click **Add Redirect URIs**
+4. Select **Web** 
+5. Add `https://saml-dashboard.yourcompany.com/.auth/login/aad/callback` and click **Configure**
+
+Keep the original `azurestaticapps.net` redirect URI as a fallback
+
+#### 3. Update Function App settings and CORS
+
+The Function App must trust the custom domain as an additional SWA token issuer, and the domain must be added to CORS. Run the following in **Cloud Shell**:
 
 ```powershell
-$USER_OBJECT_ID = az ad signed-in-user show --query id -o tsv
+# Set Variables
+$RESOURCE_GROUP = "<your-resource-group>" # Example: "rg-saml-cert-rotation"
+$CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>" # Example: "samldashboard.contoso.com"
 
-az role assignment delete `
-    --role "Key Vault Secrets Officer" `
-    --assignee $USER_OBJECT_ID `
-    --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KEY_VAULT_NAME"
+# Clone the repo (skip if already cloned)
+if (-not (Test-Path "$HOME/SamlCertRotation")) {
+    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
+}
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+
+# Load Function App name from deployment outputs
+$FUNCTION_APP_NAME = az deployment group list `
+    --resource-group $RESOURCE_GROUP `
+    --query "[?properties.provisioningState=='Succeeded' && properties.outputs.functionAppName != null] | sort_by(@, &properties.timestamp) | [-1].properties.outputs.functionAppName.value" `
+    -o tsv
+
+if (-not $FUNCTION_APP_NAME) {
+    throw "No infrastructure deployment found in '$RESOURCE_GROUP'. Deploy infrastructure (Step 3.2) first."
+}
+
+Write-Host "Function App: $FUNCTION_APP_NAME"
+
+# Add custom domain as a trusted SWA token issuer
+az functionapp config appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --settings "SWA_HOSTNAME=$CUSTOM_DOMAIN"
+
+# Add custom domain to CORS (keeps existing origins)
+az functionapp cors add `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --allowed-origins "https://$CUSTOM_DOMAIN"
+
+# Verify both settings
+az functionapp config appsettings list `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "[?name=='SWA_HOSTNAME'].[name,value]" -o table
+
+az functionapp cors show `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --query "allowedOrigins" -o table
 ```
 
-> **Note**: You will need to re-grant this role if you later need to rotate the dashboard client secret manually.
+The `SWA_HOSTNAME` setting is read by [DashboardFunctions.cs](src/SamlCertRotation/Functions/DashboardFunctions.cs) to build a trusted issuer (`https://saml-dashboard.yourcompany.com/.auth`). No code changes are needed — the setting is already supported.
+
+> **Documentation**: [Set up a custom domain in Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/custom-domain)
+
+---
+
+### Customize the Rotation Schedule
+
+The automatic certificate rotation check runs daily at 6:00 AM UTC by default. To change this:
+
+1. Go to your **Function App** → **Settings** → **Environment variables**
+2. Add or update the `RotationSchedule` setting with a CRON expression:
+   - `0 0 6 * * *` - Daily at 6:00 AM UTC (default)
+   - `0 0 */12 * * *` - Every 12 hours
+   - `0 0 6 * * 1` - Every Monday at 6:00 AM UTC
+3. **Restart the Function App** for changes to take effect
+
+Or via CLI:
+
+```powershell
+az functionapp config appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --settings "RotationSchedule=0 0 */12 * * *"
+
+az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+```
+
+> **No code changes required.** The `RotationSchedule` setting is read directly by the Function App at startup.
 
 ---
 
@@ -1088,122 +1140,17 @@ Write-Host "Rollback complete. Verify sign-in works before removing the newer cr
 
 ---
 
-### Configure a Custom Domain
+### Remove Deployer Key Vault Access
 
-By default, your dashboard URL is auto-generated (e.g., `happy-island-01f529a0f.azurestaticapps.net`). To use a custom domain like `saml-dashboard.yourcompany.com`, you need to update **three** places:
-
-#### 1. Add the custom domain to the Static Web App
-
-**1.1. Validate domain ownership (TXT record)**
-
-1. Navigate to Azure Portal → Static Web App → **Settings** → **Custom domains** 
-2. Click **Add**.
-3. Select **Custom domain on other DNS**
-4. Enter your domain name (e.g., `saml.domain.com`) and click **Next**.
-5. Set **Hostname record type** to **TXT**.
-6. Click **Generate code**.
-7. In your DNS provider, add a **TXT** record:
-   - **Name/Host**: `saml` (or the subdomain portion of your domain)
-   - **Value**: the validation code generated by Azure
-8. Click **Verify** in Azure. DNS propagation may take a few minutes.
-
-**1.2. Route traffic to the Static Web App (CNAME record)**
-
-After validation succeeds, add a **CNAME** record in your DNS provider:
-
-| Type | Name/Host | Value |
-|------|-----------|-------|
-| CNAME | `saml` | `<original-swa-name>.azurestaticapps.net` |
-
-Replace `<original-swa-name>` with your Static Web App's auto-generated hostname.
-
-#### 2. Update the App Registration redirect URI
-
-1. Go to [Microsoft Entra admin center](https://entra.microsoft.com) → **App registrations** → `SAML Certificate Rotation Dashboard`
-2. Click **Authentication**
-3. Click **Add Redirect URIs**
-4. Select **Web** 
-5. Add `https://saml-dashboard.yourcompany.com/.auth/login/aad/callback` and click **Configure**
-
-Keep the original `azurestaticapps.net` redirect URI as a fallback
-
-#### 3. Update Function App settings and CORS
-
-The Function App must trust the custom domain as an additional SWA token issuer, and the domain must be added to CORS. Run the following in **Cloud Shell**:
+During Step 6.7, the deploying user was granted **Key Vault Secrets Officer**. To remove it after deployment:
 
 ```powershell
-# Set Variables
-$RESOURCE_GROUP = "<your-resource-group>" # Example: "rg-saml-cert-rotation"
-$CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>" # Example: "samldashboard.contoso.com"
+$USER_OBJECT_ID = az ad signed-in-user show --query id -o tsv
 
-# Clone the repo (skip if already cloned)
-if (-not (Test-Path "$HOME/SamlCertRotation")) {
-    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
-}
-Set-Location "$HOME/SamlCertRotation/infrastructure"
-
-# Load Function App name from deployment outputs
-$FUNCTION_APP_NAME = az deployment group list `
-    --resource-group $RESOURCE_GROUP `
-    --query "[?properties.provisioningState=='Succeeded' && properties.outputs.functionAppName != null] | sort_by(@, &properties.timestamp) | [-1].properties.outputs.functionAppName.value" `
-    -o tsv
-
-if (-not $FUNCTION_APP_NAME) {
-    throw "No infrastructure deployment found in '$RESOURCE_GROUP'. Deploy infrastructure (Step 3.2) first."
-}
-
-Write-Host "Function App: $FUNCTION_APP_NAME"
-
-# Add custom domain as a trusted SWA token issuer
-az functionapp config appsettings set `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --settings "SWA_HOSTNAME=$CUSTOM_DOMAIN"
-
-# Add custom domain to CORS (keeps existing origins)
-az functionapp cors add `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --allowed-origins "https://$CUSTOM_DOMAIN"
-
-# Verify both settings
-az functionapp config appsettings list `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --query "[?name=='SWA_HOSTNAME'].[name,value]" -o table
-
-az functionapp cors show `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --query "allowedOrigins" -o table
+az role assignment delete `
+    --role "Key Vault Secrets Officer" `
+    --assignee $USER_OBJECT_ID `
+    --scope "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KEY_VAULT_NAME"
 ```
 
-The `SWA_HOSTNAME` setting is read by [DashboardFunctions.cs](src/SamlCertRotation/Functions/DashboardFunctions.cs) to build a trusted issuer (`https://saml-dashboard.yourcompany.com/.auth`). No code changes are needed — the setting is already supported.
-
-> **Documentation**: [Set up a custom domain in Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/custom-domain)
-
----
-
-### Customize the Rotation Schedule
-
-The automatic certificate rotation check runs daily at 6:00 AM UTC by default. To change this:
-
-1. Go to your **Function App** → **Settings** → **Environment variables**
-2. Add or update the `RotationSchedule` setting with a CRON expression:
-   - `0 0 6 * * *` - Daily at 6:00 AM UTC (default)
-   - `0 0 */12 * * *` - Every 12 hours
-   - `0 0 6 * * 1` - Every Monday at 6:00 AM UTC
-3. **Restart the Function App** for changes to take effect
-
-Or via CLI:
-
-```powershell
-az functionapp config appsettings set `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --settings "RotationSchedule=0 0 */12 * * *"
-
-az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
-```
-
-> **No code changes required.** The `RotationSchedule` setting is read directly by the Function App at startup.
+> **Note**: You will need to re-grant this role if you later need to rotate the dashboard client secret manually.
