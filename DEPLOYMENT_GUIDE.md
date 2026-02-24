@@ -896,7 +896,6 @@ The dashboard client secret (`SamlDashboardClientSecret`) does not auto-rotate. 
 ```powershell
 # Set Variables
 $RESOURCE_GROUP = "<your-resource-group>"              # Example: "rg-saml-cert-rotation"
-$CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>"    # Example: "samldashboard.contoso.com"
 
 # Clone the repo (skip if already cloned)
 if (-not (Test-Path "$HOME/SamlCertRotation")) {
@@ -950,28 +949,6 @@ az staticwebapp appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
     --query "properties.AAD_CLIENT_SECRET" -o tsv
-
-# 5) Update Function App settings and CORS for custom domain
-az functionapp config appsettings set `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --settings "SWA_HOSTNAME=$CUSTOM_DOMAIN"
-
-az functionapp cors add `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --allowed-origins "https://$CUSTOM_DOMAIN"
-
-# 6) Verify Function App settings and CORS
-az functionapp config appsettings list `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --query "[?name=='SWA_HOSTNAME'].[name,value]" -o table
-
-az functionapp cors show `
-    --resource-group $RESOURCE_GROUP `
-    --name $FUNCTION_APP_NAME `
-    --query "allowedOrigins" -o table
 ```
 
 Expected result for step 4:
