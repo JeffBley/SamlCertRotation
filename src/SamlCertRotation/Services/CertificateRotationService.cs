@@ -91,7 +91,10 @@ public class CertificateRotationService : ICertificateRotationService
                 }
             }
 
-            await SendAutomaticExpirationNotificationsAsync(apps, auditCache);
+            if (!reportOnlyMode)
+            {
+                await SendAutomaticExpirationNotificationsAsync(apps, auditCache);
+            }
 
             // Log completion
             var reportOnlyCreateCount = results.Count(r => 
@@ -103,9 +106,11 @@ public class CertificateRotationService : ICertificateRotationService
                     string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(r.Action, "Created (Notify)", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.Action, "Notified", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(r.Action, "Would Create (Notify)", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase)));
+                    string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.Action, "Would Notify", StringComparison.OrdinalIgnoreCase)));
             var failedCount = results.Count(r => !r.Success);
             var skippedCount = Math.Max(0, results.Count - successCount - failedCount);
 
@@ -179,18 +184,33 @@ public class CertificateRotationService : ICertificateRotationService
                 if (notifyMilestone != null)
                 {
                     var appUrl = UrlHelper.BuildEntraManagedAppUrl(app.Id, app.AppId);
-                    var sent = await _notificationService.SendNotifyOnlyReminderAsync(app, activeCert, daysUntilExpiry, appUrl, notifyMilestone);
 
-                    if (sent)
+                    if (reportOnlyMode)
                     {
-                        result.Action = "Notified";
+                        result.Action = "Would Notify";
                         await _auditService.LogSuccessAsync(
                             app.Id,
                             app.DisplayName,
                             AuditActionType.CertificateExpiringSoon,
-                            $"Notify reminder sent. Milestone: {notifyMilestone}. Days remaining: {daysUntilExpiry}. Link: {appUrl}",
+                            $"Report-only mode: would send notify reminder. Milestone: {notifyMilestone}. Days remaining: {daysUntilExpiry}. Link: {appUrl}",
                             activeCert.Thumbprint,
                             performedBy: performedBy);
+                    }
+                    else
+                    {
+                        var sent = await _notificationService.SendNotifyOnlyReminderAsync(app, activeCert, daysUntilExpiry, appUrl, notifyMilestone);
+
+                        if (sent)
+                        {
+                            result.Action = "Notified";
+                            await _auditService.LogSuccessAsync(
+                                app.Id,
+                                app.DisplayName,
+                                AuditActionType.CertificateExpiringSoon,
+                                $"Notify reminder sent. Milestone: {notifyMilestone}. Days remaining: {daysUntilExpiry}. Link: {appUrl}",
+                                activeCert.Thumbprint,
+                                performedBy: performedBy);
+                        }
                     }
                 }
 
@@ -430,7 +450,10 @@ public class CertificateRotationService : ICertificateRotationService
                 ex.Message,
                 performedBy);
 
-            await _notificationService.SendErrorNotificationAsync(app, ex.Message, "Rotation");
+            if (!reportOnlyMode)
+            {
+                await _notificationService.SendErrorNotificationAsync(app, ex.Message, "Rotation");
+            }
         }
 
         return result;

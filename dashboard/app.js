@@ -666,6 +666,8 @@ async function confirmModalAction() {
                 : Math.max(0, (result.totalProcessed || 0) - (result.successful || 0) - (result.failed || 0));
             showSuccess(`${result.message}. Processed ${result.totalProcessed} apps. Success: ${result.successful}, Skipped: ${skipped}, Failed: ${result.failed}`);
             await loadData();
+            // Refresh reports tab so the new run appears immediately
+            loadReports();
         } catch (error) {
             showError(`Failed to run rotation: ${error.message}`);
         }
@@ -1186,7 +1188,7 @@ async function loadReports() {
                 <td>${r.successful}</td>
                 <td>${r.skipped}</td>
                 <td>${r.failed > 0 ? '<span style="color:#d83b01;font-weight:600;">' + r.failed + '</span>' : r.failed}</td>
-                <td><button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="viewReport('${r.id}')">View Report</button></td>
+                <td><button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" data-action="view-report" data-report-id="${escapeHtml(r.id)}">View Report</button></td>
             `;
             tbody.appendChild(tr);
         });
@@ -1735,25 +1737,39 @@ function exportAuditLogCsv() {
     downloadCsvFile(rows.join('\n'), `audit-log-${formatDateForFilename()}.csv`);
 }
 
-// Get filtered audit entries (applies current filters)
+// Get filtered audit entries (applies current filters — mirrors applyAuditFilters logic)
 function getFilteredAuditEntries() {
-    const selectedActionFilters = Array.from(document.querySelectorAll('.audit-action-filter-option-input:checked')).map(cb => cb.value);
-    const selectedResultFilters = Array.from(document.querySelectorAll('.audit-result-filter-option-input:checked')).map(cb => cb.value);
-    const selectedInitiatedByFilters = Array.from(document.querySelectorAll('.audit-initiatedby-filter-option-input:checked')).map(cb => cb.value);
+    const selectedActionFilters = getSelectedAuditActionFilters();
+    const selectedResultFilters = getSelectedAuditResultFilters();
+    const initiatedByTerm = (document.getElementById('audit-initiated-by-search')?.value || '').trim().toLowerCase();
+    const applicationTerm = (document.getElementById('audit-application-search')?.value || '').trim().toLowerCase();
+    const detailsTerm = (document.getElementById('audit-details-search')?.value || '').trim().toLowerCase();
 
     return allAuditEntries.filter(entry => {
         const actionMatch = selectedActionFilters.length === 0 || selectedActionFilters.includes(entry.actionType || '');
-        let resultMatch = true;
+        if (!actionMatch) return false;
+
         if (selectedResultFilters.length > 0) {
             const resultVal = entry.isSuccess ? 'success' : 'failed';
-            resultMatch = selectedResultFilters.includes(resultVal);
+            if (!selectedResultFilters.includes(resultVal)) return false;
         }
-        let initiatedByMatch = true;
-        if (selectedInitiatedByFilters && selectedInitiatedByFilters.length > 0) {
+
+        if (initiatedByTerm) {
             const performedBy = (entry.performedBy || 'System').toLowerCase();
-            initiatedByMatch = selectedInitiatedByFilters.some(f => performedBy.includes(f.toLowerCase()));
+            if (!performedBy.includes(initiatedByTerm)) return false;
         }
-        return actionMatch && resultMatch && initiatedByMatch;
+
+        if (applicationTerm) {
+            const appName = (entry.appDisplayName || '').toLowerCase();
+            if (!appName.includes(applicationTerm)) return false;
+        }
+
+        if (detailsTerm) {
+            const details = `${entry.description || ''} ${entry.errorMessage || ''}`.toLowerCase();
+            if (!details.includes(detailsTerm)) return false;
+        }
+
+        return true;
     });
 }
 
@@ -2353,6 +2369,9 @@ document.addEventListener('click', function (e) {
             break;
         case 'resend-reminder':
             resendReminderEmail(appId, appName);
+            break;
+        case 'view-report':
+            viewReport(btn.dataset.reportId);
             break;
     }
 });

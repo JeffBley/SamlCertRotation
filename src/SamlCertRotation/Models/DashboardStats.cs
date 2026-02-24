@@ -106,4 +106,25 @@ public class RotationResult
     public string Action { get; set; } = string.Empty; // "Created", "Activated", "None"
     public string? NewCertificateThumbprint { get; set; }
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Computes successful/skipped/failed totals for rotation run summaries.
+    /// </summary>
+    public static (int successful, int skipped, int failed) GetOutcomeCounts(List<RotationResult> results)
+    {
+        var successful = results.Count(r =>
+            r.Success && (
+                string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Notified", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Would Notify", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Created (Notify)", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Action, "Would Create (Notify)", StringComparison.OrdinalIgnoreCase)));
+
+        var failed = results.Count(r => !r.Success);
+        var skipped = Math.Max(0, results.Count - successful - failed);
+        return (successful, skipped, failed);
+    }
 }

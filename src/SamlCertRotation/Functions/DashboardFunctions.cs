@@ -424,7 +424,7 @@ public class DashboardFunctions
                 if (policy.ActivateCertDaysBeforeExpiry != beforeActivate)
                     changes.Add($"ActivateCertDaysBeforeExpiry: {beforeActivate?.ToString() ?? "global default"} → {policy.ActivateCertDaysBeforeExpiry?.ToString() ?? "global default"}");
                 if ((policy.AdditionalNotificationEmails ?? "") != beforeAdditionalEmails)
-                    changes.Add($"AdditionalNotificationEmails: \"{beforeAdditionalEmails}\" → \"{policy.AdditionalNotificationEmails ?? ""}\"]");
+                    changes.Add($"AdditionalNotificationEmails: \"{beforeAdditionalEmails}\" → \"{policy.AdditionalNotificationEmails ?? ""}\"");
                 if (policy.CreateCertsForNotifyOverride != beforeNotifyOverride)
                 {
                     string FormatOverride(bool? v) => v switch { true => "Enabled", false => "Disabled", null => "Default (Global)" };
@@ -655,8 +655,23 @@ public class DashboardFunctions
             // This would require Azure Management API access. For now, we'll store in Table Storage
             // alongside policies, or return instructions.
             
+            // Validate notification email format before saving
+            var rawEmails = settings.NotificationEmails ?? "";
+            if (!string.IsNullOrWhiteSpace(rawEmails))
+            {
+                var emailParts = rawEmails.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var emailPart in emailParts)
+                {
+                    var trimmed = emailPart.Trim();
+                    if (!IsValidEmail(trimmed))
+                    {
+                        return await CreateErrorResponse(req, $"Invalid notification email address: {trimmed}", HttpStatusCode.BadRequest);
+                    }
+                }
+            }
+
             // Store settings in policy service (we'll reuse the table)
-            await _policyService.UpdateNotificationEmailsAsync(settings.NotificationEmails ?? "");
+            await _policyService.UpdateNotificationEmailsAsync(rawEmails);
 
             if (settings.ReportOnlyModeEnabled.HasValue)
             {
@@ -749,7 +764,7 @@ public class DashboardFunctions
             // Build list of changed fields
             var changes = new List<string>();
             if ((settings.NotificationEmails ?? "") != beforeEmails)
-                changes.Add($"NotificationEmails: \"{beforeEmails}\" → \"{settings.NotificationEmails ?? ""}\"]");
+                changes.Add($"NotificationEmails: \"{beforeEmails}\" → \"{settings.NotificationEmails ?? ""}\"");
             if (settings.ReportOnlyModeEnabled.HasValue && settings.ReportOnlyModeEnabled.Value != beforeReportOnly)
                 changes.Add($"ReportOnlyMode: {beforeReportOnly} → {settings.ReportOnlyModeEnabled.Value}");
             if (settings.RetentionPolicyDays.HasValue && settings.RetentionPolicyDays.Value != beforeRetention)
@@ -813,16 +828,6 @@ public class DashboardFunctions
     }
 
     /// <summary>
-    /// Manually trigger certificate rotation (admin endpoint)
-    /// </summary>
-    [Function("TriggerRotation")]
-    public async Task<HttpResponseData> TriggerRotation(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation")] HttpRequestData req)
-    {
-        return await TriggerRotationProd(req);
-    }
-
-    /// <summary>
     /// Manually trigger certificate rotation in report-only mode
     /// </summary>
     [Function("TriggerRotationReportOnly")]
@@ -843,7 +848,7 @@ public class DashboardFunctions
         try
         {
             var results = await _rotationService.RunRotationAsync(true, performedBy);
-            var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
+            var (successful, skipped, failed) = RotationResult.GetOutcomeCounts(results);
 
             // Save run report
             var report = new RunReport
@@ -908,7 +913,7 @@ public class DashboardFunctions
         try
         {
             var results = await _rotationService.RunRotationAsync(false, performedBy);
-            var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
+            var (successful, skipped, failed) = RotationResult.GetOutcomeCounts(results);
 
             // Save run report
             var report = new RunReport
@@ -1005,6 +1010,11 @@ public class DashboardFunctions
         if (authError != null)
         {
             return authError;
+        }
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid report ID format", HttpStatusCode.BadRequest);
         }
 
         try
@@ -1611,17 +1621,31 @@ public class DashboardFunctions
         if (string.IsNullOrEmpty(message)) return "An error occurred";
         
         // List of patterns that might leak implementation details
-        var sensitivePatterns = new[] { "stack trace", "at System.", "at Microsoft.", "connection string", "password", "secret" };
+        var sensitivePatterns = new[]
+        {
+            "stack trace", "at System.", "at Microsoft.", "at Azure.",
+            "connection string", "password", "secret", "token",
+            "client_id", "client_secret", "tenant",
+            "StorageConnectionString", "AzureWebJobs",
+            "ODataError", "Request_", "Authorization_",
+            "ServiceException", "inner exception"
+        };
         var lowerMessage = message.ToLowerInvariant();
         
         foreach (var pattern in sensitivePatterns)
         {
-            if (lowerMessage.Contains(pattern))
+            if (lowerMessage.Contains(pattern.ToLowerInvariant()))
             {
                 return "An internal error occurred. Please check logs for details.";
             }
         }
-        
+
+        // Truncate overly long messages that may contain stack traces
+        if (message.Length > 300)
+        {
+            return message[..300] + "...";
+        }
+
         return message;
     }
 
@@ -2310,22 +2334,5 @@ public class DashboardFunctions
         public string? UserPrincipalName { get; set; }
         public bool IsAuthenticated { get; set; }
         public HashSet<string> Roles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Computes successful/skipped/failed totals for rotation run summaries.
-    /// </summary>
-    private static (int successful, int skipped, int failed) GetRotationOutcomeCounts(List<RotationResult> results)
-    {
-        var successful = results.Count(r =>
-            r.Success && (
-                string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase)));
-
-        var failed = results.Count(r => !r.Success);
-        var skipped = Math.Max(0, results.Count - successful - failed);
-        return (successful, skipped, failed);
     }
 }

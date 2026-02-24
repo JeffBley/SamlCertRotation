@@ -59,7 +59,7 @@ public class CertificateCheckerFunction
                 results.Count, successCount, failureCount);
 
             // Save run report
-            var (successful, skipped, failed) = GetRotationOutcomeCounts(results);
+            var (successful, skipped, failed) = RotationResult.GetOutcomeCounts(results);
             var report = new RunReport
             {
                 RunDate = DateTime.UtcNow,
@@ -97,19 +97,5 @@ public class CertificateCheckerFunction
             _logger.LogError(ex, "Certificate checker failed");
             throw;
         }
-    }
-
-    private static (int successful, int skipped, int failed) GetRotationOutcomeCounts(List<RotationResult> results)
-    {
-        var successful = results.Count(r =>
-            r.Success && (
-                string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase)));
-
-        var failed = results.Count(r => !r.Success);
-        var skipped = Math.Max(0, results.Count - successful - failed);
-        return (successful, skipped, failed);
     }
 }
