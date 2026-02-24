@@ -829,17 +829,17 @@ After sign-in, verify SWA is enriching roles via the auth metadata endpoint:
 
 # Post-Deployment Steps
 
-### Considerations
+## Considerations
 
 Now that deployment is complete, review the following items and address them according to your organization's policies.
 
-#### 1. Key Vault Access
+### 1. Key Vault Access
 
 During deployment, your user account was granted **Key Vault Secrets Officer** on the Key Vault (Step 6.7) so you could store the dashboard client secret. This is more access than the deploying user typically needs long-term.
 
 **Action**: Consider removing or downgrading your personal Key Vault role assignment after deployment is complete. See [Remove Deployer Key Vault Access](#Remove Deployer Key Vault Access) below for instructions.
 
-#### 2. Key Vault Secrets Inventory
+### 2. Key Vault Secrets Inventory
 
 The Key Vault contains two secrets that require periodic attention:
 
@@ -852,19 +852,19 @@ The Key Vault contains two secrets that require periodic attention:
 
 > **NOTE:** The **LogicAppEmailUrl** Key Vault secret will be updated automatically when you redeploy the Bicep template. The secret is defined declaratively in main.bicep:105-114 using listCallbackUrl() on the Logic App trigger. Each time you run `az deployment group create` with this template, Bicep evaluates listCallbackUrl() at deploy time — if the Logic App was regenerated and has a new SAS token, the new URL will be written to the LogicAppEmailUrl secret in Key Vault, creating a new secret version. <br > <br > If you regenerate the Logic App trigger URL outside of a Bicep deployment (e.g., via the portal's "Regenerate access keys"), the Key Vault secret will not update until you re-run the Bicep deployment or update the Key Vault value manually.
 
-#### 3. Static Web App Name
+### 3. Static Web App Name
 
 The Static Web App is created with an auto-generated hostname (e.g., `happy-island-01f529a0f.azurestaticapps.net`). Most organizations prefer a branded custom domain.
 
 **Action**: If you want a custom domain, see [Configure a Custom Domain](#configure-a-custom-domain) below. This requires updates in multiple places.
 
-#### 4. Rotation Schedule
+### 4. Rotation Schedule
 
 The automatic certificate rotation check runs daily at **6:00 AM UTC** by default. Depending on your environment, you may want to adjust the frequency.
 
 **Action**: If the default schedule doesn't suit your needs, see [Customize the Rotation Schedule](#customize-the-rotation-schedule) below.
 
-#### 5. Logic App Email Sender
+### 5. Logic App Email Sender
 
 The Logic App sends emails from whichever account was authorized in Step 8.2. If you used a personal account, consider switching to a shared mailbox.
 
@@ -964,7 +964,11 @@ az staticwebapp appsettings list `
     --resource-group $RESOURCE_GROUP `
     --name $STATIC_WEB_APP_NAME `
     --query "properties.AAD_CLIENT_SECRET" -o tsv
-
+```
+Expected result for step 5:
+`AAD_CLIENT_SECRET` should be an `@Microsoft.KeyVault(...)` reference string — not a plaintext secret value. <br > <br>
+Optional #6
+```
 # 6) Remove old credentials from app registration (keep only the one we just created)
 $ALL_CREDS = az ad app credential list --id $CLIENT_ID -o json | ConvertFrom-Json
 $OLD_CREDS = $ALL_CREDS | Where-Object { $_.keyId -ne $NEW_KEY_ID }
@@ -977,8 +981,7 @@ foreach ($cred in $OLD_CREDS) {
 Write-Host "Rotation complete. Old credentials removed."
 ```
 
-Expected result for step 5:
-- `AAD_CLIENT_SECRET` should be an `@Microsoft.KeyVault(...)` reference string — not a plaintext secret value.
+
 
 Recommended cadence:
 - Rotate every 90-180 days, or per your security policy.
