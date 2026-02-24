@@ -66,6 +66,16 @@ public class SettingsUpdateRequest
     public bool? SponsorsCanRotateCerts { get; set; }
 
     /// <summary>
+    /// Whether sponsors can update policy for their apps
+    /// </summary>
+    public bool? SponsorsCanUpdatePolicy { get; set; }
+
+    /// <summary>
+    /// Whether sponsors can add/remove sponsors for their apps
+    /// </summary>
+    public bool? SponsorsCanEditSponsors { get; set; }
+
+    /// <summary>
     /// Whether to automatically create (but not activate) new certificates for notify-only apps
     /// </summary>
     public bool? CreateCertsForNotifyApps { get; set; }

@@ -221,11 +221,15 @@ public class DashboardFunctions
                 .ToList();
 
             var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var sponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
+            var sponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
 
             return await CreateJsonResponse(req, new
             {
                 apps = myApps,
-                sponsorsCanRotateCerts
+                sponsorsCanRotateCerts,
+                sponsorsCanUpdatePolicy,
+                sponsorsCanEditSponsors
             });
         }
         catch (Exception ex)
@@ -422,6 +426,246 @@ public class DashboardFunctions
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error activating certificate for application {Id} by sponsor {UserEmail}", id, userEmail);
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Update app policy (sponsor-accessible when setting is enabled).
+    /// This endpoint checks that the caller is a sponsor of the app and the setting is enabled.
+    /// </summary>
+    [Function("SponsorUpdateAppPolicy")]
+    public async Task<HttpResponseData> SponsorUpdateAppPolicy(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sponsor/applications/{id}/policy")] HttpRequestData req,
+        string id)
+    {
+        var authError = await AuthorizeRequestAsync(req, allowSponsor: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
+
+        var identity = await ParseClientPrincipalAsync(req);
+        var userEmail = identity?.UserPrincipalName;
+        var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
+
+        if (!isAdmin)
+        {
+            if (!(identity?.Roles.Contains(DashboardRoles.Sponsor) ?? false))
+            {
+                return await CreateErrorResponse(req, "Sponsor role is required.", HttpStatusCode.Forbidden);
+            }
+
+            var sponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
+            if (!sponsorsCanUpdatePolicy)
+            {
+                return await CreateErrorResponse(req, "Sponsors are not permitted to update policies. This feature is disabled.", HttpStatusCode.Forbidden);
+            }
+
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            if (!IsSponsorOf(app.Sponsor, userEmail))
+            {
+                return await CreateErrorResponse(req, "You are not a sponsor of this application.", HttpStatusCode.Forbidden);
+            }
+        }
+
+        _logger.LogInformation("Sponsor {UserEmail} updating policy for application {Id}", userEmail, id);
+
+        try
+        {
+            var body = await req.ReadAsStringAsync();
+            if (string.IsNullOrEmpty(body))
+            {
+                return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
+            }
+
+            var policy = JsonSerializer.Deserialize<AppPolicy>(body, JsonOptions);
+            if (policy == null)
+            {
+                return await CreateErrorResponse(req, "Invalid policy format", HttpStatusCode.BadRequest);
+            }
+
+            policy.RowKey = id;
+
+            var beforePolicy = await _policyService.GetAppPolicyAsync(id);
+
+            var success = await _policyService.UpsertAppPolicyAsync(policy);
+
+            if (success)
+            {
+                var changes = new List<string>();
+                var beforeCreate = beforePolicy?.CreateCertDaysBeforeExpiry;
+                var beforeActivate = beforePolicy?.ActivateCertDaysBeforeExpiry;
+                var beforeAdditionalEmails = beforePolicy?.AdditionalNotificationEmails ?? "";
+                var beforeNotifyOverride = beforePolicy?.CreateCertsForNotifyOverride;
+
+                if (policy.CreateCertDaysBeforeExpiry != beforeCreate)
+                    changes.Add($"CreateCertDaysBeforeExpiry: {beforeCreate?.ToString() ?? "global default"} → {policy.CreateCertDaysBeforeExpiry?.ToString() ?? "global default"}");
+                if (policy.ActivateCertDaysBeforeExpiry != beforeActivate)
+                    changes.Add($"ActivateCertDaysBeforeExpiry: {beforeActivate?.ToString() ?? "global default"} → {policy.ActivateCertDaysBeforeExpiry?.ToString() ?? "global default"}");
+                if ((policy.AdditionalNotificationEmails ?? "") != beforeAdditionalEmails)
+                    changes.Add($"AdditionalNotificationEmails: \"{beforeAdditionalEmails}\" → \"{policy.AdditionalNotificationEmails ?? ""}\"");
+                if (policy.CreateCertsForNotifyOverride != beforeNotifyOverride)
+                {
+                    string FormatOverride(bool? v) => v switch { true => "Enabled", false => "Disabled", null => "Default (Global)" };
+                    changes.Add($"CreateCertsForNotifyOverride: {FormatOverride(beforeNotifyOverride)} → {FormatOverride(policy.CreateCertsForNotifyOverride)}");
+                }
+
+                if (changes.Count > 0)
+                {
+                    await _auditService.LogSuccessAsync(
+                        id,
+                        policy.AppDisplayName ?? id,
+                        AuditActionType.SettingsUpdated,
+                        $"Policy updated via sponsor portal. {string.Join("; ", changes)}",
+                        performedBy: userEmail);
+                }
+
+                return await CreateJsonResponse(req, new { message = "App policy updated successfully" });
+            }
+            else
+            {
+                return await CreateErrorResponse(req, "Failed to update app policy");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating app policy for {Id} by sponsor {UserEmail}", id, userEmail);
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Update sponsor for an application (sponsor-accessible when setting is enabled).
+    /// This endpoint checks that the caller is a sponsor of the app and the setting is enabled.
+    /// </summary>
+    [Function("SponsorUpdateSponsor")]
+    public async Task<HttpResponseData> SponsorUpdateSponsor(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "sponsor/applications/{id}/sponsor")] HttpRequestData req,
+        string id)
+    {
+        var authError = await AuthorizeRequestAsync(req, allowSponsor: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
+
+        var identity = await ParseClientPrincipalAsync(req);
+        var userEmail = identity?.UserPrincipalName;
+        var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
+
+        if (!isAdmin)
+        {
+            if (!(identity?.Roles.Contains(DashboardRoles.Sponsor) ?? false))
+            {
+                return await CreateErrorResponse(req, "Sponsor role is required.", HttpStatusCode.Forbidden);
+            }
+
+            var sponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
+            if (!sponsorsCanEditSponsors)
+            {
+                return await CreateErrorResponse(req, "Sponsors are not permitted to edit sponsors. This feature is disabled.", HttpStatusCode.Forbidden);
+            }
+
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            if (!IsSponsorOf(app.Sponsor, userEmail))
+            {
+                return await CreateErrorResponse(req, "You are not a sponsor of this application.", HttpStatusCode.Forbidden);
+            }
+        }
+
+        _logger.LogInformation("Sponsor {UserEmail} updating sponsor for application {Id}", userEmail, id);
+
+        SamlApplication? app2 = null;
+
+        try
+        {
+            var body = await req.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
+            }
+
+            var request = JsonSerializer.Deserialize<SponsorUpdateRequest>(body, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            var sponsorEmail = request?.SponsorEmail?.Trim();
+            if (string.IsNullOrWhiteSpace(sponsorEmail))
+            {
+                return await CreateErrorResponse(req, "Sponsor email is required", HttpStatusCode.BadRequest);
+            }
+
+            // Validate each email in a semicolon-separated list
+            var sponsorEmails = sponsorEmail.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var email in sponsorEmails)
+            {
+                if (!IsValidEmail(email))
+                {
+                    return await CreateErrorResponse(req, $"Invalid sponsor email format: {email}", HttpStatusCode.BadRequest);
+                }
+            }
+            // Normalize: trim each part and rejoin
+            sponsorEmail = string.Join(";", sponsorEmails);
+
+            app2 = await _graphService.GetSamlApplicationAsync(id);
+            if (app2 == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            var updated = await _graphService.UpdateAppSponsorTagAsync(id, sponsorEmail);
+            if (!updated)
+            {
+                return await CreateErrorResponse(req, "Failed to update sponsor tag");
+            }
+
+            await _auditService.LogSuccessAsync(
+                id,
+                app2.DisplayName,
+                AuditActionType.SponsorUpdated,
+                $"Sponsor updated via sponsor portal. AppSponsor={sponsorEmail}",
+                performedBy: userEmail);
+
+            return await CreateJsonResponse(req, new
+            {
+                message = "Sponsor updated successfully",
+                sponsor = sponsorEmail
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsor for application {Id} by sponsor {UserEmail}", id, userEmail);
+
+            await _auditService.LogFailureAsync(
+                id,
+                app2?.DisplayName ?? "Unknown",
+                AuditActionType.SponsorUpdated,
+                "Error updating sponsor via sponsor portal",
+                ex.Message,
+                performedBy: userEmail);
+
             return await CreateErrorResponse(req, ex.Message);
         }
     }
@@ -834,6 +1078,8 @@ public class DashboardFunctions
             var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
             var reportsRetentionPolicyDays = await _policyService.GetReportsRetentionPolicyDaysAsync();
             var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var sponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
+            var sponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
 
             var settings = new
             {
@@ -852,7 +1098,9 @@ public class DashboardFunctions
                 sessionTimeoutMinutes,
                 createCertsForNotifyApps,
                 reportsRetentionPolicyDays,
-                sponsorsCanRotateCerts
+                sponsorsCanRotateCerts,
+                sponsorsCanUpdatePolicy,
+                sponsorsCanEditSponsors
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -905,6 +1153,8 @@ public class DashboardFunctions
             var beforeCreateCertsForNotify = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
             var beforeReportsRetention = await _policyService.GetReportsRetentionPolicyDaysAsync();
             var beforeSponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var beforeSponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
+            var beforeSponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
 
             // Note: We can't actually update Azure App Settings from within the function
             // This would require Azure Management API access. For now, we'll store in Table Storage
@@ -1010,6 +1260,16 @@ public class DashboardFunctions
                 await _policyService.UpdateSponsorsCanRotateCertsEnabledAsync(settings.SponsorsCanRotateCerts.Value);
             }
 
+            if (settings.SponsorsCanUpdatePolicy.HasValue)
+            {
+                await _policyService.UpdateSponsorsCanUpdatePolicyEnabledAsync(settings.SponsorsCanUpdatePolicy.Value);
+            }
+
+            if (settings.SponsorsCanEditSponsors.HasValue)
+            {
+                await _policyService.UpdateSponsorsCanEditSponsorsEnabledAsync(settings.SponsorsCanEditSponsors.Value);
+            }
+
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
@@ -1021,6 +1281,8 @@ public class DashboardFunctions
             var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
             var reportsRetentionPolicyDays = await _policyService.GetReportsRetentionPolicyDaysAsync();
             var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var sponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
+            var sponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
 
             // Build list of changed fields
             var changes = new List<string>();
@@ -1052,6 +1314,10 @@ public class DashboardFunctions
                 changes.Add($"ReportsRetentionPolicyDays: {beforeReportsRetention} → {settings.ReportsRetentionPolicyDays.Value}");
             if (settings.SponsorsCanRotateCerts.HasValue && settings.SponsorsCanRotateCerts.Value != beforeSponsorsCanRotateCerts)
                 changes.Add($"SponsorsCanRotateCerts: {beforeSponsorsCanRotateCerts} → {settings.SponsorsCanRotateCerts.Value}");
+            if (settings.SponsorsCanUpdatePolicy.HasValue && settings.SponsorsCanUpdatePolicy.Value != beforeSponsorsCanUpdatePolicy)
+                changes.Add($"SponsorsCanUpdatePolicy: {beforeSponsorsCanUpdatePolicy} → {settings.SponsorsCanUpdatePolicy.Value}");
+            if (settings.SponsorsCanEditSponsors.HasValue && settings.SponsorsCanEditSponsors.Value != beforeSponsorsCanEditSponsors)
+                changes.Add($"SponsorsCanEditSponsors: {beforeSponsorsCanEditSponsors} → {settings.SponsorsCanEditSponsors.Value}");
 
             if (changes.Count > 0)
             {
@@ -1081,7 +1347,9 @@ public class DashboardFunctions
                 sessionTimeoutMinutes,
                 createCertsForNotifyApps,
                 reportsRetentionPolicyDays,
-                sponsorsCanRotateCerts
+                sponsorsCanRotateCerts,
+                sponsorsCanUpdatePolicy,
+                sponsorsCanEditSponsors
             });
         }
         catch (Exception ex)

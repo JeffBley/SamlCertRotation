@@ -780,4 +780,94 @@ public class PolicyService : IPolicyService
             throw;
         }
     }
+
+    /// <inheritdoc />
+    public async Task<bool> GetSponsorsCanUpdatePolicyEnabledAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorsCanUpdatePolicy");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsors-can-update-policy setting from storage");
+        }
+
+        return false; // disabled by default
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSponsorsCanUpdatePolicyEnabledAsync(bool enabled)
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "SponsorsCanUpdatePolicy")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated sponsors-can-update-policy setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsors-can-update-policy setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> GetSponsorsCanEditSponsorsEnabledAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorsCanEditSponsors");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsors-can-edit-sponsors setting from storage");
+        }
+
+        return true; // enabled by default
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSponsorsCanEditSponsorsEnabledAsync(bool enabled)
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "SponsorsCanEditSponsors")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated sponsors-can-edit-sponsors setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsors-can-edit-sponsors setting");
+            throw;
+        }
+    }
 }

@@ -156,4 +156,24 @@ public interface IPolicyService
     /// Update sponsors can rotate certificates setting
     /// </summary>
     Task UpdateSponsorsCanRotateCertsEnabledAsync(bool enabled);
+
+    /// <summary>
+    /// Get whether sponsors can update policy for their apps (default false/disabled)
+    /// </summary>
+    Task<bool> GetSponsorsCanUpdatePolicyEnabledAsync();
+
+    /// <summary>
+    /// Update sponsors can update policy setting
+    /// </summary>
+    Task UpdateSponsorsCanUpdatePolicyEnabledAsync(bool enabled);
+
+    /// <summary>
+    /// Get whether sponsors can add/remove sponsors for their apps (default true/enabled)
+    /// </summary>
+    Task<bool> GetSponsorsCanEditSponsorsEnabledAsync();
+
+    /// <summary>
+    /// Update sponsors can edit sponsors setting
+    /// </summary>
+    Task UpdateSponsorsCanEditSponsorsEnabledAsync(bool enabled);
 }

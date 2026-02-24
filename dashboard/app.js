@@ -562,6 +562,32 @@ async function sponsorActivateCert(appId, appName) {
     }
 }
 
+// Sponsor-initiated policy edit — reuses the same edit policy modal
+// Sets a flag so saveAppPolicy() knows to use the sponsor endpoint
+let sponsorEditPolicyMode = false;
+let sponsorEditPolicyState = { appId: null, appName: null };
+
+async function sponsorEditPolicy(appId, appName) {
+    closeAllDropdowns();
+    sponsorEditPolicyMode = true;
+    sponsorEditPolicyState = { appId, appName };
+    // Reuse the editPolicy flow which opens the modal and wires up save via saveAppPolicy()
+    await editPolicy(appId, appName);
+}
+
+// Sponsor-initiated sponsor edit — reuses the same edit sponsor modal
+// Sets a flag so saveSponsorModal() knows to use the sponsor endpoint
+let sponsorEditSponsorMode = false;
+let sponsorEditSponsorState = { appId: null, appName: null };
+
+function sponsorEditSponsor(appId, appName, currentSponsor) {
+    closeAllDropdowns();
+    sponsorEditSponsorMode = true;
+    sponsorEditSponsorState = { appId, appName };
+    // Reuse the editSponsor flow which opens the modal and wires up save via saveSponsorModal()
+    editSponsor(appId, appName, currentSponsor);
+}
+
 // Edit sponsor tag for an app — opens modal with per-sponsor input rows
 let editSponsorState = { appId: null, appName: null };
 
@@ -634,13 +660,27 @@ async function saveSponsorModal() {
     try {
         showLoading('Updating sponsor...');
         document.getElementById('editSponsorModal').classList.remove('show');
-        await apiCall(`applications/${editSponsorState.appId}/sponsor`, {
+
+        const isSponsorMode = sponsorEditSponsorMode;
+        const appId = isSponsorMode ? sponsorEditSponsorState.appId : editSponsorState.appId;
+        const appName = isSponsorMode ? sponsorEditSponsorState.appName : editSponsorState.appName;
+        const endpoint = isSponsorMode ? `sponsor/applications/${appId}/sponsor` : `applications/${appId}/sponsor`;
+
+        await apiCall(endpoint, {
             method: 'PUT',
             body: JSON.stringify({ sponsorEmail })
         });
-        showSuccess(`Sponsor updated for ${editSponsorState.appName}`);
-        await loadData();
+        showSuccess(`Sponsor updated for ${appName}`);
+
+        if (isSponsorMode) {
+            sponsorEditSponsorMode = false;
+            sponsorEditSponsorState = { appId: null, appName: null };
+            await loadMyApps();
+        } else {
+            await loadData();
+        }
     } catch (error) {
+        sponsorEditSponsorMode = false;
         showError(`Failed to update sponsor: ${error.message}`);
     }
 }
@@ -719,18 +759,32 @@ async function saveAppPolicy() {
     try {
         showLoading('Saving app policy...');
         document.getElementById('editPolicyModal').classList.remove('show');
-        await apiCall(`policy/app/${editPolicyAppId}`, {
+
+        const isSponsorMode = sponsorEditPolicyMode;
+        const appId = isSponsorMode ? sponsorEditPolicyState.appId : editPolicyAppId;
+        const appName = isSponsorMode ? sponsorEditPolicyState.appName : editPolicyAppName;
+        const endpoint = isSponsorMode ? `sponsor/applications/${appId}/policy` : `policy/app/${appId}`;
+
+        await apiCall(endpoint, {
             method: 'PUT',
             body: JSON.stringify({
-                appDisplayName: editPolicyAppName,
+                appDisplayName: appName,
                 createCertDaysBeforeExpiry: createDays,
                 activateCertDaysBeforeExpiry: activateDays,
                 createCertsForNotifyOverride: createCertsForNotifyOverride
             })
         });
-        showSuccess(`Policy updated for ${editPolicyAppName}`);
-        await loadData();
+        showSuccess(`Policy updated for ${appName}`);
+
+        if (isSponsorMode) {
+            sponsorEditPolicyMode = false;
+            sponsorEditPolicyState = { appId: null, appName: null };
+            await loadMyApps();
+        } else {
+            await loadData();
+        }
     } catch (error) {
+        sponsorEditPolicyMode = false;
         showError(`Failed to update app policy: ${error.message}`);
     }
 }
@@ -739,6 +793,8 @@ function closeEditPolicyModal() {
     document.getElementById('editPolicyModal').classList.remove('show');
     editPolicyAppId = null;
     editPolicyAppName = null;
+    sponsorEditPolicyMode = false;
+    sponsorEditPolicyState = { appId: null, appName: null };
 }
 
 // Update column visibility from checkboxes and re-render
@@ -980,6 +1036,8 @@ async function loadData() {
 // ── My SAML Apps (Sponsor view) ──────────────────────────────────
 let myAppsData = [];
 let myAppsSponsorCanRotate = false;
+let myAppsSponsorCanUpdatePolicy = false;
+let myAppsSponsorCanEditSponsors = false;
 
 async function loadMyApps() {
     const container = document.getElementById('myapps-table-container');
@@ -989,6 +1047,8 @@ async function loadMyApps() {
         const result = await apiCall('dashboard/my-apps');
         myAppsData = result.apps || [];
         myAppsSponsorCanRotate = result.sponsorsCanRotateCerts === true;
+        myAppsSponsorCanUpdatePolicy = result.sponsorsCanUpdatePolicy === true;
+        myAppsSponsorCanEditSponsors = result.sponsorsCanEditSponsors === true;
         applyMyAppsFilter();
     } catch (error) {
         container.innerHTML = `<div class="error">Failed to load your applications: ${escapeHtml(error.message)}</div>`;
@@ -1027,6 +1087,9 @@ function renderMyApps(apps) {
     };
 
     const canRotate = myAppsSponsorCanRotate || isAdminUser();
+    const canUpdatePolicy = myAppsSponsorCanUpdatePolicy || isAdminUser();
+    const canEditSponsors = myAppsSponsorCanEditSponsors || isAdminUser();
+    const hasAnyAction = canRotate || canUpdatePolicy || canEditSponsors;
 
     const tableHtml = `
         <table>
@@ -1037,7 +1100,7 @@ function renderMyApps(apps) {
                     <th>Days Remaining</th>
                     <th>Status</th>
                     <th>Deeplink</th>
-                    ${canRotate ? '<th style="width:60px;">Actions</th>' : ''}
+                    ${hasAnyAction ? '<th style="width:60px;">Actions</th>' : ''}
                 </tr>
             </thead>
             <tbody>
@@ -1062,16 +1125,28 @@ function renderMyApps(apps) {
                             </span>
                         </td>
                         <td><a href="${escapeHtml(deeplink)}" target="_blank" rel="noopener noreferrer" title="Open in Entra admin center">Open in Entra ↗</a></td>
-                        ${canRotate ? `
+                        ${hasAnyAction ? `
                         <td class="actions-cell">
                             <button class="actions-btn" data-action="toggle-menu" data-app-id-token="${appIdToken}">⋮</button>
                             <div id="actions-menu-${appIdToken}" class="dropdown-menu">
+                                ${canRotate ? `
                                 <button class="dropdown-item" data-action="sponsor-create-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Create new SAML certificate
                                 </button>
                                 <button class="dropdown-item" data-action="sponsor-activate-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Make newest cert active
                                 </button>
+                                ` : ''}
+                                ${canUpdatePolicy ? `
+                                <button class="dropdown-item" data-action="sponsor-edit-policy" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    Edit Policy
+                                </button>
+                                ` : ''}
+                                ${canEditSponsors ? `
+                                <button class="dropdown-item" data-action="sponsor-edit-sponsor" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}" data-sponsor="${escapeHtml(app.sponsor || '')}">
+                                    Edit Sponsor
+                                </button>
+                                ` : ''}
                             </div>
                         </td>
                         ` : ''}
@@ -1280,6 +1355,10 @@ async function loadSettings() {
         document.getElementById('reportsRetentionPolicyDays').value = settings.reportsRetentionPolicyDays || 14;
         const sponsorsCanRotateEl = document.getElementById('sponsorsCanRotateCerts');
         if (sponsorsCanRotateEl) sponsorsCanRotateEl.value = settings.sponsorsCanRotateCerts === true ? 'enabled' : 'disabled';
+        const sponsorsCanUpdatePolicyEl = document.getElementById('sponsorsCanUpdatePolicy');
+        if (sponsorsCanUpdatePolicyEl) sponsorsCanUpdatePolicyEl.value = settings.sponsorsCanUpdatePolicy === true ? 'enabled' : 'disabled';
+        const sponsorsCanEditSponsorsEl = document.getElementById('sponsorsCanEditSponsors');
+        if (sponsorsCanEditSponsorsEl) sponsorsCanEditSponsorsEl.value = settings.sponsorsCanEditSponsors === true ? 'enabled' : 'disabled';
         toggleSponsorReminderSettings();
         toggleSponsorReminderCount();
     } catch (error) {
@@ -1352,7 +1431,9 @@ async function saveSettings() {
             retentionPolicyDays,
             reportsRetentionPolicyDays,
             sessionTimeoutMinutes: parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0,
-            sponsorsCanRotateCerts: document.getElementById('sponsorsCanRotateCerts')?.value === 'enabled'
+            sponsorsCanRotateCerts: document.getElementById('sponsorsCanRotateCerts')?.value === 'enabled',
+            sponsorsCanUpdatePolicy: document.getElementById('sponsorsCanUpdatePolicy')?.value === 'enabled',
+            sponsorsCanEditSponsors: document.getElementById('sponsorsCanEditSponsors')?.value === 'enabled'
         };
         await apiCall('settings', {
             method: 'PUT',
@@ -2441,7 +2522,11 @@ document.getElementById('modalConfirmBtn').addEventListener('click', confirmModa
 
 // Sponsor edit modal
 document.getElementById('btn-add-sponsor-row').addEventListener('click', () => addSponsorRow(''));
-document.getElementById('btn-sponsor-cancel').addEventListener('click', () => document.getElementById('editSponsorModal').classList.remove('show'));
+document.getElementById('btn-sponsor-cancel').addEventListener('click', () => {
+    document.getElementById('editSponsorModal').classList.remove('show');
+    sponsorEditSponsorMode = false;
+    sponsorEditSponsorState = { appId: null, appName: null };
+});
 document.getElementById('btn-sponsor-save').addEventListener('click', saveSponsorModal);
 
 // Auth metadata button
@@ -2621,6 +2706,12 @@ document.addEventListener('click', function (e) {
             break;
         case 'sponsor-activate-cert':
             sponsorActivateCert(appId, appName);
+            break;
+        case 'sponsor-edit-policy':
+            sponsorEditPolicy(appId, appName);
+            break;
+        case 'sponsor-edit-sponsor':
+            sponsorEditSponsor(appId, appName, btn.dataset.sponsor || '');
             break;
         case 'view-report':
             viewReport(btn.dataset.reportId);
