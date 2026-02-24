@@ -735,4 +735,49 @@ public class PolicyService : IPolicyService
             throw;
         }
     }
+
+    /// <inheritdoc />
+    public async Task<bool> GetSponsorsCanRotateCertsEnabledAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorsCanRotateCerts");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsors-can-rotate-certs setting from storage");
+        }
+
+        return false; // disabled by default
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSponsorsCanRotateCertsEnabledAsync(bool enabled)
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "SponsorsCanRotateCerts")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated sponsors-can-rotate-certs setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsors-can-rotate-certs setting");
+            throw;
+        }
+    }
 }

@@ -72,6 +72,7 @@ public class DashboardStats
 public class SamlAppSummary
 {
     public string Id { get; set; } = string.Empty;
+    public string AppId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string? Sponsor { get; set; }
     public string? AutoRotateStatus { get; set; }

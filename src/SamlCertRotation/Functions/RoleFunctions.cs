@@ -47,8 +47,10 @@ public class RoleFunctions
             // Get role mappings from configuration
             var adminGroupId = _configuration["SWA_ADMIN_GROUP_ID"];
             var readerGroupId = _configuration["SWA_READER_GROUP_ID"];
+            var sponsorGroupId = _configuration["SWA_SPONSOR_GROUP_ID"];
             var adminAppRole = _configuration["SWA_ADMIN_APP_ROLE"];
             var readerAppRole = _configuration["SWA_READER_APP_ROLE"];
+            var sponsorAppRole = _configuration["SWA_SPONSOR_APP_ROLE"];
 
             if (string.IsNullOrWhiteSpace(adminAppRole))
             {
@@ -58,6 +60,11 @@ public class RoleFunctions
             if (string.IsNullOrWhiteSpace(readerAppRole))
             {
                 readerAppRole = "SamlCertRotation.Reader";
+            }
+
+            if (string.IsNullOrWhiteSpace(sponsorAppRole))
+            {
+                sponsorAppRole = "SamlCertRotation.Sponsor";
             }
 
             var roles = new List<string>();
@@ -83,9 +90,13 @@ public class RoleFunctions
                 var isReaderByGroup = !string.IsNullOrWhiteSpace(readerGroupId) &&
                                       groupClaims.Contains(readerGroupId, StringComparer.OrdinalIgnoreCase);
                 var isReaderByAppRole = appRoleClaims.Contains(readerAppRole, StringComparer.OrdinalIgnoreCase);
+                var isSponsorByGroup = !string.IsNullOrWhiteSpace(sponsorGroupId) &&
+                                       groupClaims.Contains(sponsorGroupId, StringComparer.OrdinalIgnoreCase);
+                var isSponsorByAppRole = appRoleClaims.Contains(sponsorAppRole, StringComparer.OrdinalIgnoreCase);
 
                 var isAdmin = isAdminByGroup || isAdminByAppRole;
                 var isReader = isReaderByGroup || isReaderByAppRole;
+                var isSponsor = isSponsorByGroup || isSponsorByAppRole;
 
                 if (isAdmin)
                 {
@@ -98,9 +109,15 @@ public class RoleFunctions
                     roles.Add(DashboardRoles.Reader);
                 }
 
-                if (!isAdmin && !isReader)
+                if (isSponsor)
                 {
-                    _logger.LogInformation("User {UserId} not mapped to admin/reader role. Groups: {Groups}. App roles: {AppRoles}",
+                    roles.Add(DashboardRoles.Sponsor);
+                    _logger.LogInformation("User {UserId} assigned sponsor role", clientPrincipal.UserId);
+                }
+
+                if (!isAdmin && !isReader && !isSponsor)
+                {
+                    _logger.LogInformation("User {UserId} not mapped to admin/reader/sponsor role. Groups: {Groups}. App roles: {AppRoles}",
                         clientPrincipal.UserId,
                         string.Join(", ", groupClaims),
                         string.Join(", ", appRoleClaims));

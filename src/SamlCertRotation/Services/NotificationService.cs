@@ -161,12 +161,7 @@ public class NotificationService : INotificationService
             return new List<string>();
         }
 
-        if (string.IsNullOrWhiteSpace(app.Sponsor))
-        {
-            return new List<string>();
-        }
-
-        return new List<string> { app.Sponsor.Trim() };
+        return ParseSponsorEmails(app.Sponsor);
     }
 
     private async Task<List<string>> GetSponsorReminderRecipientsAsync(SamlApplication app)
@@ -177,22 +172,29 @@ public class NotificationService : INotificationService
             return new List<string>();
         }
 
-        if (string.IsNullOrWhiteSpace(app.Sponsor))
-        {
-            return new List<string>();
-        }
-
-        return new List<string> { app.Sponsor.Trim() };
+        return ParseSponsorEmails(app.Sponsor);
     }
 
     private List<string> GetSponsorDirectRecipients(SamlApplication app)
     {
-        if (string.IsNullOrWhiteSpace(app.Sponsor))
+        return ParseSponsorEmails(app.Sponsor);
+    }
+
+    /// <summary>
+    /// Parses a semicolon-separated sponsor string into a list of trimmed, non-empty email addresses.
+    /// </summary>
+    private static List<string> ParseSponsorEmails(string? sponsorField)
+    {
+        if (string.IsNullOrWhiteSpace(sponsorField))
         {
             return new List<string>();
         }
 
-        return new List<string> { app.Sponsor.Trim() };
+        return sponsorField
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private async Task<List<string>> GetRunSummaryRecipientsAsync()

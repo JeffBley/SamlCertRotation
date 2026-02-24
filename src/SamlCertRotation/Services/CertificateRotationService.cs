@@ -589,6 +589,7 @@ public class CertificateRotationService : ICertificateRotationService
                     stats.Apps.Add(new SamlAppSummary
                     {
                         Id = app.Id,
+                        AppId = app.AppId,
                         DisplayName = app.DisplayName,
                         Sponsor = app.Sponsor,
                         AutoRotateStatus = app.AutoRotateStatus,
@@ -606,6 +607,7 @@ public class CertificateRotationService : ICertificateRotationService
                     stats.Apps.Add(new SamlAppSummary
                     {
                         Id = app.Id,
+                        AppId = app.AppId,
                         DisplayName = app.DisplayName,
                         Sponsor = app.Sponsor,
                         AutoRotateStatus = app.AutoRotateStatus,

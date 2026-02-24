@@ -388,19 +388,19 @@ public class GraphService : IGraphService
     }
 
     /// <inheritdoc />
-    public async Task<bool> UpdateAppSponsorTagAsync(string servicePrincipalId, string sponsorEmail)
+    public async Task<bool> UpdateAppSponsorTagAsync(string servicePrincipalId, string sponsorEmails)
     {
         if (string.IsNullOrWhiteSpace(servicePrincipalId))
         {
             throw new ArgumentException("Service principal ID is required.", nameof(servicePrincipalId));
         }
 
-        if (string.IsNullOrWhiteSpace(sponsorEmail))
+        if (string.IsNullOrWhiteSpace(sponsorEmails))
         {
-            throw new ArgumentException("Sponsor email is required.", nameof(sponsorEmail));
+            throw new ArgumentException("Sponsor email is required.", nameof(sponsorEmails));
         }
 
-        var normalizedSponsorEmail = sponsorEmail.Trim();
+        var normalizedSponsorEmails = sponsorEmails.Trim();
 
         try
         {
@@ -424,7 +424,7 @@ public class GraphService : IGraphService
                 .Where(tag => !tag.StartsWith(SponsorTagPrefix, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            updatedTags.Add($"{SponsorTagPrefix}{normalizedSponsorEmail}");
+            updatedTags.Add($"{SponsorTagPrefix}{normalizedSponsorEmails}");
 
             var patchBody = new ServicePrincipal
             {

@@ -43,9 +43,10 @@ public interface IGraphService
     Task<List<string>> GetAppOwnersEmailsAsync(string servicePrincipalId);
 
     /// <summary>
-    /// Upsert sponsor tag (AppSponsor=&lt;email&gt;) on a service principal while preserving all other tags
+    /// Upsert sponsor tag (AppSponsor=&lt;email1;email2;...&gt;) on a service principal while preserving all other tags.
+    /// Supports multiple semicolon-separated sponsor emails.
     /// </summary>
-    Task<bool> UpdateAppSponsorTagAsync(string servicePrincipalId, string sponsorEmail);
+    Task<bool> UpdateAppSponsorTagAsync(string servicePrincipalId, string sponsorEmails);
 
     /// <summary>
     /// Remove the AppSponsor tag from a service principal while preserving all other tags

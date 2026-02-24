@@ -146,4 +146,14 @@ public interface IPolicyService
     /// Update reports retention policy in days
     /// </summary>
     Task UpdateReportsRetentionPolicyDaysAsync(int days);
+
+    /// <summary>
+    /// Get whether sponsors can create and rotate certificates (default false/disabled)
+    /// </summary>
+    Task<bool> GetSponsorsCanRotateCertsEnabledAsync();
+
+    /// <summary>
+    /// Update sponsors can rotate certificates setting
+    /// </summary>
+    Task UpdateSponsorsCanRotateCertsEnabledAsync(bool enabled);
 }

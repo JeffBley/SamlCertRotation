@@ -189,6 +189,258 @@ public class DashboardFunctions
     }
 
     /// <summary>
+    /// Get SAML applications where the current user is a sponsor.
+    /// Accessible by users with the sponsor, reader, or admin role.
+    /// Also returns the sponsorsCanRotateCerts setting so the UI can render action buttons.
+    /// </summary>
+    [Function("GetMyApplications")]
+    public async Task<HttpResponseData> GetMyApplications(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "dashboard/my-apps")] HttpRequestData req)
+    {
+        var authError = await AuthorizeRequestAsync(req, allowSponsor: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        var identity = await ParseClientPrincipalAsync(req);
+        var userEmail = identity?.UserPrincipalName;
+
+        if (string.IsNullOrWhiteSpace(userEmail))
+        {
+            return await CreateErrorResponse(req, "Unable to determine your email address for sponsor matching.", HttpStatusCode.BadRequest);
+        }
+
+        _logger.LogInformation("Getting sponsored SAML applications for {UserEmail}", userEmail);
+
+        try
+        {
+            var stats = await _rotationService.GetDashboardStatsAsync();
+            var myApps = stats.Apps
+                .Where(a => IsSponsorOf(a.Sponsor, userEmail))
+                .ToList();
+
+            var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+
+            return await CreateJsonResponse(req, new
+            {
+                apps = myApps,
+                sponsorsCanRotateCerts
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting sponsored applications for {UserEmail}", userEmail);
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Create a new SAML certificate for an application (sponsor-accessible when setting is enabled).
+    /// This endpoint checks that the caller is a sponsor of the app and the setting is enabled.
+    /// </summary>
+    [Function("SponsorCreateCertificate")]
+    public async Task<HttpResponseData> SponsorCreateCertificate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "sponsor/applications/{id}/certificate")] HttpRequestData req,
+        string id)
+    {
+        var authError = await AuthorizeRequestAsync(req, allowSponsor: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
+
+        var identity = await ParseClientPrincipalAsync(req);
+        var userEmail = identity?.UserPrincipalName;
+
+        // Admin users can bypass sponsor ownership check
+        var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
+
+        if (!isAdmin)
+        {
+            // Verify sponsor role and setting
+            if (!(identity?.Roles.Contains(DashboardRoles.Sponsor) ?? false))
+            {
+                return await CreateErrorResponse(req, "Sponsor role is required.", HttpStatusCode.Forbidden);
+            }
+
+            var sponsorsCanRotate = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            if (!sponsorsCanRotate)
+            {
+                return await CreateErrorResponse(req, "Sponsors are not permitted to create certificates. This feature is disabled.", HttpStatusCode.Forbidden);
+            }
+
+            // Verify ownership
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            if (!IsSponsorOf(app.Sponsor, userEmail))
+            {
+                return await CreateErrorResponse(req, "You are not a sponsor of this application.", HttpStatusCode.Forbidden);
+            }
+        }
+
+        _logger.LogInformation("Sponsor {UserEmail} creating certificate for application {Id}", userEmail, id);
+
+        try
+        {
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            var cert = await _graphService.CreateSamlCertificateAsync(id);
+            if (cert == null)
+            {
+                return await CreateErrorResponse(req, "Failed to create certificate");
+            }
+
+            await _auditService.LogSuccessAsync(
+                id,
+                app.DisplayName,
+                AuditActionType.CertificateCreated,
+                $"New certificate created via sponsor portal. KeyId: {cert.KeyId}",
+                performedBy: userEmail);
+
+            return await CreateJsonResponse(req, new
+            {
+                message = "Certificate created successfully",
+                certificate = cert
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating certificate for application {Id} by sponsor {UserEmail}", id, userEmail);
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Activate the newest certificate for an application (sponsor-accessible when setting is enabled).
+    /// </summary>
+    [Function("SponsorActivateNewestCertificate")]
+    public async Task<HttpResponseData> SponsorActivateNewestCertificate(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "sponsor/applications/{id}/certificate/activate")] HttpRequestData req,
+        string id)
+    {
+        var authError = await AuthorizeRequestAsync(req, allowSponsor: true);
+        if (authError != null)
+        {
+            return authError;
+        }
+
+        if (!IsValidGuid(id))
+        {
+            return await CreateErrorResponse(req, "Invalid application ID format", HttpStatusCode.BadRequest);
+        }
+
+        var identity = await ParseClientPrincipalAsync(req);
+        var userEmail = identity?.UserPrincipalName;
+        var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
+
+        if (!isAdmin)
+        {
+            if (!(identity?.Roles.Contains(DashboardRoles.Sponsor) ?? false))
+            {
+                return await CreateErrorResponse(req, "Sponsor role is required.", HttpStatusCode.Forbidden);
+            }
+
+            var sponsorsCanRotate = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            if (!sponsorsCanRotate)
+            {
+                return await CreateErrorResponse(req, "Sponsors are not permitted to activate certificates. This feature is disabled.", HttpStatusCode.Forbidden);
+            }
+
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            if (!IsSponsorOf(app.Sponsor, userEmail))
+            {
+                return await CreateErrorResponse(req, "You are not a sponsor of this application.", HttpStatusCode.Forbidden);
+            }
+        }
+
+        _logger.LogInformation("Sponsor {UserEmail} activating newest certificate for application {Id}", userEmail, id);
+
+        try
+        {
+            var app = await _graphService.GetSamlApplicationAsync(id);
+            if (app == null)
+            {
+                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            if (app.Certificates == null || !app.Certificates.Any())
+            {
+                return await CreateErrorResponse(req, "No certificates found for this application", HttpStatusCode.BadRequest);
+            }
+
+            var newestCert = app.Certificates
+                .OrderByDescending(c => c.StartDateTime)
+                .First();
+
+            if (newestCert.IsActive)
+            {
+                return await CreateJsonResponse(req, new
+                {
+                    message = "The newest certificate is already active",
+                    activatedKeyId = newestCert.KeyId
+                });
+            }
+
+            var success = await _graphService.ActivateCertificateAsync(id, newestCert.Thumbprint);
+            if (!success)
+            {
+                return await CreateErrorResponse(req, "Failed to activate certificate");
+            }
+
+            await _auditService.LogSuccessAsync(
+                id,
+                app.DisplayName,
+                AuditActionType.CertificateActivated,
+                $"Certificate activated via sponsor portal. KeyId: {newestCert.KeyId}, Thumbprint: {newestCert.Thumbprint}, Expires: {newestCert.EndDateTime:yyyy-MM-dd}",
+                performedBy: userEmail);
+
+            return await CreateJsonResponse(req, new
+            {
+                message = "Certificate activated successfully",
+                activatedKeyId = newestCert.KeyId
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error activating certificate for application {Id} by sponsor {UserEmail}", id, userEmail);
+            return await CreateErrorResponse(req, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Checks whether a given email is one of the semicolon-separated sponsors of an app.
+    /// </summary>
+    private static bool IsSponsorOf(string? sponsorField, string? userEmail)
+    {
+        if (string.IsNullOrWhiteSpace(sponsorField) || string.IsNullOrWhiteSpace(userEmail))
+        {
+            return false;
+        }
+
+        var sponsors = sponsorField.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return sponsors.Any(s => string.Equals(s, userEmail, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Get a specific application
     /// </summary>
     [Function("GetApplication")]
@@ -581,6 +833,7 @@ public class DashboardFunctions
             var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
             var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
             var reportsRetentionPolicyDays = await _policyService.GetReportsRetentionPolicyDaysAsync();
+            var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
 
             var settings = new
             {
@@ -598,7 +851,8 @@ public class DashboardFunctions
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
                 sessionTimeoutMinutes,
                 createCertsForNotifyApps,
-                reportsRetentionPolicyDays
+                reportsRetentionPolicyDays,
+                sponsorsCanRotateCerts
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -650,6 +904,7 @@ public class DashboardFunctions
             var beforeTimeout = await _policyService.GetSessionTimeoutMinutesAsync();
             var beforeCreateCertsForNotify = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
             var beforeReportsRetention = await _policyService.GetReportsRetentionPolicyDaysAsync();
+            var beforeSponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
 
             // Note: We can't actually update Azure App Settings from within the function
             // This would require Azure Management API access. For now, we'll store in Table Storage
@@ -750,6 +1005,11 @@ public class DashboardFunctions
                 await _policyService.UpdateReportsRetentionPolicyDaysAsync(settings.ReportsRetentionPolicyDays.Value);
             }
 
+            if (settings.SponsorsCanRotateCerts.HasValue)
+            {
+                await _policyService.UpdateSponsorsCanRotateCertsEnabledAsync(settings.SponsorsCanRotateCerts.Value);
+            }
+
             var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
             var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
@@ -760,6 +1020,7 @@ public class DashboardFunctions
             var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
             var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
             var reportsRetentionPolicyDays = await _policyService.GetReportsRetentionPolicyDaysAsync();
+            var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
 
             // Build list of changed fields
             var changes = new List<string>();
@@ -789,6 +1050,8 @@ public class DashboardFunctions
                 changes.Add($"CreateCertsForNotifyApps: {beforeCreateCertsForNotify} → {settings.CreateCertsForNotifyApps.Value}");
             if (settings.ReportsRetentionPolicyDays.HasValue && settings.ReportsRetentionPolicyDays.Value != beforeReportsRetention)
                 changes.Add($"ReportsRetentionPolicyDays: {beforeReportsRetention} → {settings.ReportsRetentionPolicyDays.Value}");
+            if (settings.SponsorsCanRotateCerts.HasValue && settings.SponsorsCanRotateCerts.Value != beforeSponsorsCanRotateCerts)
+                changes.Add($"SponsorsCanRotateCerts: {beforeSponsorsCanRotateCerts} → {settings.SponsorsCanRotateCerts.Value}");
 
             if (changes.Count > 0)
             {
@@ -817,7 +1080,8 @@ public class DashboardFunctions
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
                 sessionTimeoutMinutes,
                 createCertsForNotifyApps,
-                reportsRetentionPolicyDays
+                reportsRetentionPolicyDays,
+                sponsorsCanRotateCerts
             });
         }
         catch (Exception ex)
@@ -1291,10 +1555,17 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Sponsor email is required", HttpStatusCode.BadRequest);
             }
 
-            if (!IsValidEmail(sponsorEmail))
+            // Validate each email in a semicolon-separated list
+            var sponsorEmails = sponsorEmail.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var email in sponsorEmails)
             {
-                return await CreateErrorResponse(req, "Sponsor email format is invalid", HttpStatusCode.BadRequest);
+                if (!IsValidEmail(email))
+                {
+                    return await CreateErrorResponse(req, $"Invalid sponsor email format: {email}", HttpStatusCode.BadRequest);
+                }
             }
+            // Normalize: trim each part and rejoin
+            sponsorEmail = string.Join(";", sponsorEmails);
 
             app = await _graphService.GetSamlApplicationAsync(id);
             if (app == null)
@@ -1661,7 +1932,7 @@ public class DashboardFunctions
     /// <summary>
     /// Validates caller identity and role requirements for dashboard endpoints.
     /// </summary>
-    private async Task<HttpResponseData?> AuthorizeRequestAsync(HttpRequestData req, bool requireAdmin = false)
+    private async Task<HttpResponseData?> AuthorizeRequestAsync(HttpRequestData req, bool requireAdmin = false, bool allowSponsor = false)
     {
         var identity = await ParseClientPrincipalAsync(req);
         if (identity == null || !identity.IsAuthenticated)
@@ -1672,10 +1943,12 @@ public class DashboardFunctions
 
         var hasReadAccess = identity.Roles.Contains(DashboardRoles.Admin)
                     || identity.Roles.Contains(DashboardRoles.Reader);
-        if (!hasReadAccess)
+        var isSponsor = identity.Roles.Contains(DashboardRoles.Sponsor);
+
+        if (!hasReadAccess && !(allowSponsor && isSponsor))
         {
-            _logger.LogWarning("Forbidden request by user {UserId} to {Method} {Url} - missing reader/admin role", identity.UserId ?? "unknown", req.Method, req.Url);
-            return await CreateErrorResponse(req, "Reader or admin role is required.", HttpStatusCode.Forbidden);
+            _logger.LogWarning("Forbidden request by user {UserId} to {Method} {Url} - missing required role", identity.UserId ?? "unknown", req.Method, req.Url);
+            return await CreateErrorResponse(req, "Insufficient permissions.", HttpStatusCode.Forbidden);
         }
 
         if (requireAdmin && !identity.Roles.Contains(DashboardRoles.Admin))
@@ -2130,7 +2403,8 @@ public class DashboardFunctions
         return !string.IsNullOrWhiteSpace(userId)
                || roles.Contains("authenticated")
                || roles.Contains("admin")
-               || roles.Contains("reader");
+               || roles.Contains("reader")
+               || roles.Contains("sponsor");
     }
 
     /// <summary>
@@ -2174,6 +2448,23 @@ public class DashboardFunctions
         else if (isReaderByClaimRole || isReaderByClaimGroup || roles.Contains("reader"))
         {
             roles.Add("reader");
+        }
+
+        // Sponsor role mapping
+        var configuredSponsorAppRole = _configuration["SWA_SPONSOR_APP_ROLE"];
+        var configuredSponsorGroup = _configuration["SWA_SPONSOR_GROUP_ID"];
+
+        if (string.IsNullOrWhiteSpace(configuredSponsorAppRole))
+        {
+            configuredSponsorAppRole = "SamlCertRotation.Sponsor";
+        }
+
+        var isSponsorByClaimRole = !string.IsNullOrWhiteSpace(configuredSponsorAppRole) && roleSet.Contains(configuredSponsorAppRole);
+        var isSponsorByClaimGroup = !string.IsNullOrWhiteSpace(configuredSponsorGroup) && groupSet.Contains(configuredSponsorGroup);
+
+        if (isSponsorByClaimRole || isSponsorByClaimGroup || roles.Contains("sponsor"))
+        {
+            roles.Add("sponsor");
         }
     }
 

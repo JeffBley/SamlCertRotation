@@ -15,6 +15,7 @@ let countdownTimer = null;
 let countdownSeconds = 120;
 const ADMIN_APP_ROLE_VALUE = 'SamlCertRotation.Admin';
 const READER_APP_ROLE_VALUE = 'SamlCertRotation.Reader';
+const SPONSOR_APP_ROLE_VALUE = 'SamlCertRotation.Sponsor';
 
 // Current action for confirmation modal
 let pendingAction = null;
@@ -136,6 +137,14 @@ function isAdminUser() {
     return currentUserRoles.includes('admin');
 }
 
+function isSponsorUser() {
+    return currentUserRoles.includes('sponsor');
+}
+
+function isSponsorOnly() {
+    return isSponsorUser() && !currentUserRoles.includes('admin') && !currentUserRoles.includes('reader');
+}
+
 async function loadCurrentUserRoles() {
     try {
         const response = await fetch('/.auth/me', { credentials: 'include' });
@@ -167,6 +176,9 @@ async function loadCurrentUserRoles() {
         } else if (claimRoleValues.some(value => value.toLowerCase() === READER_APP_ROLE_VALUE.toLowerCase())) {
             normalizedRoles.push('reader');
         }
+        if (claimRoleValues.some(value => value.toLowerCase() === SPONSOR_APP_ROLE_VALUE.toLowerCase())) {
+            normalizedRoles.push('sponsor');
+        }
 
         currentUserRoles = [...new Set(normalizedRoles)];
         currentUserUpn = principal?.userDetails || '';
@@ -177,7 +189,7 @@ async function loadCurrentUserRoles() {
 }
 
 function hasDashboardAccess() {
-    return currentUserRoles.includes('admin') || currentUserRoles.includes('reader');
+    return currentUserRoles.includes('admin') || currentUserRoles.includes('reader') || currentUserRoles.includes('sponsor');
 }
 
 function applyRoleBasedAccess() {
@@ -186,6 +198,33 @@ function applyRoleBasedAccess() {
     if (upnEl) upnEl.textContent = currentUserUpn;
 
     const readOnly = !isAdminUser();
+    const sponsorOnly = isSponsorOnly();
+
+    // Show/hide tabs based on roles
+    const myAppsTab = document.querySelector('.tab[data-tab="myapps"]');
+    if (myAppsTab) {
+        myAppsTab.style.display = isSponsorUser() ? '' : 'none';
+    }
+
+    // For sponsor-only users, hide all admin/reader tabs and auto-select My SAML Apps
+    if (sponsorOnly) {
+        const adminReaderTabs = ['overview', 'applications', 'cleanup', 'policy', 'settings', 'audit', 'reports', 'testing'];
+        adminReaderTabs.forEach(tabName => {
+            const tabBtn = document.querySelector(`.tab[data-tab="${tabName}"]`);
+            if (tabBtn) tabBtn.style.display = 'none';
+            const tabContent = document.getElementById(`tab-${tabName}`);
+            if (tabContent) tabContent.classList.remove('active');
+        });
+        // Activate myapps tab
+        if (myAppsTab) {
+            myAppsTab.classList.add('active');
+            document.querySelectorAll('.tab').forEach(t => { if (t !== myAppsTab) t.classList.remove('active'); });
+        }
+        const myAppsContent = document.getElementById('tab-myapps');
+        if (myAppsContent) myAppsContent.classList.add('active');
+        loadMyApps();
+        return;
+    }
 
     // Run buttons
     const reportBtn = document.getElementById('btn-report-only');
@@ -490,11 +529,37 @@ async function activateNewestCert(appId, appName) {
     }
 }
 
+// Sponsor-initiated certificate creation
+async function sponsorCreateCert(appId, appName) {
+    closeAllDropdowns();
+    try {
+        showLoading('Creating new certificate...');
+        await apiCall(`sponsor/applications/${appId}/certificate`, { method: 'POST' });
+        showSuccess(`New certificate created for ${appName}`);
+        await loadMyApps();
+    } catch (error) {
+        showError(`Failed to create certificate: ${error.message}`);
+    }
+}
+
+// Sponsor-initiated certificate activation
+async function sponsorActivateCert(appId, appName) {
+    closeAllDropdowns();
+    try {
+        showLoading('Activating newest certificate...');
+        await apiCall(`sponsor/applications/${appId}/certificate/activate`, { method: 'POST' });
+        showSuccess(`Newest certificate activated for ${appName}`);
+        await loadMyApps();
+    } catch (error) {
+        showError(`Failed to activate certificate: ${error.message}`);
+    }
+}
+
 // Edit sponsor tag for an app
 async function editSponsor(appId, appName, currentSponsor) {
     closeAllDropdowns();
 
-    const enteredValue = prompt(`Enter sponsor email for ${appName}:`, currentSponsor || '');
+    const enteredValue = prompt(`Enter sponsor email(s) for ${appName}:\n(Separate multiple sponsors with semicolons)`, currentSponsor || '');
     if (enteredValue === null) {
         return;
     }
@@ -749,6 +814,8 @@ document.querySelectorAll('.tab').forEach(tab => {
             loadTestEmailTemplates();
         } else if (tab.dataset.tab === 'reports') {
             loadReports();
+        } else if (tab.dataset.tab === 'myapps') {
+            loadMyApps();
         }
     });
 });
@@ -851,6 +918,113 @@ async function loadData() {
         document.getElementById('apps-table-container').innerHTML = 
             `<div class="error">Failed to load data: ${escapeHtml(error.message)}</div>`;
     }
+}
+
+// ── My SAML Apps (Sponsor view) ──────────────────────────────────
+let myAppsData = [];
+let myAppsSponsorCanRotate = false;
+
+async function loadMyApps() {
+    const container = document.getElementById('myapps-table-container');
+    if (!container) return;
+    container.innerHTML = '<div class="loading">Loading your sponsored applications...</div>';
+    try {
+        const result = await apiCall('dashboard/my-apps');
+        myAppsData = result.apps || [];
+        myAppsSponsorCanRotate = result.sponsorsCanRotateCerts === true;
+        applyMyAppsFilter();
+    } catch (error) {
+        container.innerHTML = `<div class="error">Failed to load your applications: ${escapeHtml(error.message)}</div>`;
+    }
+}
+
+function applyMyAppsFilter() {
+    const searchValue = (document.getElementById('myapp-search')?.value || '').toLowerCase();
+    const filtered = myAppsData.filter(app =>
+        !searchValue || (app.displayName || '').toLowerCase().includes(searchValue)
+    );
+    filtered.sort((a, b) => {
+        const left = typeof a.daysUntilExpiry === 'number' ? a.daysUntilExpiry : Infinity;
+        const right = typeof b.daysUntilExpiry === 'number' ? b.daysUntilExpiry : Infinity;
+        return left - right;
+    });
+    renderMyApps(filtered);
+}
+
+function buildEntraDeeplink(objectId, appId) {
+    return `https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/SignOn/objectId/${encodeURIComponent(objectId)}/appId/${encodeURIComponent(appId)}/preferredSingleSignOnMode/saml/servicePrincipalType/Application/fromNav/`;
+}
+
+function renderMyApps(apps) {
+    const container = document.getElementById('myapps-table-container');
+    if (!container) return;
+
+    if (apps.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#666;">No sponsored applications found.</div>';
+        return;
+    }
+
+    const formatComputedStatus = (status) => {
+        if (status === 'ok') return 'OK';
+        return status.charAt(0).toUpperCase() + status.slice(1);
+    };
+
+    const canRotate = myAppsSponsorCanRotate || isAdminUser();
+
+    const tableHtml = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Application</th>
+                    <th>Auto-Rotate</th>
+                    <th>Days Remaining</th>
+                    <th>Status</th>
+                    <th>Deeplink</th>
+                    ${canRotate ? '<th style="width:60px;">Actions</th>' : ''}
+                </tr>
+            </thead>
+            <tbody>
+                ${apps.map(app => {
+                    const computedStatus = getComputedAppStatus(app);
+                    const computedStatusClass = toSafeClassToken(computedStatus, 'ok');
+                    const autoRotateStatusClass = toSafeClassToken(app.autoRotateStatus || 'null', 'null');
+                    const deeplink = buildEntraDeeplink(app.id, app.appId || '');
+                    const appIdToken = toDomIdToken(app.id, 'myapp');
+                    return `
+                    <tr>
+                        <td>${escapeHtml(app.displayName)}</td>
+                        <td>
+                            <span class="status-badge status-${autoRotateStatusClass}">
+                                ${((app.autoRotateStatus || '').toLowerCase() === 'notify') ? 'Notify' : (escapeHtml(app.autoRotateStatus) || 'Not Set')}
+                            </span>
+                        </td>
+                        <td>${app.daysUntilExpiry ?? 'N/A'}</td>
+                        <td>
+                            <span class="expiry-badge expiry-${computedStatusClass}">
+                                ${formatComputedStatus(computedStatus)}
+                            </span>
+                        </td>
+                        <td><a href="${escapeHtml(deeplink)}" target="_blank" rel="noopener noreferrer" title="Open in Entra admin center">Open in Entra ↗</a></td>
+                        ${canRotate ? `
+                        <td class="actions-cell">
+                            <button class="actions-btn" data-action="toggle-menu" data-app-id-token="${appIdToken}">⋮</button>
+                            <div id="actions-menu-${appIdToken}" class="dropdown-menu">
+                                <button class="dropdown-item" data-action="sponsor-create-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    Create new SAML certificate
+                                </button>
+                                <button class="dropdown-item" data-action="sponsor-activate-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    Make newest cert active
+                                </button>
+                            </div>
+                        </td>
+                        ` : ''}
+                    </tr>
+                `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+    container.innerHTML = tableHtml;
 }
 
 // Apply filters, sort, and render apps table
@@ -1047,6 +1221,8 @@ async function loadSettings() {
         document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
         document.getElementById('sessionTimeoutMinutes').value = typeof settings.sessionTimeoutMinutes === 'number' ? settings.sessionTimeoutMinutes : 0;
         document.getElementById('reportsRetentionPolicyDays').value = settings.reportsRetentionPolicyDays || 14;
+        const sponsorsCanRotateEl = document.getElementById('sponsorsCanRotateCerts');
+        if (sponsorsCanRotateEl) sponsorsCanRotateEl.checked = settings.sponsorsCanRotateCerts === true;
         toggleSponsorReminderSettings();
         toggleSponsorReminderCount();
     } catch (error) {
@@ -1118,7 +1294,8 @@ async function saveSettings() {
             sponsorThirdReminderDays,
             retentionPolicyDays,
             reportsRetentionPolicyDays,
-            sessionTimeoutMinutes: parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0
+            sessionTimeoutMinutes: parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0,
+            sponsorsCanRotateCerts: document.getElementById('sponsorsCanRotateCerts')?.checked ?? false
         };
         await apiCall('settings', {
             method: 'PUT',
@@ -2111,6 +2288,12 @@ document.getElementById('btn-export-apps').addEventListener('click', function(e)
 document.getElementById('btn-export-apps-csv').addEventListener('click', function() { document.getElementById('export-apps-dropdown').classList.remove('show'); exportApplicationsCsv(); });
 document.getElementById('btn-export-apps-json').addEventListener('click', function() { document.getElementById('export-apps-dropdown').classList.remove('show'); exportApplicationsJson(); });
 document.getElementById('btn-refresh-apps').addEventListener('click', loadData);
+
+// My SAML Apps tab buttons
+const btnRefreshMyApps = document.getElementById('btn-refresh-myapps');
+if (btnRefreshMyApps) btnRefreshMyApps.addEventListener('click', loadMyApps);
+const myAppSearch = document.getElementById('myapp-search');
+if (myAppSearch) myAppSearch.addEventListener('input', applyMyAppsFilter);
 document.getElementById('btn-report-only').addEventListener('click', triggerReportOnlyRun);
 document.getElementById('btn-prod-run').addEventListener('click', triggerProdRun);
 document.getElementById('btn-bulk-sponsors').addEventListener('click', function(e) { e.stopPropagation(); toggleBulkSponsorsDropdown(); });
@@ -2368,6 +2551,12 @@ document.addEventListener('click', function (e) {
         case 'resend-reminder':
             resendReminderEmail(appId, appName);
             break;
+        case 'sponsor-create-cert':
+            sponsorCreateCert(appId, appName);
+            break;
+        case 'sponsor-activate-cert':
+            sponsorActivateCert(appId, appName);
+            break;
         case 'view-report':
             viewReport(btn.dataset.reportId);
             break;
@@ -2386,5 +2575,7 @@ document.addEventListener('click', function (e) {
         return;
     }
     applyRoleBasedAccess();
-    loadData();
+    if (!isSponsorOnly()) {
+        loadData();
+    }
 })();
