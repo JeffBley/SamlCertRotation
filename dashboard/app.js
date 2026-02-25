@@ -292,6 +292,7 @@ function applyRoleBasedAccess() {
     // Policy tab inputs and Save Policy button
     document.getElementById('createDays').disabled = readOnly;
     document.getElementById('activateDays').disabled = readOnly;
+    document.getElementById('createCertsForNotifyApps').disabled = readOnly;
     document.querySelectorAll('#tab-policy .btn-primary').forEach(btn => {
         btn.disabled = readOnly; btn.style.opacity = readOnly ? '0.5' : '1'; btn.style.cursor = readOnly ? 'not-allowed' : 'pointer';
     });
@@ -3092,6 +3093,17 @@ let testEmailTemplates = [];
 
 async function loadTestEmailTemplates() {
     const templateSelect = document.getElementById('testEmailTemplate');
+    const toField = document.getElementById('testEmailTo');
+    const sendBtn = document.getElementById('btn-send-test-email');
+
+    // Readers can view the tab (for the auth metadata button) but cannot send test emails
+    if (!isAdminUser()) {
+        [templateSelect, toField, sendBtn].forEach(el => {
+            if (el) { el.disabled = true; el.style.opacity = '0.5'; el.style.cursor = 'not-allowed'; }
+        });
+        return;
+    }
+
     if (testEmailTemplates.length > 0) return; // already loaded
 
     try {
