@@ -35,28 +35,28 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 - Certificate clean-up tab identifies applications with expired inactive certificates that should be deleted. Admins can click deeplink to go straight to the application in Entra ID or can export list as CSV or JSON.
 - Reports for each run available.
 
-### 13. Audit Log System REVIEW
-- Every significant action logged to Azure Table Storage with: ServicePrincipalId, AppDisplayName, ActionType, Description, IsSuccess, ErrorMessage, CertificateThumbprint, NewCertificateThumbprint, PerformedBy (user UPN or "System").
-- **12 action types**: CertificateCreated, CertificateCreatedReportOnly, CertificateActivated, CertificateActivatedReportOnly, CertificateExpiringSoon, NotificationSent, PolicyUpdated, ScanCompleted, ScanCompletedReportOnly, SponsorUpdated, SponsorExpirationReminderSent, Error.
-- **Bulk audit query** with GUID validation to prevent OData injection.
-
-### 7. Audit Log and Reports Retention & Purge
-- Configurable retention policy for audit logs (default: 180 days). After each timer run, entries older than the retention period are purged in batched transactions.
-- Configurable retention policy for Run Reports (default:14 days). After each timer run, entries older than the retention period are purged in batched transactions.
-
-### 8. Role-Based Access Control (RBAC)
+### 6. Role-Based Access Control (RBAC)
 - Three roles available: **Admin**, **Reader**, and **Sponsor**.
 - Admins have full read/write permissions in the app.
 - Readers can view but cannot take update or write actions.
-- Sponsors have special view and can only see information about their own applications. They can take write actions from directly in the app if the admin allows it:
+- Sponsors can only see information about their own applications. They can take write actions from directly in the app if the admin allows it:
   - Edit sponsor field on their apps (default enabled)
   - Edit policy on their apps - I.e. when to automate creation and activation of new certs (default disabled)
   - Manually trigger creation and activation of new certs (default disabled)
 
+### 7. Audit Log System
+- Every significant action logged to Azure Table Storage with: ServicePrincipalId, AppDisplayName, ActionType, Description, IsSuccess, ErrorMessage, CertificateThumbprint, NewCertificateThumbprint, PerformedBy (user UPN or "System").
+- **13 action types**: CertificateCreated, CertificateCreatedReportOnly, CertificateActivated, CertificateActivatedReportOnly, CertificateExpiringSoon, ScanCompleted, ScanCompletedReportOnly, SettingsUpdated, SponsorUpdated, SponsorExpirationReminderSent, StaleCertCleanupReminderSent, Error.
+- **Bulk audit query** with GUID validation to prevent OData injection.
 
+### 8. Audit Log and Reports Retention & Purge
+- Configurable retention policy for audit logs (default: 180 days). After each timer run, entries older than the retention period are purged in batched transactions.
+- Configurable retention policy for Run Reports (default:14 days). After each timer run, entries older than the retention period are purged in batched transactions.
 
 ### 9. Additional Dashboard Features
-- 
+- **Configurable session idle timeout** — Admin-configurable idle timer with a 2-minute countdown prompt before auto-logout. Set to 0 to disable.
+- **Sponsor self-service portal** — Dedicated "My SAML Apps" and "My Stale Certs" tabs for sponsor-role users with per-app actions (if admin-enabled).
+- **Test emails** - Testing tab for sending test emails using any of the 10 notification templates (e.g. CertificateCreated, DailySummary, SponsorExpiration, StaleCertCleanupReminder) to a specified recipient, using the same mail-from configuration as production. Each template renders with sample data so admins can preview exactly what sponsors will receive.
 
 ## Architecture
 
@@ -102,44 +102,18 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 
 See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed step-by-step instructions.
 
-### Deployment Reliability Note
-
-For Function App deployments, use:
-
-```powershell
-func azure functionapp publish <FUNCTION_APP_NAME> --dotnet-isolated
-```
-
-Avoid `az functionapp deployment source config-zip` for this project. It can publish artifacts that intermittently fail function indexing, which surfaces as `/api/*` returning `404` after redeploy.
-
-Cloud Shell helper script:
-
-```powershell
-pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName <FUNCTION_APP_NAME> -ResourceGroup <RESOURCE_GROUP>
-```
-
 ### Prerequisites
 
-- Azure Subscription with Owner or Contributor access
-- Microsoft Entra ID privileges to:
-  - Create app registrations
-  - Grant admin consent for Graph API permissions
-  - Create Custom Security Attributes
-- Azure Cloud Shell (recommended) or local environment with:
-  - Azure CLI 2.50+
+- Azure Subscription with **Owner** access (Contributor is insufficient — RBAC role assignments are required)
+- Microsoft Entra ID with one of:
+  - **Global Administrator** role, OR
+  - **Application Administrator** + **Attribute Definition Administrator** roles
+- Azure Cloud Shell (recommended, all tools pre-installed) or local environment with:
+  - Azure CLI
   - .NET 8 SDK
-  - Node.js 18+
-
-### High-Level Deployment Steps
-
-1. Create Custom Security Attribute (`SamlCertRotation.AutoRotate`)
-2. Deploy Azure infrastructure via Bicep
-3. Grant Microsoft Graph API permissions to managed identity
-4. Deploy Function App code
-5. Configure dashboard app registration and Entra ID authentication
-6. Deploy Static Web App dashboard
-7. Configure email notifications (Logic App)
-8. Tag SAML applications for auto-rotation
+  - Azure Functions Core Tools v4
+  - Node.js 18+ (for SWA CLI deployment)
+  - Microsoft Graph PowerShell module
 
 ## Function App Endpoints
 
@@ -147,32 +121,38 @@ pwsh ./scripts/redeploy-functions.ps1 -FunctionAppName <FUNCTION_APP_NAME> -Reso
 
 | Function | Schedule | Description |
 |----------|----------|-------------|
-| `CertificateChecker` | Configurable (default: 6 AM UTC) | Checks all SAML apps and rotates certificates as needed |
+| `CertificateChecker` | Configurable via `RotationSchedule` (default: daily 6 AM UTC) | Checks all SAML apps and rotates certificates as needed |
+| `StaleCertCleanupReminder` | Configurable via `StaleCertCleanupSchedule` (default: 1st of month 6 AM UTC) | Sends consolidated reminder emails to sponsors about expired inactive certificates |
 
 ### HTTP API Endpoints
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/api/dashboard/stats` | GET | Reader | Dashboard statistics with optional pagination |
+| `/api/dashboard/my-apps` | GET | Sponsor | List SAML apps where the caller is the sponsor |
 | `/api/applications` | GET | Reader | List all SAML applications with certificate details |
 | `/api/applications/{id}` | GET | Reader | Get specific application details |
 | `/api/applications/{id}/certificate` | POST | Admin | Create new certificate for application |
 | `/api/applications/{id}/certificate/activate` | POST | Admin | Activate the newest certificate |
 | `/api/applications/{id}/resend-reminder` | POST | Admin | Resend sponsor expiration reminder email |
 | `/api/applications/{id}/sponsor` | PUT | Admin | Update application sponsor email |
+| `/api/applications/bulk-update-sponsors` | POST | Admin | Bulk update sponsor emails via CSV |
+| `/api/sponsor/applications/{id}/certificate` | POST | Sponsor | Sponsor: create new certificate (if admin-enabled) |
+| `/api/sponsor/applications/{id}/certificate/activate` | POST | Sponsor | Sponsor: activate newest certificate (if admin-enabled) |
+| `/api/sponsor/applications/{id}/policy` | PUT | Sponsor | Sponsor: update app policy (if admin-enabled) |
+| `/api/sponsor/applications/{id}/sponsor` | PUT | Sponsor | Sponsor: update sponsor email (if admin-enabled) |
 | `/api/policy` | GET | Reader | Get global rotation policy |
 | `/api/policy` | PUT | Admin | Update global rotation policy |
 | `/api/policy/app/{id}` | GET | Reader | Get app-specific or effective policy |
 | `/api/policy/app/{id}` | PUT | Admin | Update app-specific policy override |
-| `/api/audit` | GET | Reader | Get audit logs (date range or days-back query) |
-| `/api/audit/app/{id}` | GET | Reader | Get audit logs for specific app |
 | `/api/settings` | GET | Reader | Get all settings including session timeout |
 | `/api/settings` | PUT | Admin | Update settings |
-| `/api/admin/trigger-rotation/prod` | POST | Admin | Trigger production rotation run |
-| `/api/admin/trigger-rotation/report-only` | POST | Admin | Trigger report-only rotation run |
+| `/api/audit` | GET | Reader | Get audit logs (date range or days-back query) |
+| `/api/audit/app/{id}` | GET | Reader | Get audit logs for specific app |
 | `/api/reports` | GET | Reader | List all run reports |
 | `/api/reports/{id}` | GET | Reader | Get specific run report with detailed results |
-| `/api/applications/bulk-update-sponsors` | POST | Admin | Bulk update sponsor emails |
+| `/api/admin/trigger-rotation/prod` | POST | Admin | Trigger production rotation run |
+| `/api/admin/trigger-rotation/report-only` | POST | Admin | Trigger report-only rotation run |
 | `/api/testing/send-test-email` | POST | Admin | Send test notification email |
 | `/api/testing/email-templates` | GET | Admin | Preview all email template HTML |
 | `/api/GetRoles` | GET/POST | — | Get current user's roles (SWA rolesSource) |
@@ -191,8 +171,19 @@ Create in Microsoft Entra Admin Center:
 | Setting | Required | Description |
 |---------|----------|-------------|
 | `KeyVaultUri` | Yes | Key Vault URI for secrets |
-| `RotationSchedule` | No | CRON expression (default: `0 0 6 * * *`) |
-| `AZURE_CLIENT_ID` | Auto | Managed identity client ID |
+| `TenantId` | Yes | Azure AD tenant ID |
+| `StorageConnectionString` | Yes | Key Vault reference for Table Storage connection string |
+| `LogicAppEmailUrl` | Yes | Key Vault reference for Logic App HTTP trigger URL |
+| `AdminNotificationEmails` | No | Comma-separated emails for daily summary (set via Bicep param) |
+| `AZURE_CLIENT_ID` | Auto | Managed identity client ID (set by Bicep) |
+| `RotationSchedule` | No | CRON expression for cert rotation (default: `0 0 6 * * *`) |
+| `StaleCertCleanupSchedule` | No | CRON expression for stale cert reminders (default: `0 0 6 1 * *`) |
+| `CustomSecurityAttributeSet` | Yes | Attribute set name (default: `SamlCertRotation`) |
+| `CustomSecurityAttributeName` | Yes | Attribute name (default: `AutoRotate`) |
+| `DefaultCreateCertDaysBeforeExpiry` | No | Initial create-cert threshold (default: `60`) |
+| `DefaultActivateCertDaysBeforeExpiry` | No | Initial activate-cert threshold (default: `30`) |
+| `SWA_DEFAULT_HOSTNAME` | Auto | Static Web App default hostname (set by Bicep) |
+| `SWA_HOSTNAME` | No | Custom domain hostname (if configured) |
 
 ### Policy Settings
 
@@ -209,38 +200,60 @@ Create in Microsoft Entra Admin Center:
 | Retention Policy Days | 180 | Days to retain audit log entries before purging |
 | Reports Retention Policy Days | 14 | Days to retain run reports before purging |
 | Session Timeout Minutes | 15 | Idle timeout for dashboard sessions (0 = disabled) |
-| Rotation Schedule | `0 0 6 * * *` | CRON schedule (configured in Function App settings) |
+| Stale Cert Cleanup Reminders | Enabled | Send monthly reminder emails to sponsors about expired inactive certs |
+| Rotation Schedule | `0 0 6 * * *` | CRON schedule for cert rotation (configured in Function App settings) |
+| Stale Cert Cleanup Schedule | `0 0 6 1 * *` | CRON schedule for cleanup reminders (configured in Function App settings) |
 
 ## Project Structure
 
 ```
 ├── src/SamlCertRotation/
+│   ├── Program.cs                               # DI and host configuration
+│   ├── host.json                                # Function host settings
+│   ├── SamlCertRotation.csproj                  # Project file (.NET 8)
 │   ├── Functions/
-│   │   ├── CertificateCheckerFunction.cs    # Timer-triggered rotation
-│   │   ├── DashboardFunctions.cs            # HTTP API endpoints
-│   │   └── RoleFunctions.cs                 # Role/auth endpoints
+│   │   ├── DashboardFunctionBase.cs             # Shared auth pipeline for HTTP functions
+│   │   ├── AppFunctions.cs                      # Stats, applications, my-apps endpoints
+│   │   ├── PolicyFunctions.cs                   # Global and per-app policy endpoints
+│   │   ├── SettingsFunctions.cs                 # Settings get/update endpoints
+│   │   ├── AuditFunctions.cs                    # Audit log query endpoints
+│   │   ├── ReportFunctions.cs                   # Run report endpoints
+│   │   ├── SponsorFunctions.cs                  # Sponsor self-service endpoints
+│   │   ├── AdminFunctions.cs                    # Admin actions (certs, triggers, testing)
+│   │   ├── CertificateCheckerFunction.cs        # Timer-triggered rotation
+│   │   ├── StaleCertCleanupReminderFunction.cs  # Timer-triggered stale cert reminders
+│   │   └── RoleFunctions.cs                     # SWA rolesSource endpoint
 │   ├── Services/
-│   │   ├── CertificateRotationService.cs    # Certificate operations
-│   │   ├── GraphService.cs                  # Microsoft Graph API
-│   │   ├── PolicyService.cs                 # Policy storage (Table)
-│   │   ├── AuditService.cs                  # Audit logging (Table)
-│   │   ├── NotificationService.cs           # Email notifications
-│   │   ├── ReportService.cs                 # Run report storage (GZip compressed)
-│   │   └── IReportService.cs                # Report service interface
-│   └── Models/                              # Data models
+│   │   ├── CertificateRotationService.cs        # Certificate lifecycle operations
+│   │   ├── ICertificateRotationService.cs
+│   │   ├── GraphService.cs                      # Microsoft Graph API client
+│   │   ├── IGraphService.cs
+│   │   ├── PolicyService.cs                     # Policy storage (Table Storage)
+│   │   ├── IPolicyService.cs
+│   │   ├── AuditService.cs                      # Audit logging (Table Storage)
+│   │   ├── IAuditService.cs
+│   │   ├── NotificationService.cs               # Email notifications via Logic App
+│   │   ├── INotificationService.cs
+│   │   ├── ReportService.cs                     # Run reports (GZip compressed)
+│   │   └── IReportService.cs
+│   ├── Helpers/
+│   │   ├── AuthHelper.cs                        # JWT/token validation helpers
+│   │   └── UrlHelper.cs                         # URL construction helpers
+│   └── Models/                                  # Data models
 ├── dashboard/
-│   ├── index.html                           # Single-page dashboard
-│   ├── app.js                               # Dashboard JavaScript (extracted)
-│   ├── unauthorized.html                    # Access denied page
-│   ├── favicon.png                          # Dashboard favicon
-│   └── staticwebapp.config.json             # SWA auth configuration
+│   ├── index.html                               # Single-page dashboard
+│   ├── app.js                                   # Dashboard JavaScript
+│   ├── unauthorized.html                        # Access denied page
+│   ├── staticwebapp.config.json                 # SWA auth/routes configuration
+│   ├── package.json                             # Node.js dependencies
+│   └── vite.config.js                           # Vite dev server config
 ├── infrastructure/
-│   ├── main.bicep                           # Azure infrastructure
-│   └── main.parameters.json                 # Deployment parameters
+│   ├── main.bicep                               # Azure infrastructure (IaC)
+│   └── main.parameters.json                     # Deployment parameters
 ├── scripts/
-│   └── redeploy-functions.ps1               # Cloud Shell redeploy helper
-├── DEPLOYMENT_GUIDE.md                      # Step-by-step deployment
-└── README.md                                # This file
+│   └── redeploy-functions.ps1                   # Cloud Shell redeploy helper
+├── DEPLOYMENT_GUIDE.md                          # Step-by-step deployment
+└── README.md                                    # This file
 ```
 
 ## Security

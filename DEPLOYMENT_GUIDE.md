@@ -21,15 +21,18 @@ This guide walks you through deploying the SAML Certificate Rotation Tool using 
 
 ## Prerequisites
 
-- [ ] **Azure Subscription** with Owner or Contributor role
-- [ ] **Microsoft Entra ID** with one of:
-  - Global Administrator role, OR
-  - Application Administrator + Attribute Definition Administrator roles
-- [ ] Access to **Azure Cloud Shell** (https://shell.azure.com) - **Select PowerShell mode**
+- Azure Subscription with **Owner** access (Contributor is insufficient — RBAC role assignments are required)
+- Microsoft Entra ID with one of:
+  - **Global Administrator** role, OR
+  - **Application Administrator** + **Attribute Definition Administrator** roles
+- Azure Cloud Shell (recommended, all tools pre-installed) or local environment with:
+  - Azure CLI
+  - .NET 8 SDK
+  - Azure Functions Core Tools v4
+  - Node.js 18+ (for SWA CLI deployment)
+  - Microsoft Graph PowerShell module
 
-> **Note**: Azure Cloud Shell already has Azure CLI, .NET SDK, PowerShell, and Node.js pre-installed.
-
-> **Important**: If you plan to use the built-in `code` editor (Step 3.1), switch to **Classic Cloud Shell** before running any commands. In Cloud Shell, go to **Settings** → **Go to Classic version**. If you prefer `nano` or `vi`, the new Cloud Shell works fine throughout this guide.
+> **Important**: If you plan to use the built-in `code` editor (Step 3.1), switch to **Classic Cloud Shell** before running any commands. In Cloud Shell, go to **Settings** → **Go to Classic version**. If you prefer `nano` or `vi`, the new Cloud Shell works fine throughout this guide. Guardrails have been written into the deployment PowerShell to account for possible switching between Classic and new Cloud Shell or loss of session.
 
 ---
 
@@ -555,8 +558,7 @@ Write-Host "IMPORTANT: Save this secret securely - it cannot be retrieved later!
 Store the dashboard client secret in Azure Key Vault. This project does not auto-rotate dashboard secrets.
 
 ```powershell
-# Get Key Vault name from deployment outputs
-$KEY_VAULT_NAME = $outputs.keyVaultName.value
+# $KEY_VAULT_NAME is already loaded from session-vars.ps1 (Step 6.1)
 
 # Get your user object ID
 $USER_OBJECT_ID = az ad signed-in-user show --query id -o tsv
@@ -778,17 +780,26 @@ if ([string]::IsNullOrWhiteSpace($TENANT_ID) -or $TENANT_ID -like "<insert*") {
     throw "TENANT_ID is not set. Update infrastructure/main.parameters.json and re-run Step 3.3, or set `$TENANT_ID manually."
 }
 
-# Update staticwebapp.config.json with tenant ID
-$configContent = Get-Content staticwebapp.config.json -Raw
+# Prepare dashboard files (copy to dist/ before replacing the placeholder
+# so the source file stays clean for future git pulls)
+New-Item -ItemType Directory -Path dist -Force
+Copy-Item index.html dist/
+Copy-Item app.js dist/
+Copy-Item unauthorized.html dist/
+Copy-Item favicon.png dist/
+Copy-Item staticwebapp.config.json dist/
+
+# Replace tenant ID placeholder in the dist/ copy only
+$configContent = Get-Content dist/staticwebapp.config.json -Raw
 $configContent = $configContent -replace '__TENANT_ID__', $TENANT_ID
-Set-Content -Path staticwebapp.config.json -Value $configContent
+Set-Content -Path dist/staticwebapp.config.json -Value $configContent
 
 # Verify replacement succeeded
-$check = Select-String -Path staticwebapp.config.json -Pattern '__TENANT_ID__'
+$check = Select-String -Path dist/staticwebapp.config.json -Pattern '__TENANT_ID__'
 if ($check) {
-    throw "staticwebapp.config.json still contains __TENANT_ID__ placeholder. Replacement failed."
+    throw "dist/staticwebapp.config.json still contains __TENANT_ID__ placeholder. Replacement failed."
 }
-Write-Host "Tenant ID set to $TENANT_ID in staticwebapp.config.json" -ForegroundColor Green
+Write-Host "Tenant ID set to $TENANT_ID in dist/staticwebapp.config.json" -ForegroundColor Green
 ```
 **NOTE**: API_BASE_URL in app.js should remain empty - the SWA backend link handles API routing
 
@@ -798,13 +809,6 @@ Write-Host "Tenant ID set to $TENANT_ID in staticwebapp.config.json" -Foreground
 Use SWA CLI via `npx` for deployment:
 
 ```powershell
-# Prepare dashboard files
-New-Item -ItemType Directory -Path dist -Force
-Copy-Item index.html dist/
-Copy-Item app.js dist/
-Copy-Item unauthorized.html dist/
-Copy-Item favicon.png dist/
-Copy-Item staticwebapp.config.json dist/
 
 # Deploy using npx (will show dependency warnings - these are safe to ignore)
 npx -y @azure/static-web-apps-cli deploy ./dist `
@@ -902,9 +906,9 @@ The Static Web App is created with an auto-generated hostname (e.g., `happy-isla
 
 ### 2. Rotation Schedule
 
-The automatic certificate rotation check runs daily at **6:00 AM UTC** by default. Depending on your environment, you may want to adjust the frequency.
+The automatic certificate rotation check runs daily at **6:00 AM UTC** by default. The stale certificate cleanup reminder runs monthly on the **1st at 6:00 AM UTC** by default.
 
-**Action**: If the default schedule doesn't suit your needs, see [Customize the Rotation Schedule](#customize-the-rotation-schedule) below.
+**Action**: If either default schedule doesn't suit your needs, see [Customize the Rotation Schedule](#customize-the-rotation-schedule) below.
 
 ### 3. Key Vault Secrets Inventory
 
@@ -930,6 +934,18 @@ During deployment, your user account was granted **Key Vault Secrets Officer** o
 The Logic App sends emails from whichever account was authorized in Step 8.2. If you used a personal account, consider switching to a shared mailbox.
 
 **Action**: Re-authorize the Logic App email connector with a shared mailbox (e.g., `saml-notifications@yourdomain.com`). This can be changed at any time via the Logic App designer without redeployment. 
+
+### 6. Update Application Branding
+
+Users who launch the dashboard from **MyApps** (https://myapps.microsoft.com) will see a generic icon unless you add a logo.
+
+**Action**: Add a logo to the app registration:
+1. Go to [Microsoft Entra admin center](https://entra.microsoft.com) → **Applications** → **App registrations**
+2. Select **SAML Certificate Rotation Dashboard**
+3. Go to **Branding & properties**
+4. Click **Upload new logo** and select an image
+
+A ready-to-use logo is included in this repository: [`SamlRotatorLogo.png`](SamlRotatorLogo.png)
 
 ---
 
@@ -1013,7 +1029,7 @@ az functionapp cors show `
     --query "allowedOrigins" -o table
 ```
 
-The `SWA_HOSTNAME` setting is read by [DashboardFunctions.cs](src/SamlCertRotation/Functions/DashboardFunctions.cs) to build a trusted issuer (`https://saml-dashboard.yourcompany.com/.auth`). No code changes are needed — the setting is already supported.
+The `SWA_HOSTNAME` setting is read by [DashboardFunctionBase.cs](src/SamlCertRotation/Functions/DashboardFunctionBase.cs) to build a trusted issuer (`https://saml-dashboard.yourcompany.com/.auth`). No code changes are needed — the setting is already supported.
 
 > **Documentation**: [Set up a custom domain in Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/custom-domain)
 
@@ -1021,13 +1037,17 @@ The `SWA_HOSTNAME` setting is read by [DashboardFunctions.cs](src/SamlCertRotati
 
 ### Customize the Rotation Schedule
 
+Two timer-triggered functions run on independent CRON schedules. Both use Azure Functions NCRONTAB format (`{second} {minute} {hour} {day} {month} {day-of-week}`).
+
+#### Certificate Rotation (`RotationSchedule`)
+
 The automatic certificate rotation check runs daily at 6:00 AM UTC by default. To change this:
 
 1. Go to your **Function App** → **Settings** → **Environment variables**
 2. Add or update the `RotationSchedule` setting with a CRON expression:
-   - `0 0 6 * * *` - Daily at 6:00 AM UTC (default)
-   - `0 0 */12 * * *` - Every 12 hours
-   - `0 0 6 * * 1` - Every Monday at 6:00 AM UTC
+   - `0 0 6 * * *` — Daily at 6:00 AM UTC (default)
+   - `0 0 */12 * * *` — Every 12 hours
+   - `0 0 6 * * 1` — Every Monday at 6:00 AM UTC
 3. **Restart the Function App** for changes to take effect
 
 Or via CLI:
@@ -1048,7 +1068,32 @@ az functionapp config appsettings set `
 az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
 ```
 
-> **No code changes required.** The `RotationSchedule` setting is read directly by the Function App at startup.
+#### Stale Certificate Cleanup Reminders (`StaleCertCleanupSchedule`)
+
+The stale cert cleanup reminder sends consolidated emails to sponsors listing their applications with expired inactive certificates. It runs on the 1st of every month at 6:00 AM UTC by default.
+
+1. Go to your **Function App** → **Settings** → **Environment variables**
+2. Add or update the `StaleCertCleanupSchedule` setting:
+   - `0 0 6 1 * *` — 1st of every month at 6:00 AM UTC (default)
+   - `0 0 6 15 * *` — 15th of every month at 6:00 AM UTC
+   - `0 0 6 * * 1` — Every Monday at 6:00 AM UTC
+   - `0 0 6 1 */3 *` — Quarterly (1st of every 3rd month)
+3. **Restart the Function App** for changes to take effect
+
+Or via CLI:
+
+```powershell
+az functionapp config appsettings set `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --settings "StaleCertCleanupSchedule=0 0 6 15 * *"
+
+az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAME
+```
+
+> **Note**: Stale cert cleanup reminders can also be toggled on/off from the dashboard **Settings** tab without changing the schedule. When disabled, the timer still fires but skips sending emails.
+
+> **No code changes required.** Both schedule settings are read directly by the Function App at startup.
 
 ---
 

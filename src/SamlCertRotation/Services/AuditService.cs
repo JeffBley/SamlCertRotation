@@ -172,10 +172,12 @@ public class AuditService : IAuditService
             var filter = TableClient.CreateQueryFilter($"PartitionKey ge {startPartitionKey} and PartitionKey le {endPartitionKey}");
 
             // If only a small number of IDs, add them to the server-side filter
+            // Each ID is parameterized via CreateQueryFilter to prevent OData injection
             if (idSet.Count <= 15)
             {
-                var idFilters = string.Join(" or ", idSet.Select(id => $"ServicePrincipalId eq '{id}'"));
-                filter += $" and ({idFilters})";
+                var idFilterParts = idSet.Select(id =>
+                    TableClient.CreateQueryFilter($"ServicePrincipalId eq {id}"));
+                filter += $" and ({string.Join(" or ", idFilterParts)})";
             }
 
             var idLookup = new HashSet<string>(idSet, StringComparer.OrdinalIgnoreCase);

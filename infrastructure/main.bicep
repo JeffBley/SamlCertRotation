@@ -117,11 +117,13 @@ resource logicAppEmailUrlSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' =
 }
 
 // Key Vault secret for Storage Account connection string
+// Connection string is built inline to avoid exposing the account key in an intermediate Bicep variable
+// (intermediate variables are logged in ARM deployment operations, visible to resource group Readers)
 resource storageConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'StorageConnectionString'
   properties: {
-    value: storageConnectionString
+    value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
   }
   dependsOn: [
     keyVaultSecretsOfficerRole
@@ -150,8 +152,8 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   }
 }
 
-// Get storage account connection string
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
+// Storage connection string is built inline in the Key Vault secret resource (storageConnectionStringSecret)
+// to avoid exposing the account key in an intermediate variable logged by ARM deployment operations
 
 // ============================================================================
 // Log Analytics Workspace
@@ -240,7 +242,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
       minTlsVersion: '1.2'
       cors: {
         allowedOrigins: [
-          'https://${staticWebAppName}.azurestaticapps.net'
+          'https://${staticWebApp.properties.defaultHostname}'
         ]
         supportCredentials: false
       }
@@ -256,6 +258,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         {
           name: 'WEBSITE_CONTENTSHARE'
           value: toLower(functionAppName)
+        }
+        {
+          name: 'WEBSITE_SKIP_CONTENTSHARE_VALIDATION'
+          value: '1'
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
@@ -336,6 +342,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
       ]
     }
   }
+  dependsOn: [
+    storageConnectionStringSecret
+    logicAppEmailUrlSecret
+  ]
   tags: {
     purpose: 'SAML Certificate Rotation Tool'
     component: 'Function App'
