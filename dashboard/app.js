@@ -1075,12 +1075,19 @@ async function loadData(force = true) {
         document.getElementById('stat-off').textContent = stats.appsWithAutoRotateOff;
         document.getElementById('stat-notify').textContent = stats.appsWithAutoRotateNotify;
         document.getElementById('stat-null').textContent = stats.appsWithAutoRotateNull;
-        document.getElementById('stat-expiring-30').textContent = stats.appsExpiringSoon;
         document.getElementById('stat-expired').textContent = stats.appsWithExpiredCerts;
-        const expiringThresholdDays = typeof stats.expiringSoonThresholdDays === 'number'
-            ? stats.expiringSoonThresholdDays
-            : createCertDaysThreshold;
-        document.getElementById('stat-expiring-label').textContent = `Expiring ≤${expiringThresholdDays} Days`;
+
+        // Compute OK / Warning / Critical counts from per-app expiryCategory
+        const categoryCounts = { OK: 0, Warning: 0, Critical: 0 };
+        (stats.apps || []).forEach(a => {
+            const cat = (a.expiryCategory || '').trim();
+            if (cat in categoryCounts) categoryCounts[cat]++;
+        });
+        document.getElementById('stat-ok').textContent = categoryCounts.OK;
+        document.getElementById('stat-warning').textContent = categoryCounts.Warning;
+        document.getElementById('stat-critical').textContent = categoryCounts.Critical;
+        document.getElementById('stat-warning-sublabel').textContent = `Expiring ≤${createCertDaysThreshold} Days`;
+        document.getElementById('stat-critical-sublabel').textContent = `Expiring ≤${activateCertDaysThreshold} Days`;
 
         // Update last updated
         document.getElementById('last-updated').textContent = 

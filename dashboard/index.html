@@ -164,9 +164,12 @@
         .stat-card.off .stat-value { color: var(--danger); }
         .stat-card.notify .stat-value { color: #0078d4; }
         .stat-card.null .stat-value { color: var(--gray); }
+        .stat-card.ok .stat-value { color: var(--success); }
         .stat-card.warning .stat-value { color: var(--warning); }
         .stat-card.expiring .stat-value { color: var(--warning); }
+        .stat-card.critical .stat-value { color: #e65100; }
         .stat-card.expired .stat-value { color: var(--danger); }
+        .stat-sublabel { font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
 
         .section {
             background: var(--card-bg);
@@ -719,9 +722,19 @@
                             <div class="stat-value" id="stat-total">-</div>
                             <div class="stat-label">Total SAML Apps</div>
                         </div>
-                        <div class="stat-card expiring">
-                            <div class="stat-value" id="stat-expiring-30">-</div>
-                            <div class="stat-label" id="stat-expiring-label">Expiring ≤30 Days</div>
+                        <div class="stat-card ok">
+                            <div class="stat-value" id="stat-ok">-</div>
+                            <div class="stat-label">OK</div>
+                        </div>
+                        <div class="stat-card warning">
+                            <div class="stat-value" id="stat-warning">-</div>
+                            <div class="stat-label">Warning</div>
+                            <div class="stat-sublabel" id="stat-warning-sublabel">Expiring ≤60 Days</div>
+                        </div>
+                        <div class="stat-card critical">
+                            <div class="stat-value" id="stat-critical">-</div>
+                            <div class="stat-label">Critical</div>
+                            <div class="stat-sublabel" id="stat-critical-sublabel">Expiring ≤30 Days</div>
                         </div>
                         <div class="stat-card expired">
                             <div class="stat-value" id="stat-expired">-</div>
