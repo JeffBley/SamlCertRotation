@@ -46,7 +46,7 @@ Set-Location $HOME
 # Clone the repository
 git clone https://github.com/JeffBley/SamlCertRotation.git SamlCertRotationv2
 Set-Location SamlCertRotationv2
-git checkout v2/main
+git checkout main
 ```
 
 ### 1.2 Verify Files Are Present
