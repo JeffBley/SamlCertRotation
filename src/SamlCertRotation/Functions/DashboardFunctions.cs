@@ -41,6 +41,25 @@ public class DashboardFunctions
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    private static readonly JsonSerializerOptions JsonDeserializeOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    /// <summary>
+    /// Pre-lowered sensitive patterns used by <see cref="SanitizeErrorMessage"/>.
+    /// Allocated once to avoid per-call array creation and repeated ToLowerInvariant calls.
+    /// </summary>
+    private static readonly string[] SensitivePatterns = new[]
+    {
+        "stack trace", "at system.", "at microsoft.", "at azure.",
+        "connection string", "password", "secret", "token",
+        "client_id", "client_secret", "tenant",
+        "storageconnectionstring", "azurewebjobs",
+        "odataerror", "request_", "authorization_",
+        "serviceexception", "inner exception"
+    };
+
     public DashboardFunctions(
         ICertificateRotationService rotationService,
         IGraphService graphService,
@@ -141,7 +160,7 @@ public class DashboardFunctions
                     stats.AppsWithAutoRotateOff,
                     stats.AppsWithAutoRotateNotify,
                     stats.AppsWithAutoRotateNull,
-                    stats.AppsExpiringIn30Days,
+                    stats.AppsExpiringSoon,
                     stats.ExpiringSoonThresholdDays,
                     stats.AppsExpiringIn60Days,
                     stats.AppsExpiringIn90Days,
@@ -255,16 +274,18 @@ public class DashboardFunctions
                 };
             }).ToList();
 
-            var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
-            var sponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
-            var sponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
+            var sponsorsCanRotateCertsTask = _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var sponsorsCanUpdatePolicyTask = _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
+            var sponsorsCanEditSponsorsTask = _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
+
+            await Task.WhenAll(sponsorsCanRotateCertsTask, sponsorsCanUpdatePolicyTask, sponsorsCanEditSponsorsTask);
 
             return await CreateJsonResponse(req, new
             {
                 apps = appsWithCerts,
-                sponsorsCanRotateCerts,
-                sponsorsCanUpdatePolicy,
-                sponsorsCanEditSponsors
+                sponsorsCanRotateCerts = await sponsorsCanRotateCertsTask,
+                sponsorsCanUpdatePolicy = await sponsorsCanUpdatePolicyTask,
+                sponsorsCanEditSponsors = await sponsorsCanEditSponsorsTask
             });
         }
         catch (Exception ex)
@@ -300,6 +321,13 @@ public class DashboardFunctions
         // Admin users can bypass sponsor ownership check
         var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
 
+        // Fetch the app once — reused for both authorization and the operation itself
+        var app = await _graphService.GetSamlApplicationAsync(id);
+        if (app == null)
+        {
+            return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+        }
+
         if (!isAdmin)
         {
             // Verify sponsor role and setting
@@ -314,13 +342,6 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Sponsors are not permitted to create certificates. This feature is disabled.", HttpStatusCode.Forbidden);
             }
 
-            // Verify ownership
-            var app = await _graphService.GetSamlApplicationAsync(id);
-            if (app == null)
-            {
-                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
-            }
-
             if (!IsSponsorOf(app.Sponsor, userEmail))
             {
                 return await CreateErrorResponse(req, "You are not a sponsor of this application.", HttpStatusCode.Forbidden);
@@ -331,12 +352,6 @@ public class DashboardFunctions
 
         try
         {
-            var app = await _graphService.GetSamlApplicationAsync(id);
-            if (app == null)
-            {
-                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
-            }
-
             var cert = await _graphService.CreateSamlCertificateAsync(id);
             if (cert == null)
             {
@@ -386,6 +401,13 @@ public class DashboardFunctions
         var userEmail = identity?.UserPrincipalName;
         var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
 
+        // Fetch the app once — reused for both authorization and the operation itself
+        var app = await _graphService.GetSamlApplicationAsync(id);
+        if (app == null)
+        {
+            return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+        }
+
         if (!isAdmin)
         {
             if (!(identity?.Roles.Contains(DashboardRoles.Sponsor) ?? false))
@@ -399,12 +421,6 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Sponsors are not permitted to activate certificates. This feature is disabled.", HttpStatusCode.Forbidden);
             }
 
-            var app = await _graphService.GetSamlApplicationAsync(id);
-            if (app == null)
-            {
-                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
-            }
-
             if (!IsSponsorOf(app.Sponsor, userEmail))
             {
                 return await CreateErrorResponse(req, "You are not a sponsor of this application.", HttpStatusCode.Forbidden);
@@ -415,12 +431,6 @@ public class DashboardFunctions
 
         try
         {
-            var app = await _graphService.GetSamlApplicationAsync(id);
-            if (app == null)
-            {
-                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
-            }
-
             if (app.Certificates == null || !app.Certificates.Any())
             {
                 return await CreateErrorResponse(req, "No certificates found for this application", HttpStatusCode.BadRequest);
@@ -524,7 +534,7 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
             }
 
-            var policy = JsonSerializer.Deserialize<AppPolicy>(body, JsonOptions);
+            var policy = JsonSerializer.Deserialize<AppPolicy>(body, JsonDeserializeOptions);
             if (policy == null)
             {
                 return await CreateErrorResponse(req, "Invalid policy format", HttpStatusCode.BadRequest);
@@ -610,6 +620,13 @@ public class DashboardFunctions
         var userEmail = identity?.UserPrincipalName;
         var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
 
+        // Fetch the app once — reused for both authorization and the operation itself
+        var app = await _graphService.GetSamlApplicationAsync(id);
+        if (app == null)
+        {
+            return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+        }
+
         if (!isAdmin)
         {
             if (!(identity?.Roles.Contains(DashboardRoles.Sponsor) ?? false))
@@ -623,12 +640,6 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Sponsors are not permitted to edit sponsors. This feature is disabled.", HttpStatusCode.Forbidden);
             }
 
-            var app = await _graphService.GetSamlApplicationAsync(id);
-            if (app == null)
-            {
-                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
-            }
-
             if (!IsSponsorOf(app.Sponsor, userEmail))
             {
                 return await CreateErrorResponse(req, "You are not a sponsor of this application.", HttpStatusCode.Forbidden);
@@ -636,8 +647,6 @@ public class DashboardFunctions
         }
 
         _logger.LogInformation("Sponsor {UserEmail} updating sponsor for application {Id}", userEmail, id);
-
-        SamlApplication? app2 = null;
 
         try
         {
@@ -647,10 +656,7 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
             }
 
-            var request = JsonSerializer.Deserialize<SponsorUpdateRequest>(body, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var request = JsonSerializer.Deserialize<SponsorUpdateRequest>(body, JsonDeserializeOptions);
 
             var sponsorEmail = request?.SponsorEmail?.Trim();
             if (string.IsNullOrWhiteSpace(sponsorEmail))
@@ -670,12 +676,6 @@ public class DashboardFunctions
             // Normalize: trim each part and rejoin
             sponsorEmail = string.Join(";", sponsorEmails);
 
-            app2 = await _graphService.GetSamlApplicationAsync(id);
-            if (app2 == null)
-            {
-                return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
-            }
-
             var updated = await _graphService.UpdateAppSponsorTagAsync(id, sponsorEmail);
             if (!updated)
             {
@@ -684,7 +684,7 @@ public class DashboardFunctions
 
             await _auditService.LogSuccessAsync(
                 id,
-                app2.DisplayName,
+                app.DisplayName,
                 AuditActionType.SponsorUpdated,
                 $"Sponsor updated via sponsor portal. AppSponsor={sponsorEmail}",
                 performedBy: userEmail);
@@ -701,7 +701,7 @@ public class DashboardFunctions
 
             await _auditService.LogFailureAsync(
                 id,
-                app2?.DisplayName ?? "Unknown",
+                app.DisplayName,
                 AuditActionType.SponsorUpdated,
                 "Error updating sponsor via sponsor portal",
                 ex.Message,
@@ -813,7 +813,7 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
             }
 
-            var policy = JsonSerializer.Deserialize<RotationPolicy>(body, JsonOptions);
+            var policy = JsonSerializer.Deserialize<RotationPolicy>(body, JsonDeserializeOptions);
             if (policy == null)
             {
                 return await CreateErrorResponse(req, "Invalid policy format", HttpStatusCode.BadRequest);
@@ -935,7 +935,7 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
             }
 
-            var policy = JsonSerializer.Deserialize<AppPolicy>(body, JsonOptions);
+            var policy = JsonSerializer.Deserialize<AppPolicy>(body, JsonDeserializeOptions);
             if (policy == null)
             {
                 return await CreateErrorResponse(req, "Invalid policy format", HttpStatusCode.BadRequest);
@@ -1108,46 +1108,57 @@ public class DashboardFunctions
 
         try
         {
-            var notificationEmails = await _policyService.GetNotificationEmailsAsync();
+            // Fetch all settings in parallel for better performance
+            var notificationEmailsTask = _policyService.GetNotificationEmailsAsync();
+            var reportOnlyModeEnabledTask = _policyService.GetReportOnlyModeEnabledAsync();
+            var retentionPolicyDaysTask = _policyService.GetRetentionPolicyDaysAsync();
+            var sponsorsReceiveNotificationsTask = _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+            var notifySponsorsOnExpirationTask = _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
+            var sponsorRemindersEnabledTask = _policyService.GetSponsorRemindersEnabledAsync();
+            var sponsorReminderCountTask = _policyService.GetSponsorReminderCountAsync();
+            var sponsorReminderDaysTask = _policyService.GetSponsorReminderDaysAsync();
+            var sessionTimeoutMinutesTask = _policyService.GetSessionTimeoutMinutesAsync();
+            var createCertsForNotifyAppsTask = _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
+            var reportsRetentionPolicyDaysTask = _policyService.GetReportsRetentionPolicyDaysAsync();
+            var sponsorsCanRotateCertsTask = _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var sponsorsCanUpdatePolicyTask = _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
+            var sponsorsCanEditSponsorsTask = _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
+
+            await Task.WhenAll(
+                notificationEmailsTask, reportOnlyModeEnabledTask, retentionPolicyDaysTask,
+                sponsorsReceiveNotificationsTask, notifySponsorsOnExpirationTask,
+                sponsorRemindersEnabledTask, sponsorReminderCountTask, sponsorReminderDaysTask,
+                sessionTimeoutMinutesTask, createCertsForNotifyAppsTask, reportsRetentionPolicyDaysTask,
+                sponsorsCanRotateCertsTask, sponsorsCanUpdatePolicyTask, sponsorsCanEditSponsorsTask);
+
+            var notificationEmails = await notificationEmailsTask;
             if (string.IsNullOrWhiteSpace(notificationEmails))
             {
                 notificationEmails = _configuration["AdminNotificationEmails"] ?? "";
             }
 
-            var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
-            var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
-            var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
-            var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
-            var sponsorRemindersEnabled = await _policyService.GetSponsorRemindersEnabledAsync();
-            var sponsorReminderCount = await _policyService.GetSponsorReminderCountAsync();
-            var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
-            var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
-            var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
-            var reportsRetentionPolicyDays = await _policyService.GetReportsRetentionPolicyDaysAsync();
-            var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
-            var sponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
-            var sponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
+            var sponsorReminderDays = await sponsorReminderDaysTask;
 
             var settings = new
             {
                 notificationEmails,
                 tenantId = _configuration["TenantId"] ?? "",
                 rotationSchedule = _configuration["RotationSchedule"] ?? "0 0 6 * * *",
-                reportOnlyModeEnabled,
-                retentionPolicyDays,
-                sponsorsReceiveNotifications,
-                notifySponsorsOnExpiration,
-                sponsorRemindersEnabled,
-                sponsorReminderCount,
+                reportOnlyModeEnabled = await reportOnlyModeEnabledTask,
+                retentionPolicyDays = await retentionPolicyDaysTask,
+                sponsorsReceiveNotifications = await sponsorsReceiveNotificationsTask,
+                notifySponsorsOnExpiration = await notifySponsorsOnExpirationTask,
+                sponsorRemindersEnabled = await sponsorRemindersEnabledTask,
+                sponsorReminderCount = await sponsorReminderCountTask,
                 sponsorFirstReminderDays = sponsorReminderDays.firstReminderDays,
                 sponsorSecondReminderDays = sponsorReminderDays.secondReminderDays,
                 sponsorThirdReminderDays = sponsorReminderDays.thirdReminderDays,
-                sessionTimeoutMinutes,
-                createCertsForNotifyApps,
-                reportsRetentionPolicyDays,
-                sponsorsCanRotateCerts,
-                sponsorsCanUpdatePolicy,
-                sponsorsCanEditSponsors
+                sessionTimeoutMinutes = await sessionTimeoutMinutesTask,
+                createCertsForNotifyApps = await createCertsForNotifyAppsTask,
+                reportsRetentionPolicyDays = await reportsRetentionPolicyDaysTask,
+                sponsorsCanRotateCerts = await sponsorsCanRotateCertsTask,
+                sponsorsCanUpdatePolicy = await sponsorsCanUpdatePolicyTask,
+                sponsorsCanEditSponsors = await sponsorsCanEditSponsorsTask
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -1177,37 +1188,15 @@ public class DashboardFunctions
         try
         {
             var body = await req.ReadAsStringAsync();
-            var settings = JsonSerializer.Deserialize<SettingsUpdateRequest>(body ?? "{}", new JsonSerializerOptions 
-            { 
-                PropertyNameCaseInsensitive = true 
-            });
+            var settings = JsonSerializer.Deserialize<SettingsUpdateRequest>(body ?? "{}", JsonDeserializeOptions);
 
             if (settings == null)
             {
                 return await CreateErrorResponse(req, "Invalid settings data", HttpStatusCode.BadRequest);
             }
 
-            // Snapshot current values before applying changes
-            var beforeEmails = await _policyService.GetNotificationEmailsAsync();
-            var beforeReportOnly = await _policyService.GetReportOnlyModeEnabledAsync();
-            var beforeRetention = await _policyService.GetRetentionPolicyDaysAsync();
-            var beforeSponsorsNotify = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
-            var beforeNotifyOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
-            var beforeRemindersEnabled = await _policyService.GetSponsorRemindersEnabledAsync();
-            var beforeReminderCount = await _policyService.GetSponsorReminderCountAsync();
-            var beforeReminders = await _policyService.GetSponsorReminderDaysAsync();
-            var beforeTimeout = await _policyService.GetSessionTimeoutMinutesAsync();
-            var beforeCreateCertsForNotify = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
-            var beforeReportsRetention = await _policyService.GetReportsRetentionPolicyDaysAsync();
-            var beforeSponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
-            var beforeSponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
-            var beforeSponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
-
-            // Note: We can't actually update Azure App Settings from within the function
-            // This would require Azure Management API access. For now, we'll store in Table Storage
-            // alongside policies, or return instructions.
-            
-            // Validate notification email format before saving
+            // ── Validate ALL inputs BEFORE writing anything ──
+            // This prevents partial state when a later validation fails.
             var rawEmails = settings.NotificationEmails ?? "";
             if (!string.IsNullOrWhiteSpace(rawEmails))
             {
@@ -1222,7 +1211,82 @@ public class DashboardFunctions
                 }
             }
 
-            // Store settings in policy service (we'll reuse the table)
+            if (settings.RetentionPolicyDays.HasValue && settings.RetentionPolicyDays.Value < 1)
+            {
+                return await CreateErrorResponse(req, "Retention policy must be at least 1 day", HttpStatusCode.BadRequest);
+            }
+
+            if (settings.SponsorReminderCount.HasValue && (settings.SponsorReminderCount.Value < 1 || settings.SponsorReminderCount.Value > 3))
+            {
+                return await CreateErrorResponse(req, "Sponsor reminder count must be between 1 and 3", HttpStatusCode.BadRequest);
+            }
+
+            // Cache validated reminder days to avoid re-fetching during the write phase
+            (int first, int second, int third)? validatedReminderDays = null;
+            if (settings.SponsorFirstReminderDays.HasValue || settings.SponsorSecondReminderDays.HasValue || settings.SponsorThirdReminderDays.HasValue)
+            {
+                var existingReminderDays = await _policyService.GetSponsorReminderDaysAsync();
+                var firstReminderDays = settings.SponsorFirstReminderDays ?? existingReminderDays.firstReminderDays;
+                var secondReminderDays = settings.SponsorSecondReminderDays ?? existingReminderDays.secondReminderDays;
+                var thirdReminderDays = settings.SponsorThirdReminderDays ?? existingReminderDays.thirdReminderDays;
+
+                if (firstReminderDays < 1 || firstReminderDays > 180 || secondReminderDays < 1 || secondReminderDays > 180 || thirdReminderDays < 1 || thirdReminderDays > 180)
+                {
+                    return await CreateErrorResponse(req, "Sponsor reminder days must be whole numbers between 1 and 180", HttpStatusCode.BadRequest);
+                }
+
+                validatedReminderDays = (firstReminderDays, secondReminderDays, thirdReminderDays);
+            }
+
+            if (settings.SessionTimeoutMinutes.HasValue && settings.SessionTimeoutMinutes.Value < 0)
+            {
+                return await CreateErrorResponse(req, "Session timeout must be 0 (disabled) or a positive number", HttpStatusCode.BadRequest);
+            }
+
+            if (settings.ReportsRetentionPolicyDays.HasValue && settings.ReportsRetentionPolicyDays.Value < 1)
+            {
+                return await CreateErrorResponse(req, "Reports retention policy must be at least 1 day", HttpStatusCode.BadRequest);
+            }
+
+            // ── Snapshot current values before applying changes (parallel) ──
+            var beforeEmailsTask = _policyService.GetNotificationEmailsAsync();
+            var beforeReportOnlyTask = _policyService.GetReportOnlyModeEnabledAsync();
+            var beforeRetentionTask = _policyService.GetRetentionPolicyDaysAsync();
+            var beforeSponsorsNotifyTask = _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+            var beforeNotifyOnExpirationTask = _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
+            var beforeRemindersEnabledTask = _policyService.GetSponsorRemindersEnabledAsync();
+            var beforeReminderCountTask = _policyService.GetSponsorReminderCountAsync();
+            var beforeRemindersTask = _policyService.GetSponsorReminderDaysAsync();
+            var beforeTimeoutTask = _policyService.GetSessionTimeoutMinutesAsync();
+            var beforeCreateCertsForNotifyTask = _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
+            var beforeReportsRetentionTask = _policyService.GetReportsRetentionPolicyDaysAsync();
+            var beforeSponsorsCanRotateCertsTask = _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var beforeSponsorsCanUpdatePolicyTask = _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
+            var beforeSponsorsCanEditSponsorsTask = _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
+
+            await Task.WhenAll(
+                beforeEmailsTask, beforeReportOnlyTask, beforeRetentionTask,
+                beforeSponsorsNotifyTask, beforeNotifyOnExpirationTask,
+                beforeRemindersEnabledTask, beforeReminderCountTask, beforeRemindersTask,
+                beforeTimeoutTask, beforeCreateCertsForNotifyTask, beforeReportsRetentionTask,
+                beforeSponsorsCanRotateCertsTask, beforeSponsorsCanUpdatePolicyTask, beforeSponsorsCanEditSponsorsTask);
+
+            var beforeEmails = await beforeEmailsTask;
+            var beforeReportOnly = await beforeReportOnlyTask;
+            var beforeRetention = await beforeRetentionTask;
+            var beforeSponsorsNotify = await beforeSponsorsNotifyTask;
+            var beforeNotifyOnExpiration = await beforeNotifyOnExpirationTask;
+            var beforeRemindersEnabled = await beforeRemindersEnabledTask;
+            var beforeReminderCount = await beforeReminderCountTask;
+            var beforeReminders = await beforeRemindersTask;
+            var beforeTimeout = await beforeTimeoutTask;
+            var beforeCreateCertsForNotify = await beforeCreateCertsForNotifyTask;
+            var beforeReportsRetention = await beforeReportsRetentionTask;
+            var beforeSponsorsCanRotateCerts = await beforeSponsorsCanRotateCertsTask;
+            var beforeSponsorsCanUpdatePolicy = await beforeSponsorsCanUpdatePolicyTask;
+            var beforeSponsorsCanEditSponsors = await beforeSponsorsCanEditSponsorsTask;
+
+            // ── All validation passed — now apply writes ──
             await _policyService.UpdateNotificationEmailsAsync(rawEmails);
 
             if (settings.ReportOnlyModeEnabled.HasValue)
@@ -1232,10 +1296,6 @@ public class DashboardFunctions
 
             if (settings.RetentionPolicyDays.HasValue)
             {
-                if (settings.RetentionPolicyDays.Value < 1)
-                {
-                    return await CreateErrorResponse(req, "Retention policy must be at least 1 day", HttpStatusCode.BadRequest);
-                }
                 await _policyService.UpdateRetentionPolicyDaysAsync(settings.RetentionPolicyDays.Value);
             }
 
@@ -1256,35 +1316,19 @@ public class DashboardFunctions
 
             if (settings.SponsorReminderCount.HasValue)
             {
-                if (settings.SponsorReminderCount.Value < 1 || settings.SponsorReminderCount.Value > 3)
-                {
-                    return await CreateErrorResponse(req, "Sponsor reminder count must be between 1 and 3", HttpStatusCode.BadRequest);
-                }
                 await _policyService.UpdateSponsorReminderCountAsync(settings.SponsorReminderCount.Value);
             }
 
-            if (settings.SponsorFirstReminderDays.HasValue || settings.SponsorSecondReminderDays.HasValue || settings.SponsorThirdReminderDays.HasValue)
+            if (validatedReminderDays.HasValue)
             {
-                var existingReminderDays = await _policyService.GetSponsorReminderDaysAsync();
-
-                var firstReminderDays = settings.SponsorFirstReminderDays ?? existingReminderDays.firstReminderDays;
-                var secondReminderDays = settings.SponsorSecondReminderDays ?? existingReminderDays.secondReminderDays;
-                var thirdReminderDays = settings.SponsorThirdReminderDays ?? existingReminderDays.thirdReminderDays;
-
-                if (firstReminderDays < 1 || firstReminderDays > 180 || secondReminderDays < 1 || secondReminderDays > 180 || thirdReminderDays < 1 || thirdReminderDays > 180)
-                {
-                    return await CreateErrorResponse(req, "Sponsor reminder days must be whole numbers between 1 and 180", HttpStatusCode.BadRequest);
-                }
-
-                await _policyService.UpdateSponsorReminderDaysAsync(firstReminderDays, secondReminderDays, thirdReminderDays);
+                await _policyService.UpdateSponsorReminderDaysAsync(
+                    validatedReminderDays.Value.first,
+                    validatedReminderDays.Value.second,
+                    validatedReminderDays.Value.third);
             }
 
             if (settings.SessionTimeoutMinutes.HasValue)
             {
-                if (settings.SessionTimeoutMinutes.Value < 0)
-                {
-                    return await CreateErrorResponse(req, "Session timeout must be 0 (disabled) or a positive number", HttpStatusCode.BadRequest);
-                }
                 await _policyService.UpdateSessionTimeoutMinutesAsync(settings.SessionTimeoutMinutes.Value);
             }
 
@@ -1295,10 +1339,6 @@ public class DashboardFunctions
 
             if (settings.ReportsRetentionPolicyDays.HasValue)
             {
-                if (settings.ReportsRetentionPolicyDays.Value < 1)
-                {
-                    return await CreateErrorResponse(req, "Reports retention policy must be at least 1 day", HttpStatusCode.BadRequest);
-                }
                 await _policyService.UpdateReportsRetentionPolicyDaysAsync(settings.ReportsRetentionPolicyDays.Value);
             }
 
@@ -1317,19 +1357,41 @@ public class DashboardFunctions
                 await _policyService.UpdateSponsorsCanEditSponsorsEnabledAsync(settings.SponsorsCanEditSponsors.Value);
             }
 
-            var reportOnlyModeEnabled = await _policyService.GetReportOnlyModeEnabledAsync();
-            var retentionPolicyDays = await _policyService.GetRetentionPolicyDaysAsync();
-            var sponsorsReceiveNotifications = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
-            var notifySponsorsOnExpiration = await _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
-            var sponsorRemindersEnabled = await _policyService.GetSponsorRemindersEnabledAsync();
-            var sponsorReminderCount = await _policyService.GetSponsorReminderCountAsync();
-            var sponsorReminderDays = await _policyService.GetSponsorReminderDaysAsync();
-            var sessionTimeoutMinutes = await _policyService.GetSessionTimeoutMinutesAsync();
-            var createCertsForNotifyApps = await _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
-            var reportsRetentionPolicyDays = await _policyService.GetReportsRetentionPolicyDaysAsync();
-            var sponsorsCanRotateCerts = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
-            var sponsorsCanUpdatePolicy = await _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
-            var sponsorsCanEditSponsors = await _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
+            // ── Read back updated values (parallel) ──
+            var reportOnlyModeEnabledTask2 = _policyService.GetReportOnlyModeEnabledAsync();
+            var retentionPolicyDaysTask2 = _policyService.GetRetentionPolicyDaysAsync();
+            var sponsorsReceiveNotificationsTask2 = _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+            var notifySponsorsOnExpirationTask2 = _policyService.GetNotifySponsorsOnExpirationEnabledAsync();
+            var sponsorRemindersEnabledTask2 = _policyService.GetSponsorRemindersEnabledAsync();
+            var sponsorReminderCountTask2 = _policyService.GetSponsorReminderCountAsync();
+            var sponsorReminderDaysTask2 = _policyService.GetSponsorReminderDaysAsync();
+            var sessionTimeoutMinutesTask2 = _policyService.GetSessionTimeoutMinutesAsync();
+            var createCertsForNotifyAppsTask2 = _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
+            var reportsRetentionPolicyDaysTask2 = _policyService.GetReportsRetentionPolicyDaysAsync();
+            var sponsorsCanRotateCertsTask2 = _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var sponsorsCanUpdatePolicyTask2 = _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
+            var sponsorsCanEditSponsorsTask2 = _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
+
+            await Task.WhenAll(
+                reportOnlyModeEnabledTask2, retentionPolicyDaysTask2,
+                sponsorsReceiveNotificationsTask2, notifySponsorsOnExpirationTask2,
+                sponsorRemindersEnabledTask2, sponsorReminderCountTask2, sponsorReminderDaysTask2,
+                sessionTimeoutMinutesTask2, createCertsForNotifyAppsTask2, reportsRetentionPolicyDaysTask2,
+                sponsorsCanRotateCertsTask2, sponsorsCanUpdatePolicyTask2, sponsorsCanEditSponsorsTask2);
+
+            var reportOnlyModeEnabled = await reportOnlyModeEnabledTask2;
+            var retentionPolicyDays = await retentionPolicyDaysTask2;
+            var sponsorsReceiveNotifications = await sponsorsReceiveNotificationsTask2;
+            var notifySponsorsOnExpiration = await notifySponsorsOnExpirationTask2;
+            var sponsorRemindersEnabled = await sponsorRemindersEnabledTask2;
+            var sponsorReminderCount = await sponsorReminderCountTask2;
+            var sponsorReminderDays = await sponsorReminderDaysTask2;
+            var sessionTimeoutMinutes = await sessionTimeoutMinutesTask2;
+            var createCertsForNotifyApps = await createCertsForNotifyAppsTask2;
+            var reportsRetentionPolicyDays = await reportsRetentionPolicyDaysTask2;
+            var sponsorsCanRotateCerts = await sponsorsCanRotateCertsTask2;
+            var sponsorsCanUpdatePolicy = await sponsorsCanUpdatePolicyTask2;
+            var sponsorsCanEditSponsors = await sponsorsCanEditSponsorsTask2;
 
             // Build list of changed fields
             var changes = new List<string>();
@@ -1859,10 +1921,7 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
             }
 
-            var request = JsonSerializer.Deserialize<SponsorUpdateRequest>(body, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var request = JsonSerializer.Deserialize<SponsorUpdateRequest>(body, JsonDeserializeOptions);
 
             var sponsorEmail = request?.SponsorEmail?.Trim();
             if (string.IsNullOrWhiteSpace(sponsorEmail))
@@ -1946,10 +2005,7 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
             }
 
-            var updates = JsonSerializer.Deserialize<List<BulkSponsorUpdate>>(body, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var updates = JsonSerializer.Deserialize<List<BulkSponsorUpdate>>(body, JsonDeserializeOptions);
 
             if (updates == null || updates.Count == 0)
             {
@@ -1961,30 +2017,54 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Bulk update is limited to 500 items per request", HttpStatusCode.BadRequest);
             }
 
-            var results = new List<object>();
+            var results = new System.Collections.Concurrent.ConcurrentBag<object>();
             var successCount = 0;
             var clearCount = 0;
             var failCount = 0;
             var skippedCount = 0;
             var performedBy = await GetPerformedByAsync(req);
 
+            // Pre-validate synchronously (fast) to separate invalid entries from valid ones
+            var validUpdates = new List<BulkSponsorUpdate>();
             foreach (var update in updates)
             {
                 if (string.IsNullOrWhiteSpace(update.ApplicationId) || !IsValidGuid(update.ApplicationId))
                 {
                     results.Add(new { applicationId = update.ApplicationId, status = "skipped", reason = "Invalid application ID" });
-                    skippedCount++;
+                    Interlocked.Increment(ref skippedCount);
                     continue;
                 }
 
+                var newSponsor = update.SponsorEmail?.Trim() ?? "";
+                if (!string.IsNullOrWhiteSpace(newSponsor))
+                {
+                    // Validate each email in a semicolon-separated list (consistent with single-update endpoints)
+                    var emailParts = newSponsor.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    var invalidEmail = emailParts.FirstOrDefault(e => !IsValidEmail(e));
+                    if (invalidEmail != null)
+                    {
+                        results.Add(new { applicationId = update.ApplicationId, status = "skipped", reason = $"Invalid email: {invalidEmail}" });
+                        Interlocked.Increment(ref skippedCount);
+                        continue;
+                    }
+                    // Normalize: trim each part and rejoin
+                    newSponsor = string.Join(";", emailParts);
+                }
+
+                validUpdates.Add(update);
+            }
+
+            // Process valid updates concurrently (limit parallelism to avoid Graph throttling)
+            await Parallel.ForEachAsync(validUpdates, new ParallelOptions { MaxDegreeOfParallelism = 5 }, async (update, ct) =>
+            {
                 try
                 {
-                    var app = await _graphService.GetSamlApplicationAsync(update.ApplicationId);
+                    var app = await _graphService.GetSamlApplicationAsync(update.ApplicationId!);
                     if (app == null)
                     {
                         results.Add(new { applicationId = update.ApplicationId, status = "skipped", reason = "Application not found" });
-                        skippedCount++;
-                        continue;
+                        Interlocked.Increment(ref skippedCount);
+                        return;
                     }
 
                     var newSponsor = update.SponsorEmail?.Trim() ?? "";
@@ -1994,57 +2074,50 @@ public class DashboardFunctions
                     if (string.Equals(newSponsor, currentSponsor, StringComparison.OrdinalIgnoreCase))
                     {
                         results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "unchanged" });
-                        skippedCount++;
-                        continue;
+                        Interlocked.Increment(ref skippedCount);
+                        return;
                     }
 
                     bool updated;
                     if (string.IsNullOrWhiteSpace(newSponsor))
                     {
                         // Clear sponsor
-                        updated = await _graphService.ClearAppSponsorTagAsync(update.ApplicationId);
+                        updated = await _graphService.ClearAppSponsorTagAsync(update.ApplicationId!);
                         if (updated)
                         {
                             await _auditService.LogSuccessAsync(
-                                update.ApplicationId,
+                                update.ApplicationId!,
                                 app.DisplayName,
                                 AuditActionType.SponsorUpdated,
                                 $"Sponsor cleared via bulk update (was: {currentSponsor})",
                                 performedBy: performedBy);
                             results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "cleared", previousSponsor = currentSponsor });
-                            clearCount++;
+                            Interlocked.Increment(ref clearCount);
                         }
                         else
                         {
                             results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "failed", reason = "Failed to clear sponsor tag" });
-                            failCount++;
+                            Interlocked.Increment(ref failCount);
                         }
                     }
                     else
                     {
-                        if (!IsValidEmail(newSponsor))
-                        {
-                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "skipped", reason = $"Invalid email: {newSponsor}" });
-                            skippedCount++;
-                            continue;
-                        }
-
-                        updated = await _graphService.UpdateAppSponsorTagAsync(update.ApplicationId, newSponsor);
+                        updated = await _graphService.UpdateAppSponsorTagAsync(update.ApplicationId!, newSponsor);
                         if (updated)
                         {
                             await _auditService.LogSuccessAsync(
-                                update.ApplicationId,
+                                update.ApplicationId!,
                                 app.DisplayName,
                                 AuditActionType.SponsorUpdated,
                                 $"Sponsor updated via bulk update: {currentSponsor} → {newSponsor}",
                                 performedBy: performedBy);
                             results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "updated", previousSponsor = currentSponsor, newSponsor });
-                            successCount++;
+                            Interlocked.Increment(ref successCount);
                         }
                         else
                         {
                             results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "failed", reason = "Failed to update sponsor tag" });
-                            failCount++;
+                            Interlocked.Increment(ref failCount);
                         }
                     }
                 }
@@ -2052,9 +2125,9 @@ public class DashboardFunctions
                 {
                     _logger.LogError(ex, "Error in bulk update for application {Id}", update.ApplicationId);
                     results.Add(new { applicationId = update.ApplicationId, status = "failed", reason = ex.Message });
-                    failCount++;
+                    Interlocked.Increment(ref failCount);
                 }
-            }
+            });
 
             return await CreateJsonResponse(req, new
             {
@@ -2093,10 +2166,7 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Request body is required", HttpStatusCode.BadRequest);
             }
 
-            var request = JsonSerializer.Deserialize<TestEmailRequest>(body, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var request = JsonSerializer.Deserialize<TestEmailRequest>(body, JsonDeserializeOptions);
 
             if (string.IsNullOrWhiteSpace(request?.Template))
             {
@@ -2171,6 +2241,7 @@ public class DashboardFunctions
                 "SponsorExpirationExpired" => "Sponsor notification for expired certificate",
                 "SponsorExpirationCritical" => "Sponsor notification for critical certificate status",
                 "SponsorExpirationWarning" => "Sponsor notification for warning certificate status",
+                "ConsolidatedSponsor" => "Consolidated notification sent to sponsor for multiple apps",
                 _ => ""
             }
         });
@@ -2211,21 +2282,11 @@ public class DashboardFunctions
         // Keep it generic for security but specific enough to be useful
         if (string.IsNullOrEmpty(message)) return "An error occurred";
         
-        // List of patterns that might leak implementation details
-        var sensitivePatterns = new[]
-        {
-            "stack trace", "at System.", "at Microsoft.", "at Azure.",
-            "connection string", "password", "secret", "token",
-            "client_id", "client_secret", "tenant",
-            "StorageConnectionString", "AzureWebJobs",
-            "ODataError", "Request_", "Authorization_",
-            "ServiceException", "inner exception"
-        };
         var lowerMessage = message.ToLowerInvariant();
         
-        foreach (var pattern in sensitivePatterns)
+        foreach (var pattern in SensitivePatterns)
         {
-            if (lowerMessage.Contains(pattern.ToLowerInvariant()))
+            if (lowerMessage.Contains(pattern))
             {
                 return "An internal error occurred. Please check logs for details.";
             }
@@ -2750,9 +2811,9 @@ public class DashboardFunctions
     {
         if (string.IsNullOrWhiteSpace(userId)
             && !roles.Contains("authenticated")
-            && !roles.Contains("admin")
-            && !roles.Contains("reader")
-            && !roles.Contains("sponsor"))
+            && !roles.Contains(DashboardRoles.Admin)
+            && !roles.Contains(DashboardRoles.Reader)
+            && !roles.Contains(DashboardRoles.Sponsor))
         {
             return false;
         }
@@ -2793,14 +2854,14 @@ public class DashboardFunctions
         var isAdminByClaimGroup = !string.IsNullOrWhiteSpace(configuredAdminGroup) && groupSet.Contains(configuredAdminGroup);
         var isReaderByClaimGroup = !string.IsNullOrWhiteSpace(configuredReaderGroup) && groupSet.Contains(configuredReaderGroup);
 
-        if (isAdminByClaimRole || isAdminByClaimGroup || roles.Contains("admin"))
+        if (isAdminByClaimRole || isAdminByClaimGroup || roles.Contains(DashboardRoles.Admin))
         {
-            roles.Add("admin");
-            roles.Add("reader");
+            roles.Add(DashboardRoles.Admin);
+            roles.Add(DashboardRoles.Reader);
         }
-        else if (isReaderByClaimRole || isReaderByClaimGroup || roles.Contains("reader"))
+        else if (isReaderByClaimRole || isReaderByClaimGroup || roles.Contains(DashboardRoles.Reader))
         {
-            roles.Add("reader");
+            roles.Add(DashboardRoles.Reader);
         }
 
         // Sponsor role mapping
@@ -2815,9 +2876,9 @@ public class DashboardFunctions
         var isSponsorByClaimRole = !string.IsNullOrWhiteSpace(configuredSponsorAppRole) && roleSet.Contains(configuredSponsorAppRole);
         var isSponsorByClaimGroup = !string.IsNullOrWhiteSpace(configuredSponsorGroup) && groupSet.Contains(configuredSponsorGroup);
 
-        if (isSponsorByClaimRole || isSponsorByClaimGroup || roles.Contains("sponsor"))
+        if (isSponsorByClaimRole || isSponsorByClaimGroup || roles.Contains(DashboardRoles.Sponsor))
         {
-            roles.Add("sponsor");
+            roles.Add(DashboardRoles.Sponsor);
         }
     }
 
@@ -2891,13 +2952,15 @@ public class DashboardFunctions
 
     /// <summary>
     /// Validates email format for sponsor updates.
+    /// Rejects display-name forms like "Name &lt;addr@example.com&gt;" that MailAddress would accept.
     /// </summary>
     private static bool IsValidEmail(string email)
     {
         try
         {
-            _ = new MailAddress(email);
-            return true;
+            var addr = new MailAddress(email);
+            // Ensure the address field matches the input exactly (no display name allowed)
+            return string.Equals(addr.Address, email.Trim(), StringComparison.OrdinalIgnoreCase);
         }
         catch
         {

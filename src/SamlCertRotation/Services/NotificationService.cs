@@ -443,8 +443,8 @@ public class NotificationService : INotificationService
                     <div class='stat-label'>Not Configured</div>
                 </div>
                 <div class='stat-card'>
-                    <div class='stat-value' style='color: #ffb900;'>{stats.AppsExpiringIn30Days}</div>
-                    <div class='stat-label'>Expiring in 30 Days</div>
+                    <div class='stat-value' style='color: #ffb900;'>{stats.AppsExpiringSoon}</div>
+                    <div class='stat-label'>Expiring in {stats.ExpiringSoonThresholdDays} Days</div>
                 </div>
                 <div class='stat-card'>
                     <div class='stat-value' style='color: #d13438;'>{stats.AppsWithExpiredCerts}</div>
@@ -816,7 +816,7 @@ public class NotificationService : INotificationService
                     AppsWithAutoRotateOff = 5,
                     AppsWithAutoRotateNotify = 6,
                     AppsWithAutoRotateNull = 3,
-                    AppsExpiringIn30Days = 4,
+                    AppsExpiringSoon = 4,
                     AppsWithExpiredCerts = 1
                 };
                 var sampleResults = new List<RotationResult>

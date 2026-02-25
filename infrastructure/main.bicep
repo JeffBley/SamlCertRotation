@@ -113,6 +113,18 @@ resource logicAppEmailUrlSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' =
   ]
 }
 
+// Key Vault secret for Storage Account connection string
+resource storageConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'StorageConnectionString'
+  properties: {
+    value: storageConnectionString
+  }
+  dependsOn: [
+    keyVaultSecretsOfficerRole
+  ]
+}
+
 // ============================================================================
 // Storage Account
 // ============================================================================
@@ -260,7 +272,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         }
         {
           name: 'StorageConnectionString'
-          value: storageConnectionString
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=StorageConnectionString)'
         }
         {
           name: 'TenantId'

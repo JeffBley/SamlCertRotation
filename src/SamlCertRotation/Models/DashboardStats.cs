@@ -33,10 +33,10 @@ public class DashboardStats
     /// <summary>
     /// Apps with certificates expiring within the configured create threshold
     /// </summary>
-    public int AppsExpiringIn30Days { get; set; }
+    public int AppsExpiringSoon { get; set; }
 
     /// <summary>
-    /// Current create-threshold (days) used to calculate AppsExpiringIn30Days
+    /// Current create-threshold (days) used to calculate AppsExpiringSoon
     /// </summary>
     public int ExpiringSoonThresholdDays { get; set; } = 30;
 

@@ -17,7 +17,4 @@ public static class DashboardRoles
 
     /// <summary>Sponsor access — can view their own sponsored apps, optionally create/activate certs</summary>
     public const string Sponsor = "sponsor";
-
-    /// <summary>Base role assigned by SWA to any logged-in user</summary>
-    public const string Authenticated = "authenticated";
 }

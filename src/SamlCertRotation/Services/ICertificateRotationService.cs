@@ -21,9 +21,4 @@ public interface ICertificateRotationService
     /// Get dashboard statistics using a pre-fetched apps list (avoids redundant Graph calls)
     /// </summary>
     Task<DashboardStats> GetDashboardStatsAsync(List<SamlApplication> apps);
-
-    /// <summary>
-    /// Process a single application
-    /// </summary>
-    Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode = false);
 }

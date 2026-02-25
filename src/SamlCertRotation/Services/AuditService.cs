@@ -12,7 +12,7 @@ public class AuditService : IAuditService
 {
     private readonly TableClient _auditTable;
     private readonly ILogger<AuditService> _logger;
-    private bool _tableInitialized;
+    private readonly Lazy<Task> _ensureTable;
 
     private const string AuditTableName = "AuditLog";
 
@@ -20,14 +20,10 @@ public class AuditService : IAuditService
     {
         _auditTable = tableServiceClient.GetTableClient(AuditTableName);
         _logger = logger;
+        _ensureTable = new Lazy<Task>(() => _auditTable.CreateIfNotExistsAsync());
     }
 
-    private async Task EnsureTableExistsAsync()
-    {
-        if (_tableInitialized) return;
-        await _auditTable.CreateIfNotExistsAsync();
-        _tableInitialized = true;
-    }
+    private Task EnsureTableExistsAsync() => _ensureTable.Value;
 
     /// <inheritdoc />
     public async Task LogAsync(AuditEntry entry)

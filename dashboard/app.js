@@ -1075,7 +1075,7 @@ async function loadData(force = true) {
         document.getElementById('stat-off').textContent = stats.appsWithAutoRotateOff;
         document.getElementById('stat-notify').textContent = stats.appsWithAutoRotateNotify;
         document.getElementById('stat-null').textContent = stats.appsWithAutoRotateNull;
-        document.getElementById('stat-expiring-30').textContent = stats.appsExpiringIn30Days;
+        document.getElementById('stat-expiring-30').textContent = stats.appsExpiringSoon;
         document.getElementById('stat-expired').textContent = stats.appsWithExpiredCerts;
         const expiringThresholdDays = typeof stats.expiringSoonThresholdDays === 'number'
             ? stats.expiringSoonThresholdDays

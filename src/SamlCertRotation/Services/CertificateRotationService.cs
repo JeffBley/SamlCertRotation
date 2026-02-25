@@ -118,18 +118,7 @@ public class CertificateRotationService : ICertificateRotationService
                 string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(r.Action, "Would Create (Notify)", StringComparison.OrdinalIgnoreCase));
             var reportOnlyActivateCount = results.Count(r => string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase));
-            var successCount = results.Count(r =>
-                r.Success && (
-                    string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(r.Action, "Created (Notify)", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(r.Action, "Notified", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(r.Action, "Would Create (Notify)", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(r.Action, "Would Notify", StringComparison.OrdinalIgnoreCase)));
-            var failedCount = results.Count(r => !r.Success);
-            var skippedCount = Math.Max(0, results.Count - successCount - failedCount);
+            var (successCount, skippedCount, failedCount) = RotationResult.GetOutcomeCounts(results);
 
             var completionDescription = reportOnlyMode
                 ? $"Report-only run completed. {appsToProcess.Count} apps evaluated. {reportOnlyCreateCount} apps would generate new cert. {reportOnlyActivateCount} apps would activate new cert. Success: {successCount}, Skipped: {skippedCount}, Failed: {failedCount}"
@@ -155,12 +144,6 @@ public class CertificateRotationService : ICertificateRotationService
         }
 
         return results;
-    }
-
-    /// <inheritdoc />
-    public async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode = false)
-    {
-        return await ProcessApplicationAsync(app, reportOnlyMode, null);
     }
 
     private async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode, Dictionary<string, List<AuditEntry>>? auditCache, string? performedBy = null, List<SponsorNotificationItem>? pendingSponsorNotifications = null)
@@ -607,7 +590,7 @@ public class CertificateRotationService : ICertificateRotationService
                     if (daysUntilExpiry < 0)
                         stats.AppsWithExpiredCerts++;
                     else if (daysUntilExpiry <= expiringSoonThresholdDays)
-                        stats.AppsExpiringIn30Days++;
+                        stats.AppsExpiringSoon++;
                     else if (daysUntilExpiry <= 60)
                         stats.AppsExpiringIn60Days++;
                     else if (daysUntilExpiry <= 90)
@@ -624,7 +607,7 @@ public class CertificateRotationService : ICertificateRotationService
                         AutoRotateStatus = app.AutoRotateStatus,
                         CertExpiryDate = activeCert.EndDateTime,
                         DaysUntilExpiry = daysUntilExpiry,
-                        ExpiryCategory = GetExpiryCategory(daysUntilExpiry),
+                        ExpiryCategory = GetExpiryCategory(daysUntilExpiry, expiringSoonThresholdDays),
                         PolicyType = hasAppPolicy1 ? "App-Specific" : "Global",
                         CreateCertDaysBeforeExpiry = (hasAppPolicy1 ? appPolicy1!.CreateCertDaysBeforeExpiry : null) ?? globalPolicy.CreateCertDaysBeforeExpiry,
                         ActivateCertDaysBeforeExpiry = (hasAppPolicy1 ? appPolicy1!.ActivateCertDaysBeforeExpiry : null) ?? globalPolicy.ActivateCertDaysBeforeExpiry
@@ -658,10 +641,10 @@ public class CertificateRotationService : ICertificateRotationService
         return stats;
     }
 
-    private static string GetExpiryCategory(int daysUntilExpiry)
+    private static string GetExpiryCategory(int daysUntilExpiry, int expiringSoonThresholdDays)
     {
         if (daysUntilExpiry < 0) return "Expired";
-        if (daysUntilExpiry <= 30) return "Critical";
+        if (daysUntilExpiry <= expiringSoonThresholdDays) return "Critical";
         if (daysUntilExpiry <= 60) return "Warning";
         if (daysUntilExpiry <= 90) return "Attention";
         return "OK";

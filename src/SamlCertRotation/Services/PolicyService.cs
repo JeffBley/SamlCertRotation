@@ -15,7 +15,7 @@ public class PolicyService : IPolicyService
     private readonly ILogger<PolicyService> _logger;
     private readonly int _defaultCreateDays;
     private readonly int _defaultActivateDays;
-    private bool _tableInitialized;
+    private readonly Lazy<Task> _ensureTable;
 
     private const string PolicyTableName = "RotationPolicies";
     private const int DefaultRetentionPolicyDays = 180;
@@ -39,14 +39,10 @@ public class PolicyService : IPolicyService
         _defaultActivateDays = int.TryParse(configuration["DefaultActivateCertDaysBeforeExpiry"], out var activateDays)
             ? activateDays
             : 30;
+        _ensureTable = new Lazy<Task>(() => _policyTable.CreateIfNotExistsAsync());
     }
 
-    private async Task EnsureTableExistsAsync()
-    {
-        if (_tableInitialized) return;
-        await _policyTable.CreateIfNotExistsAsync();
-        _tableInitialized = true;
-    }
+    private Task EnsureTableExistsAsync() => _ensureTable.Value;
 
     /// <inheritdoc />
     public async Task<RotationPolicy> GetGlobalPolicyAsync()

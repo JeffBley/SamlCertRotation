@@ -84,8 +84,6 @@ public static class AuditActionType
     public const string CertificateActivated = "CertificateActivated";
     public const string CertificateActivatedReportOnly = "CertificateActivatedReportOnly";
     public const string CertificateExpiringSoon = "CertificateExpiringSoon";
-    public const string NotificationSent = "NotificationSent";
-    public const string PolicyUpdated = "PolicyUpdated";
     public const string ScanCompleted = "ScanCompleted";
     public const string ScanCompletedReportOnly = "ScanCompletedReportOnly";
     public const string SettingsUpdated = "SettingsUpdated";

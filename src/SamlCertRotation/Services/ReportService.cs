@@ -14,7 +14,7 @@ public class ReportService : IReportService
 {
     private readonly TableClient _reportTable;
     private readonly ILogger<ReportService> _logger;
-    private bool _tableInitialized;
+    private readonly Lazy<Task> _ensureTable;
 
     private const string ReportTableName = "RunReports";
 
@@ -22,14 +22,10 @@ public class ReportService : IReportService
     {
         _reportTable = tableServiceClient.GetTableClient(ReportTableName);
         _logger = logger;
+        _ensureTable = new Lazy<Task>(() => _reportTable.CreateIfNotExistsAsync());
     }
 
-    private async Task EnsureTableExistsAsync()
-    {
-        if (_tableInitialized) return;
-        await _reportTable.CreateIfNotExistsAsync();
-        _tableInitialized = true;
-    }
+    private Task EnsureTableExistsAsync() => _ensureTable.Value;
 
     /// <inheritdoc />
     public async Task SaveRunReportAsync(RunReport report)
@@ -80,6 +76,12 @@ public class ReportService : IReportService
     /// <inheritdoc />
     public async Task<RunReport?> GetRunReportAsync(string runId)
     {
+        if (!Guid.TryParse(runId, out _))
+        {
+            _logger.LogWarning("Invalid run ID format (not a GUID): {RunId}", runId);
+            return null;
+        }
+
         try
         {
             await EnsureTableExistsAsync();

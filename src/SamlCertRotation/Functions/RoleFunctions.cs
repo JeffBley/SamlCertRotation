@@ -20,6 +20,11 @@ public class RoleFunctions
     private readonly ILogger<RoleFunctions> _logger;
     private readonly IConfiguration _configuration;
 
+    private static readonly JsonSerializerOptions JsonDeserializeOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public RoleFunctions(ILogger<RoleFunctions> logger, IConfiguration configuration)
     {
         _logger = logger;
@@ -211,10 +216,7 @@ public class RoleFunctions
     /// </summary>
     private static ClientPrincipal? DeserializePrincipal(string json)
     {
-        return JsonSerializer.Deserialize<ClientPrincipal>(json, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        });
+        return JsonSerializer.Deserialize<ClientPrincipal>(json, JsonDeserializeOptions);
     }
 
     /// <summary>
