@@ -196,8 +196,6 @@ az deployment group create `
 Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 ```
 
-> **Note**: The block above automatically restores `$RESOURCE_GROUP` from the file saved in Step 1.6. If that file is missing (e.g., you cloned fresh), it falls back to the default value.
-
 ### 3.3 Save Output Values as Variables (Re-runnable)
 
 ```powershell
@@ -495,34 +493,25 @@ az rest --method PATCH `
 
 ### 6.4 Grant Admin Consent for Microsoft Graph Permissions (Optional)
 
-Grant admin consent for delegated Microsoft Graph permissions (`openid`, `profile`, `email`) used during SWA authentication. This avoids users seeing a consent prompt on first sign-in.
+Grant admin consent for the delegated Microsoft Graph `openid` permission used during SWA authentication. This avoids users seeing a consent prompt on first sign-in.
 
 ```powershell
-# Grant admin consent for openid, profile, and email delegated permissions
+# Grant admin consent for the openid delegated permission
 # Microsoft Graph well-known AppId: 00000003-0000-0000-c000-000000000000
 $GRAPH_SP_ID = az ad sp list --filter "appId eq '00000003-0000-0000-c000-000000000000'" --query "[0].id" -o tsv
 
-# Permission IDs for openid, profile, email
-$PERMISSIONS = @(
-    @{ Id = "37f7f235-527c-4136-accd-4a02d197296e"; Name = "openid" },
-    @{ Id = "14dad69e-099b-42c9-810b-d002981feec1"; Name = "profile" },
-    @{ Id = "64a6cdd6-aab1-4aaf-94b8-3cc8405e90d0"; Name = "email" }
-)
+$body = @{
+    clientId = $SP_ID
+    consentType = "AllPrincipals"
+    resourceId = $GRAPH_SP_ID
+    scope = "openid"
+} | ConvertTo-Json -Compress
 
-foreach ($perm in $PERMISSIONS) {
-    $body = @{
-        clientId = $SP_ID
-        consentType = "AllPrincipals"
-        resourceId = $GRAPH_SP_ID
-        scope = $perm.Name
-    } | ConvertTo-Json -Compress
-
-    try {
-        az rest --method POST --uri "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" --headers "Content-Type=application/json" --body $body
-        Write-Host "Granted admin consent: $($perm.Name)" -ForegroundColor Green
-    } catch {
-        Write-Host "Already granted or error: $($perm.Name)" -ForegroundColor Yellow
-    }
+try {
+    az rest --method POST --uri "https://graph.microsoft.com/v1.0/oauth2PermissionGrants" --headers "Content-Type=application/json" --body $body
+    Write-Host "Granted admin consent: openid" -ForegroundColor Green
+} catch {
+    Write-Host "Already granted or error: openid" -ForegroundColor Yellow
 }
 ```
 
