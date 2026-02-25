@@ -13,6 +13,23 @@ let sessionTimeoutMinutes = 0;
 let idleTimer = null;
 let countdownTimer = null;
 let countdownSeconds = 120;
+
+// Cache flags — set to true after first successful load; cleared on force-refresh
+const _cache = {
+    data: false,        // Overview / Applications
+    myApps: false,      // My SAML Apps
+    myStaleCerts: false, // My Stale Certs
+    cleanup: false,     // Certificate Clean-up
+    reports: false,     // Reports
+    audit: false,       // Audit Log
+    policy: false,      // Policy Settings
+    settings: false,    // Settings
+};
+
+// Invalidate all tab caches (call before mutation-triggered reloads)
+function invalidateAllCaches() {
+    for (const key in _cache) _cache[key] = false;
+}
 const ADMIN_APP_ROLE_VALUE = 'SamlCertRotation.Admin';
 const READER_APP_ROLE_VALUE = 'SamlCertRotation.Reader';
 const SPONSOR_APP_ROLE_VALUE = 'SamlCertRotation.Sponsor';
@@ -539,6 +556,7 @@ async function createNewCert(appId, appName) {
         showLoading('Creating new certificate...');
         await apiCall(`applications/${appId}/certificate`, { method: 'POST' });
         showSuccess(`New certificate created for ${appName}`);
+        invalidateAllCaches();
         await loadData();
         if (isSponsorUser()) loadMyApps();
     } catch (error) {
@@ -553,6 +571,7 @@ async function activateNewestCert(appId, appName) {
         showLoading('Activating newest certificate...');
         await apiCall(`applications/${appId}/certificate/activate`, { method: 'POST' });
         showSuccess(`Newest certificate activated for ${appName}`);
+        invalidateAllCaches();
         await loadData();
         if (isSponsorUser()) loadMyApps();
     } catch (error) {
@@ -567,6 +586,7 @@ async function sponsorCreateCert(appId, appName) {
         showLoading('Creating new certificate...');
         await apiCall(`sponsor/applications/${appId}/certificate`, { method: 'POST' });
         showSuccess(`New certificate created for ${appName}`);
+        invalidateAllCaches();
         await loadMyApps();
     } catch (error) {
         showError(`Failed to create certificate: ${error.message}`);
@@ -580,6 +600,7 @@ async function sponsorActivateCert(appId, appName) {
         showLoading('Activating newest certificate...');
         await apiCall(`sponsor/applications/${appId}/certificate/activate`, { method: 'POST' });
         showSuccess(`Newest certificate activated for ${appName}`);
+        invalidateAllCaches();
         await loadMyApps();
     } catch (error) {
         showError(`Failed to activate certificate: ${error.message}`);
@@ -695,6 +716,7 @@ async function saveSponsorModal() {
             body: JSON.stringify({ sponsorEmail })
         });
         showSuccess(`Sponsor updated for ${appName}`);
+        invalidateAllCaches();
 
         if (isSponsorMode) {
             sponsorEditSponsorMode = false;
@@ -800,6 +822,7 @@ async function saveAppPolicy() {
             })
         });
         showSuccess(`Policy updated for ${appName}`);
+        invalidateAllCaches();
 
         if (isSponsorMode) {
             sponsorEditPolicyMode = false;
@@ -868,6 +891,7 @@ async function confirmModalAction() {
                 ? result.skipped
                 : Math.max(0, (result.totalProcessed || 0) - (result.successful || 0) - (result.failed || 0));
             showSuccess(`${result.message}. Processed ${result.totalProcessed} apps. Success: ${result.successful}, Skipped: ${skipped}, Failed: ${result.failed}`);
+            invalidateAllCaches();
             await loadData();
             // Refresh reports tab so the new run appears immediately
             loadReports();
@@ -941,21 +965,21 @@ document.querySelectorAll('.tab').forEach(tab => {
         document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
 
         if (tab.dataset.tab === 'audit') {
-            loadAuditLog();
+            loadAuditLog(false);
         } else if (tab.dataset.tab === 'policy') {
-            loadPolicy();
+            loadPolicy(false);
         } else if (tab.dataset.tab === 'settings') {
-            loadSettings();
+            loadSettings(false);
         } else if (tab.dataset.tab === 'cleanup') {
-            loadCleanupData();
+            loadCleanupData(false);
         } else if (tab.dataset.tab === 'testing') {
             loadTestEmailTemplates();
         } else if (tab.dataset.tab === 'reports') {
-            loadReports();
+            loadReports(false);
         } else if (tab.dataset.tab === 'myapps') {
-            loadMyApps();
+            loadMyApps(false);
         } else if (tab.dataset.tab === 'mystalecerts') {
-            loadMyStaleCerts();
+            loadMyStaleCerts(false);
         }
     });
 });
@@ -1009,7 +1033,8 @@ function showError(message) {
 }
 
 // Load dashboard data
-async function loadData() {
+async function loadData(force = true) {
+    if (!force && _cache.data) { applyFilters(); return; }
     try {
         showLoading('Refreshing data...');
         const [stats, policy, settings] = await Promise.all([
@@ -1054,6 +1079,7 @@ async function loadData() {
         allApps = stats.apps;
         applyFilters();
         clearStatusBanner();
+        _cache.data = true;
 
     } catch (error) {
         document.getElementById('apps-table-container').innerHTML = 
@@ -1067,9 +1093,10 @@ let myAppsSponsorCanRotate = false;
 let myAppsSponsorCanUpdatePolicy = false;
 let myAppsSponsorCanEditSponsors = false;
 
-async function loadMyApps() {
+async function loadMyApps(force = true) {
     const container = document.getElementById('myapps-table-container');
     if (!container) return;
+    if (!force && _cache.myApps) { applyMyAppsFilter(); return; }
     container.innerHTML = '<div class="loading">Loading your sponsored applications...</div>';
     try {
         const result = await apiCall('dashboard/my-apps');
@@ -1078,6 +1105,7 @@ async function loadMyApps() {
         myAppsSponsorCanUpdatePolicy = result.sponsorsCanUpdatePolicy === true;
         myAppsSponsorCanEditSponsors = result.sponsorsCanEditSponsors === true;
         applyMyAppsFilter();
+        _cache.myApps = true;
     } catch (error) {
         container.innerHTML = `<div class="error">Failed to load your applications: ${escapeHtml(error.message)}</div>`;
     }
@@ -1381,14 +1409,26 @@ function renderApps(apps) {
 }
 
 // Load policy settings
-async function loadPolicy() {
+let cachedPolicy = null;
+let cachedPolicySettings = null;
+
+async function loadPolicy(force = true) {
+    if (!force && _cache.policy && cachedPolicy && cachedPolicySettings) {
+        document.getElementById('createDays').value = cachedPolicy.createCertDaysBeforeExpiry;
+        document.getElementById('activateDays').value = cachedPolicy.activateCertDaysBeforeExpiry;
+        document.getElementById('createCertsForNotifyApps').value = cachedPolicySettings.createCertsForNotifyApps === false ? 'disabled' : 'enabled';
+        return;
+    }
     try {
         const policy = await apiCall('policy');
+        cachedPolicy = policy;
         document.getElementById('createDays').value = policy.createCertDaysBeforeExpiry;
         document.getElementById('activateDays').value = policy.activateCertDaysBeforeExpiry;
 
         const settings = await apiCall('settings');
+        cachedPolicySettings = settings;
         document.getElementById('createCertsForNotifyApps').value = settings.createCertsForNotifyApps === false ? 'disabled' : 'enabled';
+        _cache.policy = true;
     } catch (error) {
         console.error('Failed to load policy:', error);
     }
@@ -1430,36 +1470,49 @@ async function savePolicy() {
         });
 
         showSuccess('Policy saved successfully!');
+        invalidateAllCaches();
     } catch (error) {
         showError('Failed to save policy: ' + error.message);
     }
 }
 
 // Load settings
-async function loadSettings() {
+let cachedSettings = null;
+
+function applySettingsToForm(settings) {
+    document.getElementById('notificationEmails').value = settings.notificationEmails || '';
+    document.getElementById('rotationSchedule').value = formatCronSchedule(settings.rotationSchedule || '0 0 6 * * *');
+    document.getElementById('reportOnlyMode').value = settings.reportOnlyModeEnabled === false ? 'disabled' : 'enabled';
+    document.getElementById('retentionPolicyDays').value = settings.retentionPolicyDays || 180;
+    document.getElementById('sponsorsReceiveNotifications').value = settings.sponsorsReceiveNotifications === false ? 'disabled' : 'enabled';
+    document.getElementById('sponsorRemindersEnabled').value = settings.sponsorRemindersEnabled === false ? 'disabled' : 'enabled';
+    document.getElementById('sponsorReminderCount').value = (settings.sponsorReminderCount >= 1 && settings.sponsorReminderCount <= 3) ? settings.sponsorReminderCount : 3;
+    document.getElementById('sponsorFirstReminderDays').value = Number.isInteger(settings.sponsorFirstReminderDays) ? settings.sponsorFirstReminderDays : 30;
+    document.getElementById('sponsorSecondReminderDays').value = Number.isInteger(settings.sponsorSecondReminderDays) ? settings.sponsorSecondReminderDays : 7;
+    document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
+    document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
+    document.getElementById('sessionTimeoutMinutes').value = typeof settings.sessionTimeoutMinutes === 'number' ? settings.sessionTimeoutMinutes : 0;
+    document.getElementById('reportsRetentionPolicyDays').value = settings.reportsRetentionPolicyDays || 14;
+    const sponsorsCanRotateEl = document.getElementById('sponsorsCanRotateCerts');
+    if (sponsorsCanRotateEl) sponsorsCanRotateEl.value = settings.sponsorsCanRotateCerts === true ? 'enabled' : 'disabled';
+    const sponsorsCanUpdatePolicyEl = document.getElementById('sponsorsCanUpdatePolicy');
+    if (sponsorsCanUpdatePolicyEl) sponsorsCanUpdatePolicyEl.value = settings.sponsorsCanUpdatePolicy === true ? 'enabled' : 'disabled';
+    const sponsorsCanEditSponsorsEl = document.getElementById('sponsorsCanEditSponsors');
+    if (sponsorsCanEditSponsorsEl) sponsorsCanEditSponsorsEl.value = settings.sponsorsCanEditSponsors === true ? 'enabled' : 'disabled';
+    toggleSponsorReminderSettings();
+    toggleSponsorReminderCount();
+}
+
+async function loadSettings(force = true) {
+    if (!force && _cache.settings && cachedSettings) {
+        applySettingsToForm(cachedSettings);
+        return;
+    }
     try {
         const settings = await apiCall('settings');
-        document.getElementById('notificationEmails').value = settings.notificationEmails || '';
-        document.getElementById('rotationSchedule').value = formatCronSchedule(settings.rotationSchedule || '0 0 6 * * *');
-        document.getElementById('reportOnlyMode').value = settings.reportOnlyModeEnabled === false ? 'disabled' : 'enabled';
-        document.getElementById('retentionPolicyDays').value = settings.retentionPolicyDays || 180;
-        document.getElementById('sponsorsReceiveNotifications').value = settings.sponsorsReceiveNotifications === false ? 'disabled' : 'enabled';
-        document.getElementById('sponsorRemindersEnabled').value = settings.sponsorRemindersEnabled === false ? 'disabled' : 'enabled';
-        document.getElementById('sponsorReminderCount').value = (settings.sponsorReminderCount >= 1 && settings.sponsorReminderCount <= 3) ? settings.sponsorReminderCount : 3;
-        document.getElementById('sponsorFirstReminderDays').value = Number.isInteger(settings.sponsorFirstReminderDays) ? settings.sponsorFirstReminderDays : 30;
-        document.getElementById('sponsorSecondReminderDays').value = Number.isInteger(settings.sponsorSecondReminderDays) ? settings.sponsorSecondReminderDays : 7;
-        document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
-        document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
-        document.getElementById('sessionTimeoutMinutes').value = typeof settings.sessionTimeoutMinutes === 'number' ? settings.sessionTimeoutMinutes : 0;
-        document.getElementById('reportsRetentionPolicyDays').value = settings.reportsRetentionPolicyDays || 14;
-        const sponsorsCanRotateEl = document.getElementById('sponsorsCanRotateCerts');
-        if (sponsorsCanRotateEl) sponsorsCanRotateEl.value = settings.sponsorsCanRotateCerts === true ? 'enabled' : 'disabled';
-        const sponsorsCanUpdatePolicyEl = document.getElementById('sponsorsCanUpdatePolicy');
-        if (sponsorsCanUpdatePolicyEl) sponsorsCanUpdatePolicyEl.value = settings.sponsorsCanUpdatePolicy === true ? 'enabled' : 'disabled';
-        const sponsorsCanEditSponsorsEl = document.getElementById('sponsorsCanEditSponsors');
-        if (sponsorsCanEditSponsorsEl) sponsorsCanEditSponsorsEl.value = settings.sponsorsCanEditSponsors === true ? 'enabled' : 'disabled';
-        toggleSponsorReminderSettings();
-        toggleSponsorReminderCount();
+        cachedSettings = settings;
+        applySettingsToForm(settings);
+        _cache.settings = true;
     } catch (error) {
         console.error('Failed to load settings:', error);
     }
@@ -1543,6 +1596,7 @@ async function saveSettings() {
         sessionTimeoutMinutes = parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0;
         startIdleTracking();
         showSuccess('Settings saved successfully!');
+        invalidateAllCaches();
     } catch (error) {
         showError('Failed to save settings: ' + error.message);
     }
@@ -1578,7 +1632,36 @@ function toggleSponsorReminderCount() {
 }
 
 // ── Reports tab ──────────────────────────────────────────────────
-async function loadReports() {
+let cachedReports = [];
+
+function renderReportsTable(reports) {
+    const tbody = document.getElementById('reports-table-body');
+    document.getElementById('reports-list-view').style.display = '';
+    document.getElementById('reports-detail-view').style.display = 'none';
+    if (!reports || reports.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">No reports found.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '';
+    reports.forEach(r => {
+        const tr = document.createElement('tr');
+        const modeLabel = r.mode === 'prod' ? '<span style="color:#d83b01;font-weight:600;">Prod</span>' : '<span style="color:#0078d4;">Report-only</span>';
+        tr.innerHTML = `
+            <td>${new Date(r.runDate).toLocaleString()}</td>
+            <td>${modeLabel}</td>
+            <td>${escapeHtml(r.triggeredBy || 'Scheduled')}</td>
+            <td>${r.totalProcessed}</td>
+            <td>${r.successful}</td>
+            <td>${r.skipped}</td>
+            <td>${r.failed > 0 ? '<span style="color:#d83b01;font-weight:600;">' + r.failed + '</span>' : r.failed}</td>
+            <td><button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" data-action="view-report" data-report-id="${escapeHtml(r.id)}">View Report</button></td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+async function loadReports(force = true) {
+    if (!force && _cache.reports) { renderReportsTable(cachedReports); return; }
     const tbody = document.getElementById('reports-table-body');
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">Loading...</td></tr>';
     // Always show list view and hide detail view when loading
@@ -1586,26 +1669,9 @@ async function loadReports() {
     document.getElementById('reports-detail-view').style.display = 'none';
     try {
         const reports = await apiCall('reports');
-        if (!reports || reports.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">No reports found.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = '';
-        reports.forEach(r => {
-            const tr = document.createElement('tr');
-            const modeLabel = r.mode === 'prod' ? '<span style="color:#d83b01;font-weight:600;">Prod</span>' : '<span style="color:#0078d4;">Report-only</span>';
-            tr.innerHTML = `
-                <td>${new Date(r.runDate).toLocaleString()}</td>
-                <td>${modeLabel}</td>
-                <td>${escapeHtml(r.triggeredBy || 'Scheduled')}</td>
-                <td>${r.totalProcessed}</td>
-                <td>${r.successful}</td>
-                <td>${r.skipped}</td>
-                <td>${r.failed > 0 ? '<span style="color:#d83b01;font-weight:600;">' + r.failed + '</span>' : r.failed}</td>
-                <td><button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" data-action="view-report" data-report-id="${escapeHtml(r.id)}">View Report</button></td>
-            `;
-            tbody.appendChild(tr);
-        });
+        cachedReports = reports || [];
+        renderReportsTable(cachedReports);
+        _cache.reports = true;
     } catch (error) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#d83b01;">Failed to load reports.</td></tr>';
         console.error('Failed to load reports:', error);
@@ -1675,7 +1741,8 @@ function backToReportList() {
 
 // Audit log filters and rendering
 // Load audit log
-async function loadAuditLog() {
+async function loadAuditLog(force = true) {
+    if (!force && _cache.audit) { applyAuditFilters(); return; }
     try {
         showLoading('Refreshing audit log...');
         const fromDate = document.getElementById('audit-from-date')?.value;
@@ -1689,6 +1756,7 @@ async function loadAuditLog() {
         allAuditEntries = await apiCall(endpoint);
         applyAuditFilters();
         clearStatusBanner();
+        _cache.audit = true;
 
     } catch (error) {
         document.getElementById('audit-table-container').innerHTML = 
@@ -1907,7 +1975,8 @@ let cleanupApps = [];
 let myStaleCerts = [];
 
 // Load certificate cleanup data
-async function loadCleanupData() {
+async function loadCleanupData(force = true) {
+    if (!force && _cache.cleanup) { renderCleanupTable(cleanupApps); return; }
     try {
         showLoading('Refreshing cleanup data...');
         // Get detailed app data including all certificates
@@ -1942,6 +2011,7 @@ async function loadCleanupData() {
         
         renderCleanupTable(cleanupApps);
         clearStatusBanner();
+        _cache.cleanup = true;
         
     } catch (error) {
         document.getElementById('cleanup-table-container').innerHTML = 
@@ -2184,9 +2254,10 @@ function exportMyAppsCsv() {
 
 // ── My Stale Certs ──
 
-async function loadMyStaleCerts() {
+async function loadMyStaleCerts(force = true) {
     const container = document.getElementById('mystalecerts-table-container');
     if (!container) return;
+    if (!force && _cache.myStaleCerts) { renderMyStaleCerts(myStaleCerts); return; }
     container.innerHTML = '<div class="loading">Loading stale certificate data...</div>';
     try {
         const result = await apiCall('dashboard/my-apps');
@@ -2216,6 +2287,7 @@ async function loadMyStaleCerts() {
             }
         }
         renderMyStaleCerts(myStaleCerts);
+        _cache.myStaleCerts = true;
     } catch (error) {
         container.innerHTML = `<div class="error">Failed to load stale certificate data: ${escapeHtml(error.message)}</div>`;
     }
@@ -2783,6 +2855,7 @@ async function applyBulkSponsorUpdates() {
         closeBulkSponsorModal();
         showSuccess(result.message || 'Bulk update complete.');
         // Reload apps to reflect changes
+        invalidateAllCaches();
         loadData();
     } catch (error) {
         showError('Bulk update failed: ' + error.message);
