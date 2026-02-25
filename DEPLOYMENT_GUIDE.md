@@ -72,7 +72,7 @@ Cloud Shell storage persists between sessions. Always sync to the latest code be
 ```powershell
 Set-Location "$HOME/SamlCertRotationv2"
 git fetch origin
-git pull origin v2/main
+git pull origin main
 ```
 
 ### 1.4 Verify Deployment Info
