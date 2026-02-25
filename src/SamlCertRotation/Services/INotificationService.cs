@@ -38,6 +38,13 @@ public interface INotificationService
     Task<bool> SendSponsorExpirationStatusNotificationAsync(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string status, bool manualSend);
 
     /// <summary>
+    /// Send a single consolidated email to each sponsor summarising all certificate
+    /// actions that affected their sponsored applications during a rotation run.
+    /// Items are grouped by action category (e.g. "Certificate Created", "Certificate Activated").
+    /// </summary>
+    Task SendConsolidatedSponsorNotificationsAsync(List<SponsorNotificationItem> pendingNotifications);
+
+    /// <summary>
     /// Send a test email using a named template with sample data
     /// </summary>
     Task<bool> SendTestEmailAsync(string templateName, string toEmail);

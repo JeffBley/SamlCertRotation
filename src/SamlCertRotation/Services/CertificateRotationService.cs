@@ -70,11 +70,15 @@ public class CertificateRotationService : ICertificateRotationService
                 .ToList();
             var auditCache = await _auditService.GetRecentEntriesForAppsAsync(appIdsNeedingAudit);
 
+            // Collect sponsor notifications so we can send one consolidated email per
+            // sponsor after all apps have been processed (instead of N individual emails).
+            var pendingSponsorNotifications = reportOnlyMode ? null : new List<SponsorNotificationItem>();
+
             foreach (var app in appsToProcess)
             {
                 try
                 {
-                    var result = await ProcessApplicationAsync(app, reportOnlyMode, auditCache, performedBy);
+                    var result = await ProcessApplicationAsync(app, reportOnlyMode, auditCache, performedBy, pendingSponsorNotifications);
                     results.Add(result);
                 }
                 catch (Exception ex)
@@ -88,6 +92,19 @@ public class CertificateRotationService : ICertificateRotationService
                         Action = "Error",
                         ErrorMessage = ex.Message
                     });
+                }
+            }
+
+            // Send consolidated sponsor emails (one per sponsor, grouped by action category)
+            if (pendingSponsorNotifications != null && pendingSponsorNotifications.Any())
+            {
+                try
+                {
+                    await _notificationService.SendConsolidatedSponsorNotificationsAsync(pendingSponsorNotifications);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error sending consolidated sponsor notifications");
                 }
             }
 
@@ -146,7 +163,7 @@ public class CertificateRotationService : ICertificateRotationService
         return await ProcessApplicationAsync(app, reportOnlyMode, null);
     }
 
-    private async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode, Dictionary<string, List<AuditEntry>>? auditCache, string? performedBy = null)
+    private async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode, Dictionary<string, List<AuditEntry>>? auditCache, string? performedBy = null, List<SponsorNotificationItem>? pendingSponsorNotifications = null)
     {
         var result = new RotationResult
         {
@@ -252,7 +269,10 @@ public class CertificateRotationService : ICertificateRotationService
                                     activeCert.Thumbprint,
                                     newCert.Thumbprint,
                                     performedBy);
-                                await _notificationService.SendCertificateCreatedNotificationAsync(app, newCert);
+                                if (pendingSponsorNotifications != null)
+                                    pendingSponsorNotifications.Add(new SponsorNotificationItem { App = app, Category = "Certificate Created (Notify-Only)", Certificate = newCert });
+                                else
+                                    await _notificationService.SendCertificateCreatedNotificationAsync(app, newCert);
                             }
                             else
                             {
@@ -316,7 +336,10 @@ public class CertificateRotationService : ICertificateRotationService
                                 newCert.Thumbprint,
                                 performedBy);
 
-                            await _notificationService.SendCertificateCreatedNotificationAsync(app, newCert);
+                            if (pendingSponsorNotifications != null)
+                                pendingSponsorNotifications.Add(new SponsorNotificationItem { App = app, Category = "Certificate Created", Certificate = newCert });
+                            else
+                                await _notificationService.SendCertificateCreatedNotificationAsync(app, newCert);
                         }
                         else
                         {
@@ -366,7 +389,10 @@ public class CertificateRotationService : ICertificateRotationService
                                     newerInactiveCert.Thumbprint,
                                     performedBy);
 
-                                await _notificationService.SendCertificateActivatedNotificationAsync(app, newerInactiveCert);
+                                if (pendingSponsorNotifications != null)
+                                    pendingSponsorNotifications.Add(new SponsorNotificationItem { App = app, Category = "Certificate Activated", Certificate = newerInactiveCert });
+                                else
+                                    await _notificationService.SendCertificateActivatedNotificationAsync(app, newerInactiveCert);
                             }
                             else
                             {
@@ -423,7 +449,10 @@ public class CertificateRotationService : ICertificateRotationService
                                 pendingCert.Thumbprint,
                                 performedBy);
 
-                            await _notificationService.SendCertificateActivatedNotificationAsync(app, pendingCert);
+                            if (pendingSponsorNotifications != null)
+                                pendingSponsorNotifications.Add(new SponsorNotificationItem { App = app, Category = "Certificate Activated", Certificate = pendingCert });
+                            else
+                                await _notificationService.SendCertificateActivatedNotificationAsync(app, pendingCert);
                         }
                         else
                         {

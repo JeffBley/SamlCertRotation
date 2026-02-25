@@ -579,6 +579,160 @@ public class NotificationService : INotificationService
 </html>";
     }
 
+    /// <inheritdoc />
+    public async Task SendConsolidatedSponsorNotificationsAsync(List<SponsorNotificationItem> pendingNotifications)
+    {
+        if (pendingNotifications == null || !pendingNotifications.Any())
+        {
+            return;
+        }
+
+        var enabled = await _policyService.GetSponsorsReceiveNotificationsEnabledAsync();
+        if (!enabled)
+        {
+            _logger.LogInformation("Sponsor notifications disabled — skipping consolidated emails");
+            return;
+        }
+
+        // Build a map: sponsor email → list of notification items
+        var sponsorGroups = new Dictionary<string, List<SponsorNotificationItem>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in pendingNotifications)
+        {
+            var emails = ParseSponsorEmails(item.App.Sponsor);
+            foreach (var email in emails)
+            {
+                if (!sponsorGroups.TryGetValue(email, out var list))
+                {
+                    list = new List<SponsorNotificationItem>();
+                    sponsorGroups[email] = list;
+                }
+                list.Add(item);
+            }
+        }
+
+        foreach (var (sponsorEmail, items) in sponsorGroups)
+        {
+            try
+            {
+                var subject = items.Count == 1
+                    ? $"[SAML Cert Rotation] Certificate Action - {items[0].App.DisplayName}"
+                    : $"[SAML Cert Rotation] Certificate Actions - {items.Count} Application(s)";
+
+                var body = GenerateConsolidatedSponsorEmail(items);
+                await _graphService.SendEmailAsync(new List<string> { sponsorEmail }, subject, body);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send consolidated sponsor email to {Email}", sponsorEmail);
+            }
+        }
+    }
+
+    private string GenerateConsolidatedSponsorEmail(List<SponsorNotificationItem> items)
+    {
+        // Group items by category
+        var groups = items
+            .GroupBy(i => i.Category, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => GetCategorySortOrder(g.Key));
+
+        var sectionsHtml = new System.Text.StringBuilder();
+
+        foreach (var group in groups)
+        {
+            var (icon, headerColor, description) = GetCategoryMeta(group.Key);
+
+            sectionsHtml.AppendLine($@"
+            <div style='margin-bottom: 24px;'>
+                <div style='background: {headerColor}; color: white; padding: 10px 15px; border-radius: 6px 6px 0 0;'>
+                    <h3 style='margin:0;'>{icon} {H(group.Key)} ({group.Count()} app{(group.Count() != 1 ? "s" : "")})</h3>
+                </div>
+                <div style='background: white; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 6px 6px; padding: 0;'>
+                    {(string.IsNullOrEmpty(description) ? "" : $"<p style='padding: 12px 15px 0 15px; margin: 0; color: #666;'>{H(description)}</p>")}
+                    <table style='width: 100%; border-collapse: collapse;'>
+                        <tr style='background: #f5f5f5;'>
+                            <th style='text-align:left; padding: 10px 15px; font-size: 13px; color: #555;'>Application</th>
+                            <th style='text-align:left; padding: 10px 15px; font-size: 13px; color: #555;'>Thumbprint</th>
+                            <th style='text-align:left; padding: 10px 15px; font-size: 13px; color: #555;'>Valid Until</th>
+                            <th style='text-align:left; padding: 10px 15px; font-size: 13px; color: #555;'>View in Entra ID</th>
+                        </tr>");
+
+            foreach (var item in group.OrderBy(i => i.App.DisplayName, StringComparer.OrdinalIgnoreCase))
+            {
+                var thumbprint = item.Certificate?.Thumbprint ?? "—";
+                var validUntil = item.Certificate?.EndDateTime.ToString("yyyy-MM-dd") ?? "—";
+                var entraUrl = Helpers.UrlHelper.BuildEntraManagedAppUrl(item.App.Id, item.App.AppId);
+
+                sectionsHtml.AppendLine($@"
+                        <tr>
+                            <td style='padding: 10px 15px; border-top: 1px solid #eee;'>{H(item.App.DisplayName)}</td>
+                            <td style='padding: 10px 15px; border-top: 1px solid #eee; font-family: monospace; font-size: 12px;'>{H(thumbprint)}</td>
+                            <td style='padding: 10px 15px; border-top: 1px solid #eee;'>{H(validUntil)}</td>
+                            <td style='padding: 10px 15px; border-top: 1px solid #eee;'><a href='{H(entraUrl)}' style='color: #0078d4;'>Open</a></td>
+                        </tr>");
+            }
+
+            sectionsHtml.AppendLine(@"
+                    </table>
+                </div>
+            </div>");
+        }
+
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 750px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: #0078d4; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
+        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h2 style='margin:0;'>🔐 SAML Certificate Rotation Summary</h2>
+            <p style='margin: 5px 0 0 0; opacity: 0.9;'>{DateTime.UtcNow:dddd, MMMM d, yyyy}</p>
+        </div>
+        <div class='content'>
+            <p>The following certificate operations were performed on applications you sponsor:</p>
+            {sectionsHtml}
+        </div>
+        <div class='footer'>
+            This is an automated message from the SAML Certificate Rotation Tool.
+        </div>
+    </div>
+</body>
+</html>";
+    }
+
+    private static int GetCategorySortOrder(string category)
+    {
+        return category switch
+        {
+            "Certificate Created" => 1,
+            "Certificate Created (Notify-Only)" => 2,
+            "Certificate Activated" => 3,
+            _ => 99
+        };
+    }
+
+    private static (string icon, string headerColor, string description) GetCategoryMeta(string category)
+    {
+        return category switch
+        {
+            "Certificate Created" => ("🆕", "#0078d4",
+                "A new signing certificate has been created. It is not yet active and will be activated automatically closer to expiration."),
+            "Certificate Created (Notify-Only)" => ("🆕", "#0078d4",
+                "A new signing certificate has been created for a notify-only application. It will NOT be auto-activated."),
+            "Certificate Activated" => ("✅", "#107c10",
+                "A new signing certificate has been activated. If your SAML SP does not auto-fetch metadata, you may need to update it manually."),
+            _ => ("ℹ️", "#797775", "")
+        };
+    }
+
     /// <summary>
     /// Available test email template names.
     /// </summary>
@@ -591,7 +745,8 @@ public class NotificationService : INotificationService
         "NotifyReminder",
         "SponsorExpirationExpired",
         "SponsorExpirationCritical",
-        "SponsorExpirationWarning"
+        "SponsorExpirationWarning",
+        "ConsolidatedSponsor"
     };
 
     /// <inheritdoc />
@@ -693,6 +848,44 @@ public class NotificationService : INotificationService
             case "SponsorExpirationWarning":
                 subject = $"[TEST] [SAML Cert Rotation] [Manual] Warning Certificate Status - {sampleApp.DisplayName}";
                 body = GenerateSponsorExpirationStatusEmail(sampleApp, activeCert, 25, appUrl, "Warning", true);
+                break;
+
+            case "ConsolidatedSponsor":
+                var sampleApp2 = new SamlApplication
+                {
+                    Id = "22222222-2222-2222-2222-222222222222",
+                    AppId = "33333333-3333-3333-3333-333333333333",
+                    DisplayName = "Fabrikam SAML App (Test)",
+                    AutoRotateStatus = "on",
+                    Sponsor = toEmail
+                };
+                var sampleApp3 = new SamlApplication
+                {
+                    Id = "44444444-4444-4444-4444-444444444444",
+                    AppId = "55555555-5555-5555-5555-555555555555",
+                    DisplayName = "Northwind SAML App (Test)",
+                    AutoRotateStatus = "notify",
+                    Sponsor = toEmail
+                };
+                var sampleItems = new List<SponsorNotificationItem>
+                {
+                    new SponsorNotificationItem { App = sampleApp, Category = "Certificate Created", Certificate = newCert },
+                    new SponsorNotificationItem { App = sampleApp2, Category = "Certificate Created", Certificate = new SamlCertificate
+                    {
+                        Thumbprint = "AA11BB22CC33DD44EE55FF6677889900AABBCCDD",
+                        StartDateTime = DateTime.UtcNow,
+                        EndDateTime = DateTime.UtcNow.AddYears(3)
+                    }},
+                    new SponsorNotificationItem { App = sampleApp3, Category = "Certificate Created (Notify-Only)", Certificate = new SamlCertificate
+                    {
+                        Thumbprint = "1122334455667788990011223344556677889900",
+                        StartDateTime = DateTime.UtcNow,
+                        EndDateTime = DateTime.UtcNow.AddYears(3)
+                    }},
+                    new SponsorNotificationItem { App = sampleApp, Category = "Certificate Activated", Certificate = newCert }
+                };
+                subject = $"[TEST] [SAML Cert Rotation] Certificate Actions - {sampleItems.Count} Application(s)";
+                body = GenerateConsolidatedSponsorEmail(sampleItems);
                 break;
 
             default:
