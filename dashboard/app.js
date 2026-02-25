@@ -1222,7 +1222,7 @@ function renderMyApps(apps) {
                     <th${hide('createCertDays')}>Create Cert (days)</th>
                     <th${hide('activateCertDays')}>Activate Cert (days)</th>
                     <th${hide('deeplink')}>View in Entra ID</th>
-                    ${hasAnyAction ? '<th style="width:60px;">Actions</th>' : ''}
+                    ${hasAnyAction ? '<th style="width:90px;white-space:nowrap;">Actions</th>' : ''}
                 </tr>
             </thead>
             <tbody>
@@ -1338,6 +1338,41 @@ function applyFilters() {
     renderApps(filtered);
 }
 
+function navigateFromOverviewTile(navigateValue) {
+    // Clear all existing filters first
+    clearAppFilters();
+
+    if (navigateValue === 'total') {
+        // No filter — show all
+    } else if (navigateValue.startsWith('status:')) {
+        const status = navigateValue.split(':')[1];
+        const checkbox = document.querySelector(`.app-status-filter-option-input[value="${status}"]`);
+        if (checkbox) {
+            checkbox.checked = true;
+            document.getElementById('app-filter-panel').style.display = 'block';
+            document.getElementById('btn-toggle-app-filters').textContent = 'Hide Filters';
+        }
+    } else if (navigateValue.startsWith('autorotate:')) {
+        const autoRotate = navigateValue.split(':')[1];
+        const checkbox = document.querySelector(`.app-auto-rotate-filter-option-input[value="${autoRotate}"]`);
+        if (checkbox) {
+            checkbox.checked = true;
+            document.getElementById('app-filter-panel').style.display = 'block';
+            document.getElementById('btn-toggle-app-filters').textContent = 'Hide Filters';
+        }
+    }
+
+    // Update filter labels and apply
+    onAppFilterChanged();
+
+    // Switch to Applications tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    const appTab = document.querySelector('.tab[data-tab="applications"]');
+    if (appTab) appTab.classList.add('active');
+    document.getElementById('tab-applications').classList.add('active');
+}
+
 // Render apps table
 function renderApps(apps) {
     if (apps.length === 0) {
@@ -1368,7 +1403,7 @@ function renderApps(apps) {
                     <th${hide('policyType')}>Policy Type</th>
                     <th${hide('createCertDays')}>Create Cert (days)</th>
                     <th${hide('activateCertDays')}>Activate Cert (days)</th>
-                    <th style="width:60px;">Actions</th>
+                    <th style="width:90px;white-space:nowrap;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -2075,16 +2110,21 @@ function renderCleanupTable(apps) {
                     <th>Application Name</th>
                     <th>App ID</th>
                     <th>Expired Inactive Certs</th>
+                    <th>View in Entra ID</th>
                 </tr>
             </thead>
             <tbody>
-                ${apps.map(app => `
+                ${apps.map(app => {
+                    const deeplink = buildEntraDeeplink(app.id || '', app.appId || '');
+                    return `
                     <tr>
                         <td>${escapeHtml(app.displayName)}</td>
                         <td style="font-family:monospace;font-size:12px;">${escapeHtml(app.appId)}</td>
                         <td>${app.expiredInactiveCertCount}</td>
+                        <td><a href="${escapeHtml(deeplink)}" target="_blank" rel="noopener noreferrer" title="Open in Entra admin center">Open in Entra ↗</a></td>
                     </tr>
-                `).join('')}
+                `;
+                }).join('')}
             </tbody>
         </table>
         <p style="margin-top:16px;color:#666;font-size:13px;">
@@ -2999,6 +3039,11 @@ document.getElementById('app-sort-by').addEventListener('change', applyFilters);
 document.getElementById('app-sort-direction').addEventListener('change', applyFilters);
 document.getElementById('btn-toggle-app-filters').addEventListener('click', toggleAppFilterPanel);
 document.getElementById('btn-clear-app-filters').addEventListener('click', clearAppFilters);
+
+// Overview tile click navigation
+document.querySelectorAll('.stat-card[data-navigate]').forEach(card => {
+    card.addEventListener('click', () => navigateFromOverviewTile(card.dataset.navigate));
+});
 document.getElementById('app-auto-rotate-filter-toggle').addEventListener('click', function (e) { toggleAppAutoRotateFilterDropdown(e); });
 document.getElementById('app-auto-rotate-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
 document.querySelectorAll('.app-auto-rotate-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAppFilterChanged); });

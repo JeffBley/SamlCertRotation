@@ -147,6 +147,10 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
         }
 
+        .stat-card[data-navigate] {
+            cursor: pointer;
+        }
+
         .stat-value {
             font-size: 36px;
             font-weight: 700;
@@ -718,43 +722,43 @@
                 </div>
                 <div class="stats-grid" id="stats-grid">
                     <div class="stats-row">
-                        <div class="stat-card">
+                        <div class="stat-card" data-navigate="total">
                             <div class="stat-value" id="stat-total">-</div>
                             <div class="stat-label">Total SAML Apps</div>
                         </div>
-                        <div class="stat-card ok">
+                        <div class="stat-card ok" data-navigate="status:ok">
                             <div class="stat-value" id="stat-ok">-</div>
                             <div class="stat-label">OK</div>
                         </div>
-                        <div class="stat-card warning">
+                        <div class="stat-card warning" data-navigate="status:warning">
                             <div class="stat-value" id="stat-warning">-</div>
                             <div class="stat-label">Warning</div>
                             <div class="stat-sublabel" id="stat-warning-sublabel">Expiring ≤60 Days</div>
                         </div>
-                        <div class="stat-card critical">
+                        <div class="stat-card critical" data-navigate="status:critical">
                             <div class="stat-value" id="stat-critical">-</div>
                             <div class="stat-label">Critical</div>
                             <div class="stat-sublabel" id="stat-critical-sublabel">Expiring ≤30 Days</div>
                         </div>
-                        <div class="stat-card expired">
+                        <div class="stat-card expired" data-navigate="status:expired">
                             <div class="stat-value" id="stat-expired">-</div>
                             <div class="stat-label">Expired</div>
                         </div>
                     </div>
                     <div class="stats-row">
-                        <div class="stat-card on">
+                        <div class="stat-card on" data-navigate="autorotate:on">
                             <div class="stat-value" id="stat-on">-</div>
                             <div class="stat-label">Auto-Rotate ON</div>
                         </div>
-                        <div class="stat-card notify">
+                        <div class="stat-card notify" data-navigate="autorotate:notify">
                             <div class="stat-value" id="stat-notify">-</div>
                             <div class="stat-label">Notify</div>
                         </div>
-                        <div class="stat-card off">
+                        <div class="stat-card off" data-navigate="autorotate:off">
                             <div class="stat-value" id="stat-off">-</div>
                             <div class="stat-label">Auto-Rotate OFF</div>
                         </div>
-                        <div class="stat-card null">
+                        <div class="stat-card null" data-navigate="autorotate:notset">
                             <div class="stat-value" id="stat-null">-</div>
                             <div class="stat-label">Not Configured</div>
                         </div>
