@@ -1,6 +1,6 @@
-# SAML Certificate Rotation Tool - Azure Cloud Shell Deployment Guide (PowerShell)
+# SAML Certificate Rotation Tool - Deployment Guide (PowerShell)
 
-This guide walks you through deploying the SAML Certificate Rotation Tool using **Azure Cloud Shell** with **PowerShell**.
+This guide walks you through deploying the SAML Certificate Rotation Tool using **PowerShell**. All commands are written for **Azure Cloud Shell** (recommended) but work in any local environment with the prerequisites installed.
 
 ## Table of Contents
 
