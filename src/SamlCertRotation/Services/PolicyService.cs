@@ -15,7 +15,7 @@ public class PolicyService : IPolicyService
     private readonly ILogger<PolicyService> _logger;
     private readonly int _defaultCreateDays;
     private readonly int _defaultActivateDays;
-    private readonly Lazy<Task> _ensureTable;
+    private volatile Task? _ensureTableTask;
 
     private const string PolicyTableName = "RotationPolicies";
     private const int DefaultRetentionPolicyDays = 180;
@@ -39,10 +39,19 @@ public class PolicyService : IPolicyService
         _defaultActivateDays = int.TryParse(configuration["DefaultActivateCertDaysBeforeExpiry"], out var activateDays)
             ? activateDays
             : 30;
-        _ensureTable = new Lazy<Task>(() => _policyTable.CreateIfNotExistsAsync());
     }
 
-    private Task EnsureTableExistsAsync() => _ensureTable.Value;
+    /// <summary>
+    /// Ensures the table exists with retry-safe caching.
+    /// Unlike Lazy&lt;Task&gt;, a faulted/canceled task is discarded so the next call retries.
+    /// </summary>
+    private Task EnsureTableExistsAsync()
+    {
+        var task = _ensureTableTask;
+        if (task is not null && !task.IsFaulted && !task.IsCanceled)
+            return task;
+        return _ensureTableTask = _policyTable.CreateIfNotExistsAsync();
+    }
 
     /// <inheritdoc />
     public async Task<RotationPolicy> GetGlobalPolicyAsync()
@@ -863,6 +872,51 @@ public class PolicyService : IPolicyService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating sponsors-can-edit-sponsors setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> GetStaleCertCleanupRemindersEnabledAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "StaleCertCleanupReminders");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting stale-cert-cleanup-reminders setting from storage");
+        }
+
+        return true; // enabled by default
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateStaleCertCleanupRemindersEnabledAsync(bool enabled)
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "StaleCertCleanupReminders")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated stale-cert-cleanup-reminders setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating stale-cert-cleanup-reminders setting");
             throw;
         }
     }

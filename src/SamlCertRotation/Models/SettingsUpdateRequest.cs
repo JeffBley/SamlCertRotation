@@ -84,4 +84,9 @@ public class SettingsUpdateRequest
     /// Reports retention policy in days (default 14)
     /// </summary>
     public int? ReportsRetentionPolicyDays { get; set; }
+
+    /// <summary>
+    /// Whether to send monthly reminders to sponsors about expired inactive certificates that should be cleaned up
+    /// </summary>
+    public bool? StaleCertCleanupRemindersEnabled { get; set; }
 }

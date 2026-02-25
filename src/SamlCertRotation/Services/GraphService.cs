@@ -255,7 +255,7 @@ public class GraphService : IGraphService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error activating certificate for {Id}", servicePrincipalId);
-            return false;
+            throw;
         }
     }
 

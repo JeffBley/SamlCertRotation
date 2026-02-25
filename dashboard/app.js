@@ -1549,6 +1549,9 @@ function applySettingsToForm(settings) {
     document.getElementById('sponsorSecondReminderDays').value = Number.isInteger(settings.sponsorSecondReminderDays) ? settings.sponsorSecondReminderDays : 7;
     document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
     document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
+    document.getElementById('staleCertCleanupReminders').value = settings.staleCertCleanupRemindersEnabled === false ? 'disabled' : 'enabled';
+    document.getElementById('staleCertCleanupSchedule').value = formatCronSchedule(settings.staleCertCleanupSchedule || '0 0 6 1 * *');
+    toggleStaleCertCleanupSchedule();
     document.getElementById('sessionTimeoutMinutes').value = typeof settings.sessionTimeoutMinutes === 'number' ? settings.sessionTimeoutMinutes : 0;
     document.getElementById('reportsRetentionPolicyDays').value = settings.reportsRetentionPolicyDays || 14;
     const sponsorsCanRotateEl = document.getElementById('sponsorsCanRotateCerts');
@@ -1589,6 +1592,17 @@ function formatCronSchedule(cron) {
     const everyHoursMatch = hourField.match(/^\*\/(\d+)$/);
     if (everyHoursMatch && parts[3] === '*' && parts[4] === '*' && parts[5] === '*') {
         return `Every ${everyHoursMatch[1]} hours (${cron})`;
+    }
+
+    // Monthly on a specific day (e.g., 0 0 6 1 * *)
+    const dayOfMonth = parseInt(parts[3]);
+    const monthlyHour = parseInt(hourField);
+    const monthlyMinute = parseInt(minuteField);
+    if (!isNaN(dayOfMonth) && !isNaN(monthlyHour) && !isNaN(monthlyMinute) && parts[4] === '*' && parts[5] === '*') {
+        const hourStr = monthlyHour.toString().padStart(2, '0');
+        const minStr = monthlyMinute.toString().padStart(2, '0');
+        const suffix = dayOfMonth === 1 ? 'st' : dayOfMonth === 2 ? 'nd' : dayOfMonth === 3 ? 'rd' : 'th';
+        return `Monthly on the ${dayOfMonth}${suffix} at ${hourStr}:${minStr} UTC (${cron})`;
     }
 
     // Weekly on a specific day (e.g., dayOfWeek = 1 for Monday)
@@ -1653,6 +1667,7 @@ async function saveSettings() {
             sponsorRemindersEnabled,
             sponsorReminderCount,
             notifySponsorsOnExpiration: document.getElementById('notifySponsorsOnExpiration').value === 'enabled',
+            staleCertCleanupRemindersEnabled: document.getElementById('staleCertCleanupReminders').value === 'enabled',
             sponsorFirstReminderDays,
             sponsorSecondReminderDays,
             sponsorThirdReminderDays,
@@ -1676,6 +1691,13 @@ async function saveSettings() {
     } catch (error) {
         showError('Failed to save settings: ' + error.message);
     }
+}
+
+function toggleStaleCertCleanupSchedule() {
+    const select = document.getElementById('staleCertCleanupReminders');
+    const scheduleGroup = document.getElementById('staleCertCleanupScheduleGroup');
+    if (!select || !scheduleGroup) return;
+    scheduleGroup.style.display = select.value === 'enabled' ? 'block' : 'none';
 }
 
 function toggleSponsorReminderSettings() {
@@ -3110,6 +3132,7 @@ document.querySelectorAll('.audit-columns-filter-option-input').forEach(function
 document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
 document.getElementById('sponsorRemindersEnabled').addEventListener('change', toggleSponsorReminderSettings);
 document.getElementById('sponsorReminderCount').addEventListener('change', toggleSponsorReminderCount);
+document.getElementById('staleCertCleanupReminders').addEventListener('change', toggleStaleCertCleanupSchedule);
 
 // Confirm modal
 document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);

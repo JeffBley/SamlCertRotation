@@ -89,5 +89,6 @@ public static class AuditActionType
     public const string SettingsUpdated = "SettingsUpdated";
     public const string SponsorUpdated = "SponsorUpdated";
     public const string SponsorExpirationReminderSent = "SponsorExpirationReminderSent";
+    public const string StaleCertCleanupReminderSent = "StaleCertCleanupReminderSent";
     public const string Error = "Error";
 }

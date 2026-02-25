@@ -25,6 +25,9 @@
     },
     "defaultActivateCertDays": {
       "value": 14
+    },
+    "swaLocation": {
+      "value": "eastus2"
     }
   }
 }

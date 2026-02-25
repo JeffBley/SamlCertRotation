@@ -1113,6 +1113,9 @@
                                 <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivated">CertificateActivated</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="CertificateActivatedReportOnly">CertificateActivatedReportOnly</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="SettingsUpdated">SettingsUpdated</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="SponsorUpdated">SponsorUpdated</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="SponsorExpirationReminderSent">SponsorExpirationReminderSent</label>
+                                <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="StaleCertCleanupReminderSent">StaleCertCleanupReminderSent</label>
                                 <label class="multi-select-filter-option"><input type="checkbox" class="audit-action-filter-option-input" value="Error">Error</label>
                             </div>
                         </div>
@@ -1285,6 +1288,22 @@
                             <option value="disabled">Disabled</option>
                         </select>
                         <p style="font-size:11px;color:#888;margin-top:4px;">If enabled, App Sponsors will be notified after their SAML app certificates have expired. This only applies to apps with auto-rotation set to on or notify.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="staleCertCleanupReminders">Send Notifications to Delete Expired Inactive Certs</label>
+                        <select id="staleCertCleanupReminders" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                            <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                        <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, a consolidated email is sent to each sponsor listing all their applications that have expired inactive certificates which should be deleted.</p>
+                    </div>
+                    <div id="staleCertCleanupScheduleGroup" class="form-group" style="display:none;">
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            Cleanup Reminder Schedule
+                            <span class="info-icon" title="To change the schedule, navigate to the Function App → Settings → Environment variables → StaleCertCleanupSchedule. Use CRON format. The Function App must be restarted for changes to take effect.">ℹ️</span>
+                        </label>
+                        <input type="text" id="staleCertCleanupSchedule" readonly style="background:#f4f4f4;width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;" value="Loading...">
+                        <p style="font-size:11px;color:#888;margin-top:4px;">Schedule for the expired-certificate cleanup reminder emails. Managed via the StaleCertCleanupSchedule environment variable.</p>
                     </div>
                 </div>
             </div>

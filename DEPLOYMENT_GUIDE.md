@@ -165,6 +165,7 @@ Update these values:
 - `adminNotificationEmails`: Admin emails (semicolon-separated)
 - `customSecurityAttributeSet`: The Attribute Set you created in Step 2
 - `customSecurityAttributeName`: The Attribute Name you created in Step 2
+- `swaLocation`: The Azure region for the Static Web App dashboard (default: `eastus2`). SWA supports limited regions: `centralus`, `eastus2`, `eastasia`, `westeurope`, `westus2`. Choose a region closest to your users.
 
 Save the file (`Ctrl+S` then `Ctrl+Q` in Classic; `Ctrl+O` then `Ctrl+X` in nano).
 

@@ -176,4 +176,14 @@ public interface IPolicyService
     /// Update sponsors can edit sponsors setting
     /// </summary>
     Task UpdateSponsorsCanEditSponsorsEnabledAsync(bool enabled);
+
+    /// <summary>
+    /// Get whether stale-cert cleanup reminder emails are enabled (default true/enabled)
+    /// </summary>
+    Task<bool> GetStaleCertCleanupRemindersEnabledAsync();
+
+    /// <summary>
+    /// Update stale-cert cleanup reminder emails setting
+    /// </summary>
+    Task UpdateStaleCertCleanupRemindersEnabledAsync(bool enabled);
 }

@@ -2,183 +2,61 @@
 
 Automated SAML certificate lifecycle management for Microsoft Entra ID Enterprise Applications with a web-based dashboard for monitoring and manual operations.
 
-## Features & Capabilities
+## Key Features & Capabilities
 
 ### 1. Automated SAML Certificate Rotation Engine
-- **Timer-triggered scanner** runs on a configurable CRON schedule (default: daily 6:00 AM UTC via `RotationSchedule` app setting).
-- **Two-phase rotation lifecycle**: (1) **Create** a new certificate when the active cert is within `CreateCertDaysBeforeExpiry` (default 60 days), and (2) **Activate** the pending cert when within `ActivateCertDaysBeforeExpiry` (default 30 days). Each threshold is independently configurable.
-- **Existing pending cert detection**: Before creating, checks whether a newer inactive certificate already exists on the service principal. If so, skips creation and proceeds to activation check.
-- Queries Microsoft Graph for all service principals with `preferredSingleSignOnMode='saml'`, pages through all results, maps certificates (using Verify key credentials and X.509 thumbprint computation), and determines active cert by matching `preferredTokenSigningKeyThumbprint`.
 
-### 2. Custom Security Attribute (CSA) — AutoRotate Control
+- **Two-phase rotation lifecycle**: (1) **Create** a new certificate when the active cert is within `CreateCertDaysBeforeExpiry` (default 30 days), and (2) **Activate** the pending cert when within `ActivateCertDaysBeforeExpiry` (default 14 days). Each threshold is independently configurable.
+  - Global Policy defining each threshold can be overwritten per-app.
+- **Timer-triggered scanner** runs on a configurable CRON schedule (default: daily 6:00 AM UTC via `RotationSchedule` app setting).
 - Each SAML service principal has an `AutoRotate` custom security attribute (in attribute set `SamlCertRotation`) with these modes:
   - **`on`** — Full auto-rotation (create + activate certificates automatically).
   - **`notify`** — Notify-only mode; sends milestone reminders to the app sponsor but does not create/activate certificates.
   - **`off`** — Explicitly excluded from processing.
   - **Not set** — Not configured; excluded from rotation runs.
-- CSA values are read via MS Graph SDK first, then a **REST API fallback** is used because Graph often doesn't return CSAs in collection queries.
-- Parallel fallback lookups with **SemaphoreSlim(20)** limit concurrency to avoid Graph throttling.
 
-### 3. Report-Only Mode
-- A global **report-only mode** setting (persisted in Table Storage, default: enabled). When active, the timer-triggered run logs what *would* happen (`Would Create`, `Would Activate`) but makes no actual changes.
+### 2. Report-Only Mode
+- A global **report-only mode** setting enabled by default. When active, the timer-triggered run logs what *would* happen (`Would Create`, `Would Activate`) but makes no actual changes.
 - Can be toggled in the Settings tab of the dashboard by admins.
 - Manual runs also support explicit report-only or production mode selection.
 
-### 4. Global & Per-App Rotation Policies
-- **Global policy**: `CreateCertDaysBeforeExpiry` and `ActivateCertDaysBeforeExpiry`, persisted in Azure Table Storage.
-- **App-specific policy overrides**: Per-service-principal overrides for create/activate thresholds. Null fields fall back to global.
-- **Effective policy merging**: App-specific overrides are merged with the global policy at runtime.
-- The global policy thresholds also drive certificate **status categorization** (OK/Warning/Critical/Expired) for the dashboard and notifications.
+### 3. Application Sponsor Management
+- Each service principal can have one or more **AppSponsor** emails stored as a tag on the service principal: `AppSponsor=email@example.com`.
+- Admins can **edit the sponsor** via the Applications tab actions menu or in bulk via uploading a CSV. Prefilled and template CSV's can be downloaded.
 
-### 5. Application Sponsor Management
-- Each service principal can have an **AppSponsor** (email) stored as a tag on the service principal: `AppSponsor=email@example.com`.
-- Admins can **edit the sponsor** via the Applications tab actions menu.
-- Sponsor email is validated for format (server-side with `MailAddress`, client-side with regex).
-
-### 6. Email Notification System via Logic App
+### 4. Email Notification System via Logic App
+- Email notifications can be sent to app sponsors when the certificates are nearing their expiration, when certificates are automatically created/activated, or when stale certificates require deletion. Multiple configuration options are available.
+- Specific emails can be configured to receive daily summaries of the automated runs.
 - Emails are sent via an **Azure Logic App** (Office 365 Outlook connector) triggered by HTTP POST from the Function App.
-- **Nine notification types** (all HTML-formatted with Segoe UI styling, previewable in the Testing tab):
-  - **Certificate Created** — Sent to app sponsor when a new cert is generated (AutoRotate=on, or notify apps with Create Certs for Notify enabled).
-  - **Certificate Activated** — Sent to sponsor when a cert is made active. Includes an "Action May Be Required" warning about updating the SAML SP (AutoRotate=on only).
-  - **Error** — Sent to all notification recipients when rotation fails.
-  - **Daily Summary** — Sent to admin recipients after each timer run with stats and per-app results table. Uses a `SuccessActions` set for accurate success/failure counting.
-  - **Reminders** — For AutoRotate=notify apps: milestone-based reminders sent to the sponsor with Entra portal deep-link.
-  - **Certificate Expiration** — Sent once per cert when it actually expires (AutoRotate=on or notify only).
-  - **Manual Reminder – Critical** — Manual-only sponsor reminder for certs in Critical status.
-  - **Manual Reminder – Warning** — Manual-only sponsor reminder for certs in Warning status.
-  - **Sponsor Summary – Prod Runs** — Consolidated email sent to each sponsor after a production run summarising all certificate actions on their sponsored apps.
-- All user-supplied values are **HTML-encoded** before embedding in email templates.
 
-### 7. Sponsor Notification Settings
-- **Sponsors Receive Notifications** toggle (default: enabled). Controls whether sponsors get cert-created/activated/reminder emails. Only applies to AutoRotate=on or notify apps.
-- **Notify Sponsors on Expiration** toggle (default: enabled). Controls whether sponsors receive a one-time notification when their app's certificate actually expires. Only applies to AutoRotate=on or notify apps.
-- **Three configurable sponsor reminder milestones** for notify apps (default: 30, 7, 1 days before expiry).
-- **Milestone deduplication**: Before sending any reminder, the service checks audit log entries against the active cert thumbprint + milestone label to prevent duplicate sends.
+### 5. SAML Certificate Insights
+- Overview provides at-a-glance understanding of SAML certificate health and auto-rotate status.
+- Applications tab provides app-specific info with sort, filter, and export functions.
+- Certificate clean-up tab identifies applications with expired inactive certificates that should be deleted. Admins can click deeplink to go straight to the application in Entra ID or can export list as CSV or JSON.
+- Reports for each run available.
 
-### 8. Manual Trigger Runs from Dashboard
-- **Report-Only Run** button — triggers an instant rotation scan, returning detailed per-app results without making changes.
-- **Prod Run** button — triggers live certificate operations.
-- Both require a **confirmation modal** before executing. Results only include **actionable apps** (those requiring attention) with counts for apps evaluated and apps skipped (no action required).
-- Only accessible to admin-role users.
-
-### 9. Manual Certificate Operations
-- **Create new SAML certificate** — Per-app action that calls `AddTokenSigningCertificate` Graph API (3-year validity). Creates an inactive cert.
-- **Activate newest certificate** — Finds the cert with the most recent `StartDateTime` (the most recently issued cert) and sets it as the active signing key.
-- **Resend Reminder Email** — Manually re-sends a sponsor expiration status email for apps in Expired/Critical/Warning status. Blocked for OK-status apps.
-- All manual operations are audited with `performedBy` attribution showing the user's UPN.
-
-### 10. Dashboard Statistics & KPI Cards
-- Six stat cards: Total SAML Apps, Auto-Rotate ON, Auto-Rotate OFF, Not Configured, Expiring ≤N Days (dynamic threshold), Expired.
-- **Server-side pagination** supported via `?page=N&pageSize=N` query parameters.
-
-### 11. Applications Tab — Filtering, Sorting & Actions
-- **Search by name** — Free-text filter on application display name.
-- **Auto-Rotate multi-select filter** — On, Off, Notify Only, Not Set.
-- **Status multi-select filter** — Expired, Critical, Warning, OK.
-- **Sponsor filter** — Free-text filter on sponsor email.
-- **Sort by** — Name, Days Remaining, Expiry Date (ascending/descending).
-- **Per-app actions dropdown** — Create cert, Activate cert, Edit Sponsor, Resend Reminder (admin only).
-
-### 12. Certificate Clean-up Tab
-- Identifies applications with **inactive AND expired certificates** that should be removed.
-- Shows app name, app ID, and count of expired inactive certs.
-- Notes that deletion must be done manually in Azure Portal.
-- Exportable as **JSON or CSV**.
-
-### 13. Audit Log System
+### 13. Audit Log System REVIEW
 - Every significant action logged to Azure Table Storage with: ServicePrincipalId, AppDisplayName, ActionType, Description, IsSuccess, ErrorMessage, CertificateThumbprint, NewCertificateThumbprint, PerformedBy (user UPN or "System").
 - **12 action types**: CertificateCreated, CertificateCreatedReportOnly, CertificateActivated, CertificateActivatedReportOnly, CertificateExpiringSoon, NotificationSent, PolicyUpdated, ScanCompleted, ScanCompletedReportOnly, SponsorUpdated, SponsorExpirationReminderSent, Error.
 - **Bulk audit query** with GUID validation to prevent OData injection.
 
-### 14. Audit Log Tab — Filtering & Sorting
-- **Date range picker** (default last 30 days).
-- **Action type multi-select filter**.
-- **Dynamic column filters** — Add filters on Application, Initiated By, Result, Details.
-- **Sort by** — Time, Application, Initiated By, Action, Result (ascending/descending).
+### 7. Audit Log and Reports Retention & Purge
+- Configurable retention policy for audit logs (default: 180 days). After each timer run, entries older than the retention period are purged in batched transactions.
+- Configurable retention policy for Run Reports (default:14 days). After each timer run, entries older than the retention period are purged in batched transactions.
 
-### 15. Audit Log Retention & Purge
-- **Configurable retention policy** (default: 180 days). After each timer run, entries older than the retention period are purged in batched transactions.
+### 8. Role-Based Access Control (RBAC)
+- Three roles available: **Admin**, **Reader**, and **Sponsor**.
+- Admins have full read/write permissions in the app.
+- Readers can view but cannot take update or write actions.
+- Sponsors have special view and can only see information about their own applications. They can take write actions from directly in the app if the admin allows it:
+  - Edit sponsor field on their apps (default enabled)
+  - Edit policy on their apps - I.e. when to automate creation and activation of new certs (default disabled)
+  - Manually trigger creation and activation of new certs (default disabled)
 
-### 16. Role-Based Access Control (RBAC)
-- Three roles: **Admin**, **Reader**, **Authenticated**.
-- **GetRoles function** (`/api/GetRoles`): Called by SWA `rolesSource`. Maps Entra group IDs and app roles to admin/reader dashboard roles.
-  - Admin by group: `SWA_ADMIN_GROUP_ID` config matches a group claim.
-  - Admin by app role: `SWA_ADMIN_APP_ROLE` config (default: `SamlCertRotation.Admin`).
-  - Reader by group/app role: similarly configurable.
-  - Admin users automatically get reader role too.
-- **API authorization**: All endpoints require admin or reader role. Write endpoints require admin. Authenticated-only users without admin/reader role are denied access (403 Forbidden).
-- **Client-side role enforcement**: Dashboard disables write operations for non-admin users and redirects unauthorized users.
 
-### 17. Triple-Path Authentication
-- **Path 1 — Validated AAD Token**: Reads from auth headers, validates signature against OIDC signing keys, issuer, audience, and lifetime.
-- **Path 2 — x-ms-client-principal header**: Base64-decoded SWA principal payload.
-- **Path 3 — SWA-issued JWT**: Trusted for configured SWA hostnames. Decodes `prn` claim for embedded client principal.
-- All paths extract UPN from `preferred_username`/`upn`/`email` claims for audit attribution.
 
-### 18. Session Timeout with Idle Tracking
-- **Configurable session timeout** (default: 15 minutes, 0 = disabled).
-- Client-side idle tracking: Listens for mouse, keyboard, scroll, and touch events.
-- On timeout, shows a **modal prompt** with a 2-minute countdown. "Stay Signed In" resets; countdown expiry signs out.
-
-### 19. Export Capabilities
-- **Export Applications** — Downloads currently filtered apps as **JSON or CSV** with filter metadata.
-- **Export Cleanup List** — Downloads certificate cleanup list as **JSON or CSV**.
-- **Export Audit Log** — Downloads filtered audit entries as JSON.
-
-### 20. Security Hardening
-- **XSS prevention**: `escapeHtml()`, `toSafeClassToken()`, `toDomIdToken()`, `toJsStringLiteral()` on all rendered user content.
-- **Error message sanitization**: API responses filter stack traces, connection strings, passwords, and secrets.
-- **OData injection guard**: All service principal IDs validated as GUIDs before building Table Storage queries.
-- **GUID validation**: All API endpoints accepting application IDs validate format and return 400 if invalid.
-- **Content Security Policy**: `default-src 'self'`, `frame-ancestors 'none'`, etc. via SWA config.
-- **Security headers**: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
-
-### 21. Infrastructure as Code (Bicep)
-- Single `main.bicep` template deploys all resources:
-  - User-Assigned Managed Identity
-  - Key Vault (RBAC auth, soft delete, purge protection)
-  - Storage Account (TLS 1.2, no public blob access)
-  - Log Analytics Workspace (90-day retention)
-  - Application Insights (workspace-based)
-  - App Service Plan (Consumption/Y1)
-  - Azure Function App (.NET 8 isolated, HTTPS-only, FTPS disabled)
-  - Static Web App (Standard tier)
-  - Logic App (HTTP trigger → Office 365 Send Email)
-  - Office 365 API Connection
-
-### 22. Application Insights & Telemetry
-- Function App telemetry with sampling (excludes Request type).
-- Log levels: Default=Information, Host.Results=Error, Function=Information, Host.Aggregator=Warning.
-
-### 23. Reports Tab — Run History
-- Lists all timer-triggered and manual rotation runs with timestamp, mode, total/actionable/error counts.
-- **Detail view** shows per-app results filtered to actionable apps only (those requiring attention).
-- `ResultsJson` stored **GZip-compressed** in Azure Table Storage `RunReports` table to stay within the 64 KB entity limit.
-- **Reports retention policy** (default: 14 days) — after each timer run, reports older than the retention period are purged.
-
-### 24. Testing Tab — Email Preview & Test Send
-- **Preview all 6 email templates** — Renders HTML previews of every notification type with sample data.
-- **Send test email** — Sends a real test email to the configured notification recipients via the Logic App.
-- Only accessible to admin-role users.
-
-### 25. Bulk Sponsor Management
-- **Bulk update sponsors** — `POST /api/applications/bulk-update-sponsors` accepts a JSON array of `{ id, sponsor }` objects.
-- Returns counts of updated, cleared, skipped, and failed entries.
-- Only accessible to admin-role users.
-
-### 26. Create Certs for Notify Apps
-- **Global toggle** — When enabled, apps with `AutoRotate=notify` will also have new certificates created (but not activated) when within the creation threshold.
-- **Per-app override** — Each app can override the global setting via app-specific policy (`CreateCertsForNotifyOverride`).
-- Default: disabled.
-
-### 27. Additional Dashboard Features
-- **User identity display** — Logged-in user's UPN shown in header.
-- **Sign out** — Clears SWA auth cookie and redirects to login.
-- **Unauthorized access page** — Shown when a user lacks admin/reader role.
-- **CRON schedule display** — Human-readable formatting in Settings tab with tooltip for how to change.
-- **Entra deep-links** — Direct links to Enterprise Application SAML sign-on blade in notification emails.
-- **Confirmation modals** — Required before rotation triggers and destructive actions.
-- **Status banners** — Success/error messages with auto-dismiss.
+### 9. Additional Dashboard Features
+- 
 
 ## Architecture
 

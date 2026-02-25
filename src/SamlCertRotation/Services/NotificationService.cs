@@ -619,7 +619,8 @@ public class NotificationService : INotificationService
         "SponsorExpirationExpired",
         "SponsorExpirationCritical",
         "SponsorExpirationWarning",
-        "ConsolidatedSponsor"
+        "ConsolidatedSponsor",
+        "StaleCertCleanupReminder"
     };
 
     /// <inheritdoc />
@@ -761,11 +762,195 @@ public class NotificationService : INotificationService
                 body = GenerateConsolidatedSponsorEmail(sampleItems);
                 break;
 
+            case "StaleCertCleanupReminder":
+                var staleSampleApp1 = new SamlApplication
+                {
+                    Id = "00000000-0000-0000-0000-000000000000",
+                    AppId = "11111111-1111-1111-1111-111111111111",
+                    DisplayName = "Contoso SAML App (Test)",
+                    Sponsor = toEmail,
+                    Certificates = new List<SamlCertificate>
+                    {
+                        new SamlCertificate { Thumbprint = "AB12CD34EF56789012345678901234567890ABCD", EndDateTime = DateTime.UtcNow.AddDays(-45), IsActive = false },
+                        new SamlCertificate { Thumbprint = "FF99EE88DD77CC66BB55AA4433221100FFEEDDCC", EndDateTime = DateTime.UtcNow.AddDays(-90), IsActive = false }
+                    }
+                };
+                var staleSampleApp2 = new SamlApplication
+                {
+                    Id = "22222222-2222-2222-2222-222222222222",
+                    AppId = "33333333-3333-3333-3333-333333333333",
+                    DisplayName = "Fabrikam SAML App (Test)",
+                    Sponsor = toEmail,
+                    Certificates = new List<SamlCertificate>
+                    {
+                        new SamlCertificate { Thumbprint = "AA11BB22CC33DD44EE55FF6677889900AABBCCDD", EndDateTime = DateTime.UtcNow.AddDays(-10), IsActive = false }
+                    }
+                };
+                var staleSampleItems = new List<(SamlApplication App, List<SamlCertificate> ExpiredInactiveCerts)>
+                {
+                    (staleSampleApp1, staleSampleApp1.Certificates),
+                    (staleSampleApp2, staleSampleApp2.Certificates)
+                };
+                subject = $"[TEST] [SAML Cert Rotation] Expired Inactive Certificates - {staleSampleItems.Count} Application(s)";
+                body = GenerateStaleCertCleanupEmail(staleSampleItems);
+                break;
+
             default:
                 _logger.LogWarning("Unknown test email template: {Template}", templateName);
                 return false;
         }
 
         return await _graphService.SendEmailAsync(new List<string> { toEmail }, subject, body);
+    }
+
+    /// <inheritdoc />
+    public async Task<List<SamlApplication>> SendStaleCertCleanupRemindersAsync(List<SamlApplication> apps)
+    {
+        var notifiedApps = new List<SamlApplication>();
+
+        if (apps == null || !apps.Any())
+        {
+            return notifiedApps;
+        }
+
+        var enabled = await _policyService.GetStaleCertCleanupRemindersEnabledAsync();
+        if (!enabled)
+        {
+            _logger.LogInformation("Stale-cert cleanup reminders disabled — skipping");
+            return notifiedApps;
+        }
+
+        // Find apps with at least one expired inactive certificate
+        var now = DateTime.UtcNow;
+        var appsWithStaleCerts = new List<(SamlApplication App, List<SamlCertificate> ExpiredInactiveCerts)>();
+
+        foreach (var app in apps)
+        {
+            if (app.Certificates == null || !app.Certificates.Any()) continue;
+
+            var expiredInactive = app.Certificates
+                .Where(c => !c.IsActive && c.EndDateTime < now)
+                .ToList();
+
+            if (expiredInactive.Any())
+            {
+                appsWithStaleCerts.Add((app, expiredInactive));
+            }
+        }
+
+        if (!appsWithStaleCerts.Any())
+        {
+            _logger.LogInformation("No applications have expired inactive certificates — no cleanup reminders to send");
+            return notifiedApps;
+        }
+
+        // Group by sponsor email
+        var sponsorGroups = new Dictionary<string, List<(SamlApplication App, List<SamlCertificate> ExpiredInactiveCerts)>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in appsWithStaleCerts)
+        {
+            var emails = ParseSponsorEmails(item.App.Sponsor);
+            foreach (var email in emails)
+            {
+                if (!sponsorGroups.TryGetValue(email, out var list))
+                {
+                    list = new List<(SamlApplication, List<SamlCertificate>)>();
+                    sponsorGroups[email] = list;
+                }
+                list.Add(item);
+            }
+        }
+
+        _logger.LogInformation(
+            "Sending stale-cert cleanup reminders for {AppCount} app(s) to {SponsorCount} sponsor(s)",
+            appsWithStaleCerts.Count, sponsorGroups.Count);
+
+        // Track which apps had reminders successfully sent
+        var notifiedAppIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (sponsorEmail, items) in sponsorGroups)
+        {
+            try
+            {
+                var totalCerts = items.Sum(i => i.ExpiredInactiveCerts.Count);
+                var subject = items.Count == 1
+                    ? $"[SAML Cert Rotation] Expired Inactive Certificate Cleanup - {items[0].App.DisplayName}"
+                    : $"[SAML Cert Rotation] Expired Inactive Certificates - {items.Count} Application(s), {totalCerts} Certificate(s)";
+
+                var body = GenerateStaleCertCleanupEmail(items);
+                await _graphService.SendEmailAsync(new List<string> { sponsorEmail }, subject, body);
+
+                // Mark apps from this successful send
+                foreach (var item in items)
+                {
+                    notifiedAppIds.Add(item.App.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send stale-cert cleanup reminder to {Email}", sponsorEmail);
+            }
+        }
+
+        // Return the distinct list of apps whose reminders were successfully sent
+        notifiedApps = appsWithStaleCerts
+            .Where(a => notifiedAppIds.Contains(a.App.Id))
+            .Select(a => a.App)
+            .ToList();
+
+        return notifiedApps;
+    }
+
+    private string GenerateStaleCertCleanupEmail(List<(SamlApplication App, List<SamlCertificate> ExpiredInactiveCerts)> items)
+    {
+        var totalCerts = items.Sum(i => i.ExpiredInactiveCerts.Count);
+        var rowsHtml = new System.Text.StringBuilder();
+
+        foreach (var (app, certs) in items.OrderBy(i => i.App.DisplayName, StringComparer.OrdinalIgnoreCase))
+        {
+            var entraUrl = Helpers.UrlHelper.BuildEntraManagedAppUrl(app.Id, app.AppId);
+
+            foreach (var cert in certs.OrderBy(c => c.EndDateTime))
+            {
+                var expiredDate = cert.EndDateTime.ToString("yyyy-MM-dd");
+                var daysSinceExpiry = (int)(DateTime.UtcNow - cert.EndDateTime).TotalDays;
+
+                rowsHtml.AppendLine($@"
+                        <tr>
+                            <td style='padding: 10px 15px; border-top: 1px solid #eee;'>{H(app.DisplayName)}</td>
+                            <td style='padding: 10px 15px; border-top: 1px solid #eee; font-family: monospace; font-size: 12px;'>{H(cert.Thumbprint)}</td>
+                            <td style='padding: 10px 15px; border-top: 1px solid #eee;'>{H(expiredDate)}</td>
+                            <td style='padding: 10px 15px; border-top: 1px solid #eee;'>{daysSinceExpiry} day(s) ago</td>
+                            <td style='padding: 10px 15px; border-top: 1px solid #eee;'><a href='{H(entraUrl)}' style='color: #0078d4;'>Open in Entra</a></td>
+                        </tr>");
+            }
+        }
+
+        var extraStyles = @"
+            table { width: 100%; border-collapse: collapse; background: white; }
+            th { background: #f5f5f5; padding: 10px 15px; text-align: left; font-size: 13px; color: #555; }";
+
+        var content = $@"
+            <div style='background: #fff4ce; border-left: 4px solid #ffb900; padding: 15px; margin: 0 0 20px 0;'>
+                <strong>Action Requested:</strong> The following {totalCerts} expired inactive certificate(s)
+                across {items.Count} application(s) you sponsor should be reviewed and deleted from Entra ID
+                to keep your tenant clean.
+            </div>
+            <table>
+                <tr>
+                    <th>Application</th>
+                    <th>Thumbprint</th>
+                    <th>Expired On</th>
+                    <th>Expired</th>
+                    <th>View in Entra ID</th>
+                </tr>
+                {rowsHtml}
+            </table>
+            <p style='margin-top: 20px; color: #666; font-size: 13px;'>
+                To remove expired certificates, open the application in Entra ID, navigate to
+                <strong>Single sign-on → SAML Certificates</strong>, and delete the expired inactive entries.
+            </p>";
+
+        return EmailShell("#ffb900", "🧹 Expired Inactive Certificate Cleanup", $"{DateTime.UtcNow:MMMM yyyy}", content, extraStyles, maxWidth: 800);
     }
 }

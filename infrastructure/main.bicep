@@ -36,6 +36,9 @@ param defaultCreateCertDays int = 60
 @description('Default days before expiry to activate new certificate')
 param defaultActivateCertDays int = 30
 
+@description('The Azure region for the Static Web App. SWA has limited region availability (centralus, eastus2, eastasia, westeurope, westus2).')
+param swaLocation string = 'eastus2'
+
 // Variables
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var shortSuffix = substring(uniqueSuffix, 0, 8)
@@ -244,11 +247,11 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
-          value: storageConnectionString
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=StorageConnectionString)'
         }
         {
           name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: storageConnectionString
+          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=StorageConnectionString)'
         }
         {
           name: 'WEBSITE_CONTENTSHARE'
@@ -303,6 +306,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           value: '0 0 6 * * *'
         }
         {
+          name: 'StaleCertCleanupSchedule'
+          value: '0 0 6 1 * *'
+        }
+        {
           name: 'LogicAppEmailUrl'
           value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=LogicAppEmailUrl)'
         }
@@ -340,7 +347,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
 // ============================================================================
 resource staticWebApp 'Microsoft.Web/staticSites@2023-01-01' = {
   name: staticWebAppName
-  location: 'eastus2' // Static Web Apps have limited region availability
+  location: swaLocation
   sku: {
     name: 'Standard'
     tier: 'Standard'

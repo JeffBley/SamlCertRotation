@@ -67,11 +67,6 @@ public class SamlCertificate
     public DateTime StartDateTime { get; set; }
 
     /// <summary>
-    /// Certificate expiration date
-    /// </summary>
-    public DateTime EndDateTime { get; set; }
-
-    /// <summary>
     /// Type of credential (e.g., AsymmetricX509Cert)
     /// </summary>
     public string Type { get; set; } = string.Empty;
@@ -88,7 +83,23 @@ public class SamlCertificate
 
     /// <summary>
     /// Days until certificate expires (negative = already expired).
-    /// Uses Math.Floor so a cert expired even 1 minute ago yields -1, not 0.
+    /// Snapshotted when <see cref="EndDateTime"/> is set so the value stays
+    /// consistent throughout a single rotation run.
     /// </summary>
-    public int DaysUntilExpiry => (int)Math.Floor((EndDateTime - DateTime.UtcNow).TotalDays);
+    public int DaysUntilExpiry { get; private set; }
+
+    private DateTime _endDateTime;
+
+    /// <summary>
+    /// Certificate expiration date. Setting this recalculates <see cref="DaysUntilExpiry"/>.
+    /// </summary>
+    public DateTime EndDateTime
+    {
+        get => _endDateTime;
+        set
+        {
+            _endDateTime = value;
+            DaysUntilExpiry = (int)Math.Floor((value - DateTime.UtcNow).TotalDays);
+        }
+    }
 }

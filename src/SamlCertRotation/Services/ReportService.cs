@@ -14,7 +14,7 @@ public class ReportService : IReportService
 {
     private readonly TableClient _reportTable;
     private readonly ILogger<ReportService> _logger;
-    private readonly Lazy<Task> _ensureTable;
+    private volatile Task? _ensureTableTask;
 
     private const string ReportTableName = "RunReports";
 
@@ -22,10 +22,19 @@ public class ReportService : IReportService
     {
         _reportTable = tableServiceClient.GetTableClient(ReportTableName);
         _logger = logger;
-        _ensureTable = new Lazy<Task>(() => _reportTable.CreateIfNotExistsAsync());
     }
 
-    private Task EnsureTableExistsAsync() => _ensureTable.Value;
+    /// <summary>
+    /// Ensures the table exists with retry-safe caching.
+    /// Unlike Lazy&lt;Task&gt;, a faulted/canceled task is discarded so the next call retries.
+    /// </summary>
+    private Task EnsureTableExistsAsync()
+    {
+        var task = _ensureTableTask;
+        if (task is not null && !task.IsFaulted && !task.IsCanceled)
+            return task;
+        return _ensureTableTask = _reportTable.CreateIfNotExistsAsync();
+    }
 
     /// <inheritdoc />
     public async Task SaveRunReportAsync(RunReport report)
@@ -58,7 +67,7 @@ public class ReportService : IReportService
             await EnsureTableExistsAsync();
             var startDate = DateTime.UtcNow.Date.AddDays(-daysBack);
             var startPartitionKey = startDate.ToString("yyyy-MM-dd");
-            var filter = $"PartitionKey ge '{startPartitionKey}'";
+            var filter = TableClient.CreateQueryFilter($"PartitionKey ge {startPartitionKey}");
 
             await foreach (var report in _reportTable.QueryAsync<RunReport>(filter: filter))
             {
@@ -87,7 +96,7 @@ public class ReportService : IReportService
             await EnsureTableExistsAsync();
 
             // We don't know the PartitionKey, so scan for the RowKey
-            var filter = $"RowKey eq '{runId}'";
+            var filter = TableClient.CreateQueryFilter($"RowKey eq {runId}");
             await foreach (var report in _reportTable.QueryAsync<RunReport>(filter: filter, maxPerPage: 1))
             {
                 DecompressResults(report);
@@ -119,7 +128,7 @@ public class ReportService : IReportService
             await EnsureTableExistsAsync();
             var entriesToDelete = new List<(string PartitionKey, string RowKey)>();
 
-            await foreach (var report in _reportTable.QueryAsync<RunReport>(filter: $"PartitionKey lt '{cutoffPartitionKey}'"))
+            await foreach (var report in _reportTable.QueryAsync<RunReport>(filter: TableClient.CreateQueryFilter($"PartitionKey lt {cutoffPartitionKey}")))
             {
                 entriesToDelete.Add((report.PartitionKey, report.RowKey));
             }

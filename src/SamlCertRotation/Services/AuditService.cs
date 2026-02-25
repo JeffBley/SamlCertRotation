@@ -12,7 +12,7 @@ public class AuditService : IAuditService
 {
     private readonly TableClient _auditTable;
     private readonly ILogger<AuditService> _logger;
-    private readonly Lazy<Task> _ensureTable;
+    private volatile Task? _ensureTableTask;
 
     private const string AuditTableName = "AuditLog";
 
@@ -20,10 +20,19 @@ public class AuditService : IAuditService
     {
         _auditTable = tableServiceClient.GetTableClient(AuditTableName);
         _logger = logger;
-        _ensureTable = new Lazy<Task>(() => _auditTable.CreateIfNotExistsAsync());
     }
 
-    private Task EnsureTableExistsAsync() => _ensureTable.Value;
+    /// <summary>
+    /// Ensures the table exists with retry-safe caching.
+    /// Unlike Lazy&lt;Task&gt;, a faulted/canceled task is discarded so the next call retries.
+    /// </summary>
+    private Task EnsureTableExistsAsync()
+    {
+        var task = _ensureTableTask;
+        if (task is not null && !task.IsFaulted && !task.IsCanceled)
+            return task;
+        return _ensureTableTask = _auditTable.CreateIfNotExistsAsync();
+    }
 
     /// <inheritdoc />
     public async Task LogAsync(AuditEntry entry)
@@ -89,7 +98,7 @@ public class AuditService : IAuditService
             await EnsureTableExistsAsync();
             var startPartitionKey = startDate.Date.ToString("yyyy-MM-dd");
             var endPartitionKey = endDate.Date.ToString("yyyy-MM-dd");
-            var filter = $"PartitionKey ge '{startPartitionKey}' and PartitionKey le '{endPartitionKey}'";
+            var filter = TableClient.CreateQueryFilter($"PartitionKey ge {startPartitionKey} and PartitionKey le {endPartitionKey}");
 
             await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(filter: filter))
             {
@@ -123,7 +132,8 @@ public class AuditService : IAuditService
             var startDate = endDate.AddDays(-30);
             var startPartitionKey = startDate.ToString("yyyy-MM-dd");
             var endPartitionKey = endDate.ToString("yyyy-MM-dd");
-            var filter = $"PartitionKey ge '{startPartitionKey}' and PartitionKey le '{endPartitionKey}' and ServicePrincipalId eq '{servicePrincipalId}'";
+            var filter = TableClient.CreateQueryFilter(
+                $"PartitionKey ge {startPartitionKey} and PartitionKey le {endPartitionKey} and ServicePrincipalId eq {servicePrincipalId}");
 
             await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(filter: filter, maxPerPage: maxResults))
             {
@@ -159,7 +169,7 @@ public class AuditService : IAuditService
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (idSet.Count == 0) return result;
 
-            var filter = $"PartitionKey ge '{startPartitionKey}' and PartitionKey le '{endPartitionKey}'";
+            var filter = TableClient.CreateQueryFilter($"PartitionKey ge {startPartitionKey} and PartitionKey le {endPartitionKey}");
 
             // If only a small number of IDs, add them to the server-side filter
             if (idSet.Count <= 15)
@@ -206,7 +216,7 @@ public class AuditService : IAuditService
             // Group deletes by partition key and batch them (max 100 per batch in Table Storage)
             await EnsureTableExistsAsync();
             var entriesToDelete = new List<(string PartitionKey, string RowKey)>();
-            await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(filter: $"PartitionKey lt '{cutoffPartitionKey}'"))
+            await foreach (var entry in _auditTable.QueryAsync<AuditEntry>(filter: TableClient.CreateQueryFilter($"PartitionKey lt {cutoffPartitionKey}")))
             {
                 entriesToDelete.Add((entry.PartitionKey, entry.RowKey));
             }

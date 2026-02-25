@@ -48,4 +48,12 @@ public interface INotificationService
     /// Send a test email using a named template with sample data
     /// </summary>
     Task<bool> SendTestEmailAsync(string templateName, string toEmail);
+
+    /// <summary>
+    /// Send consolidated reminder emails to each sponsor listing their applications
+    /// that have expired, inactive certificates which should be cleaned up.
+    /// Only sends when the stale-cert-cleanup-reminders setting is enabled.
+    /// Returns the list of applications that were included in reminder emails.
+    /// </summary>
+    Task<List<SamlApplication>> SendStaleCertCleanupRemindersAsync(List<SamlApplication> apps);
 }
