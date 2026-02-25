@@ -2239,9 +2239,9 @@ public class DashboardFunctions
                 "DailySummary" => "Daily rotation summary sent to admins",
                 "NotifyReminder" => "Expiration reminder for apps marked as Notify",
                 "SponsorExpirationExpired" => "Sponsor notification for expired certificate",
-                "SponsorExpirationCritical" => "Sponsor notification for critical certificate status",
-                "SponsorExpirationWarning" => "Sponsor notification for warning certificate status",
-                "ConsolidatedSponsor" => "Consolidated notification sent to sponsor for multiple apps",
+                "SponsorExpirationCritical" => "Manual sponsor reminder for critical certificate status",
+                "SponsorExpirationWarning" => "Manual sponsor reminder for warning certificate status",
+                "ConsolidatedSponsor" => "Consolidated sponsor summary sent after production runs",
                 _ => ""
             }
         });

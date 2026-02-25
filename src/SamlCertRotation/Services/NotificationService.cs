@@ -48,7 +48,7 @@ public class NotificationService : INotificationService
         }
 
         var subject = $"[SAML Cert Rotation] New Certificate Created - {app.DisplayName}";
-        var body = GenerateCertificateCreatedEmail(app, newCert);
+        var body = GenerateCertificateActionEmail(app, newCert, isActivation: false);
 
         return await _graphService.SendEmailAsync(recipients, subject, body);
     }
@@ -64,7 +64,7 @@ public class NotificationService : INotificationService
         }
 
         var subject = $"[SAML Cert Rotation] Certificate Activated - {app.DisplayName}";
-        var body = GenerateCertificateActivatedEmail(app, activatedCert);
+        var body = GenerateCertificateActionEmail(app, activatedCert, isActivation: true);
 
         return await _graphService.SendEmailAsync(recipients, subject, body);
     }
@@ -108,7 +108,7 @@ public class NotificationService : INotificationService
         }
 
         var subject = $"[SAML Cert Rotation] [Notify] Certificate Expiring in {daysUntilExpiry} day(s) - {app.DisplayName}";
-        var body = GenerateNotifyOnlyReminderEmail(app, expiringCert, daysUntilExpiry, appPortalUrl, milestoneLabel);
+        var body = GenerateSponsorExpirationStatusEmail(app, expiringCert, daysUntilExpiry, appPortalUrl, "Notify", manualSend: false, milestoneLabel: milestoneLabel);
         return await _graphService.SendEmailAsync(recipients, subject, body);
     }
 
@@ -239,7 +239,11 @@ public class NotificationService : INotificationService
     /// </summary>
     private static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
-    private string GenerateCertificateCreatedEmail(SamlApplication app, SamlCertificate newCert)
+    /// <summary>
+    /// Shared email shell that wraps content in the standard HTML structure (DOCTYPE, styles,
+    /// header, content area, footer). All generators delegate to this to avoid boilerplate duplication.
+    /// </summary>
+    private static string EmailShell(string headerColor, string title, string? subtitle, string contentHtml, string extraStyles = "", int maxWidth = 600)
     {
         return $@"
 <!DOCTYPE html>
@@ -247,35 +251,27 @@ public class NotificationService : INotificationService
 <head>
     <style>
         body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: #0078d4; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
+        .container {{ max-width: {maxWidth}px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: {headerColor}; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
         .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
-        .success {{ background: #dff6dd; border-left: 4px solid #107c10; padding: 15px; margin: 15px 0; }}
         .details {{ background: white; padding: 15px; border-radius: 4px; margin-top: 15px; }}
         .label {{ font-weight: 600; color: #666; }}
+        .callout-green {{ background: #dff6dd; border-left: 4px solid #107c10; padding: 15px; margin: 15px 0; }}
+        .callout-yellow {{ background: #fff4ce; border-left: 4px solid #ffb900; padding: 15px; margin: 15px 0; }}
+        .callout-red {{ background: #fde7e9; border-left: 4px solid #d13438; padding: 15px; margin: 15px 0; }}
+        .button {{ display: inline-block; padding: 10px 14px; background: #0078d4; color: white; text-decoration: none; border-radius: 4px; margin-top: 12px; }}
         .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
+        {extraStyles}
     </style>
 </head>
 <body>
     <div class='container'>
         <div class='header'>
-            <h2 style='margin:0;'>🔐 New SAML Certificate Created</h2>
+            <h2 style='margin:0;'>{title}</h2>
+            {(subtitle != null ? $"<p style='margin: 5px 0 0 0; opacity: 0.9;'>{subtitle}</p>" : "")}
         </div>
         <div class='content'>
-            <div class='success'>
-                <strong>A new SAML signing certificate has been created for your application.</strong>
-            </div>
-            <div class='details'>
-                <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
-                <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
-                <p><span class='label'>New Certificate Thumbprint:</span> {H(newCert.Thumbprint)}</p>
-                <p><span class='label'>Valid From:</span> {newCert.StartDateTime:yyyy-MM-dd HH:mm} UTC</p>
-                <p><span class='label'>Valid Until:</span> {newCert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
-            </div>
-            <p style='margin-top: 20px;'>
-                <strong>Note:</strong> This certificate is NOT yet active. It will be automatically activated 
-                closer to the expiration of the current certificate according to your policy settings.
-            </p>
+            {contentHtml}
         </div>
         <div class='footer'>
             This is an automated message from the SAML Certificate Rotation Tool.
@@ -285,91 +281,53 @@ public class NotificationService : INotificationService
 </html>";
     }
 
-    private string GenerateCertificateActivatedEmail(SamlApplication app, SamlCertificate activatedCert)
+    private string GenerateCertificateActionEmail(SamlApplication app, SamlCertificate cert, bool isActivation)
     {
-        return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: #107c10; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
-        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
-        .activated {{ background: #dff6dd; border-left: 4px solid #107c10; padding: 15px; margin: 15px 0; }}
-        .details {{ background: white; padding: 15px; border-radius: 4px; margin-top: 15px; }}
-        .label {{ font-weight: 600; color: #666; }}
-        .action-required {{ background: #fff4ce; border-left: 4px solid #ffb900; padding: 15px; margin: 15px 0; }}
-        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h2 style='margin:0;'>✅ SAML Certificate Activated</h2>
-        </div>
-        <div class='content'>
-            <div class='activated'>
-                <strong>A new SAML signing certificate has been activated for your application.</strong>
+        var headerColor = isActivation ? "#107c10" : "#0078d4";
+        var title = isActivation ? "✅ SAML Certificate Activated" : "🔐 New SAML Certificate Created";
+        var headline = isActivation
+            ? "A new SAML signing certificate has been activated for your application."
+            : "A new SAML signing certificate has been created for your application.";
+        var thumbLabel = isActivation ? "Activated Certificate Thumbprint" : "New Certificate Thumbprint";
+
+        var content = $@"
+            <div class='callout-green'>
+                <strong>{H(headline)}</strong>
             </div>
             <div class='details'>
                 <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
                 <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
-                <p><span class='label'>Activated Certificate Thumbprint:</span> {H(activatedCert.Thumbprint)}</p>
-                <p><span class='label'>Valid Until:</span> {activatedCert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
+                <p><span class='label'>{thumbLabel}:</span> {H(cert.Thumbprint)}</p>
+                {(!isActivation ? $"<p><span class='label'>Valid From:</span> {cert.StartDateTime:yyyy-MM-dd HH:mm} UTC</p>" : "")}
+                <p><span class='label'>Valid Until:</span> {cert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
             </div>
-            <div class='action-required'>
+            {(isActivation ? @"
+            <div class='callout-yellow'>
                 <strong>⚠️ Action May Be Required:</strong><br/>
                 If your SAML Service Provider does not automatically fetch metadata updates, you may need 
                 to manually update the SP with the new certificate. Otherwise, SAML authentication may fail.
-            </div>
-        </div>
-        <div class='footer'>
-            This is an automated message from the SAML Certificate Rotation Tool.
-        </div>
-    </div>
-</body>
-</html>";
+            </div>" : @"
+            <p style='margin-top: 20px;'>
+                <strong>Note:</strong> This certificate is NOT yet active. It will be automatically activated 
+                closer to the expiration of the current certificate according to your policy settings.
+            </p>")}";
+
+        return EmailShell(headerColor, title, null, content);
     }
 
     private string GenerateErrorEmail(SamlApplication app, string errorMessage, string operation)
     {
-        return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: #d13438; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
-        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
-        .error {{ background: #fde7e9; border-left: 4px solid #d13438; padding: 15px; margin: 15px 0; font-family: monospace; white-space: pre-wrap; }}
-        .details {{ background: white; padding: 15px; border-radius: 4px; margin-top: 15px; }}
-        .label {{ font-weight: 600; color: #666; }}
-        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h2 style='margin:0;'>❌ Certificate Operation Failed</h2>
-        </div>
-        <div class='content'>
+        var content = $@"
             <div class='details'>
                 <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
                 <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
                 <p><span class='label'>Operation:</span> {H(operation)}</p>
                 <p><span class='label'>Time:</span> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>
             </div>
-            <div class='error'>{H(errorMessage)}</div>
-            <p>Please investigate this error and take appropriate action.</p>
-        </div>
-        <div class='footer'>
-            This is an automated message from the SAML Certificate Rotation Tool.
-        </div>
-    </div>
-</body>
-</html>";
+            <div class='callout-red' style='font-family: monospace; white-space: pre-wrap;'>{H(errorMessage)}</div>
+            <p>Please investigate this error and take appropriate action.</p>";
+
+        return EmailShell("#d13438", "❌ Certificate Operation Failed", null, content);
     }
 
     private string GenerateDailySummaryEmail(DashboardStats stats, List<RotationResult> results)
@@ -393,31 +351,15 @@ public class NotificationService : INotificationService
             </tr>";
         }));
 
-        return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 700px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: #0078d4; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
-        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
-        .stats-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }}
-        .stat-card {{ background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        .stat-value {{ font-size: 28px; font-weight: bold; color: #0078d4; }}
-        .stat-label {{ font-size: 12px; color: #666; }}
-        table {{ width: 100%; border-collapse: collapse; background: white; }}
-        th {{ background: #f0f0f0; padding: 10px; text-align: left; }}
-        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h2 style='margin:0;'>📊 Daily SAML Certificate Rotation Summary</h2>
-            <p style='margin: 5px 0 0 0; opacity: 0.9;'>{DateTime.UtcNow:dddd, MMMM d, yyyy}</p>
-        </div>
-        <div class='content'>
+        var extraStyles = @"
+            .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
+            .stat-card { background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .stat-value { font-size: 28px; font-weight: bold; color: #0078d4; }
+            .stat-label { font-size: 12px; color: #666; }
+            table { width: 100%; border-collapse: collapse; background: white; }
+            th { background: #f0f0f0; padding: 10px; text-align: left; }";
+
+        var content = $@"
             <h3>Overview</h3>
             <div class='stats-grid'>
                 <div class='stat-card'>
@@ -462,121 +404,75 @@ public class NotificationService : INotificationService
                     <th>Result</th>
                 </tr>
                 {resultsHtml}
-            </table>" : "<p>No rotation actions were performed today.</p>")}
-        </div>
-        <div class='footer'>
-            This is an automated message from the SAML Certificate Rotation Tool.
-        </div>
-    </div>
-</body>
-</html>";
+            </table>" : "<p>No rotation actions were performed today.</p>")}";
+
+        return EmailShell("#0078d4", "📊 Daily SAML Certificate Rotation Summary", $"{DateTime.UtcNow:dddd, MMMM d, yyyy}", content, extraStyles, maxWidth: 700);
     }
 
-    private string GenerateNotifyOnlyReminderEmail(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string milestoneLabel)
-    {
-        return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 700px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: #d13438; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
-        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
-        .warning {{ background: #fff4ce; border-left: 4px solid #ffb900; padding: 15px; margin: 15px 0; }}
-        .details {{ background: white; padding: 15px; border-radius: 4px; margin-top: 15px; }}
-        .label {{ font-weight: 600; color: #666; }}
-        .button {{ display: inline-block; padding: 10px 14px; background: #0078d4; color: white; text-decoration: none; border-radius: 4px; margin-top: 12px; }}
-        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h2 style='margin:0;'>⚠️ SAML Certificate Expiration Reminder</h2>
-        </div>
-        <div class='content'>
-            <div class='warning'>
-                <strong>This application is configured as Notify.</strong><br/>
-                The current signing certificate expires in <strong>{daysUntilExpiry} day(s)</strong>.
-            </div>
-            <div class='details'>
-                <p><span class='label'>Reminder milestone:</span> {H(milestoneLabel)}</p>
-                <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
-                <p><span class='label'>Service Principal Object ID:</span> {H(app.Id)}</p>
-                <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
-                <p><span class='label'>Certificate Thumbprint:</span> {H(cert.Thumbprint)}</p>
-                <p><span class='label'>Expires On:</span> {cert.EndDateTime:yyyy-MM-dd HH:mm} UTC</p>
-                <a class='button' href='{H(appPortalUrl)}'>Open Enterprise Application</a>
-            </div>
-            <p style='margin-top:16px;'>No automatic rotation will occur while Auto-Rotate is set to Notify.</p>
-        </div>
-        <div class='footer'>
-            This is an automated message from the SAML Certificate Rotation Tool.
-        </div>
-    </div>
-</body>
-</html>";
-    }
-
-    private string GenerateSponsorExpirationStatusEmail(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string status, bool manualSend)
+    private string GenerateSponsorExpirationStatusEmail(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string status, bool manualSend, string? milestoneLabel = null)
     {
         var isExpired = string.Equals(status, "Expired", StringComparison.OrdinalIgnoreCase);
-        var headerColor = isExpired ? "#d13438" : "#ffb900";
-        var title = isExpired ? "⚠️ SAML Certificate Has Expired" : "⚠️ SAML Certificate Needs Attention";
-        var statusText = isExpired ? "Expired" : status;
-        var introText = isExpired
-            ? "The signing certificate for this SAML application has expired. Please remediate this as quickly as possible to avoid or resolve sign-in impact."
-            : $"The signing certificate for this SAML application is in {statusText} state and requires attention.";
+        var isNotify = string.Equals(status, "Notify", StringComparison.OrdinalIgnoreCase);
+
+        var headerColor = isExpired || isNotify ? "#d13438" : "#ffb900";
+        var title = isExpired ? "⚠️ SAML Certificate Has Expired"
+                  : isNotify  ? "⚠️ SAML Certificate Expiration Reminder"
+                  : "⚠️ SAML Certificate Needs Attention";
+
+        string introHtml;
+        if (isNotify)
+        {
+            introHtml = $"<strong>This application is configured as Notify.</strong><br/>The current signing certificate expires in <strong>{daysUntilExpiry} day(s)</strong>.";
+        }
+        else if (isExpired)
+        {
+            introHtml = $"<strong>{H("The signing certificate for this SAML application has expired. Please remediate this as quickly as possible to avoid or resolve sign-in impact.")}</strong>";
+        }
+        else
+        {
+            introHtml = $"<strong>{H($"The signing certificate for this SAML application is in {status} state and requires attention.")}</strong>";
+        }
 
         var dateText = cert.EndDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC";
+        var dateLabel = isExpired ? "Expired On" : "Expires On";
 
-        var modeText = manualSend ? "Manual resend requested from dashboard." : "Automatically generated notification.";
+        var detailsBuilder = new System.Text.StringBuilder();
+        if (isNotify && milestoneLabel != null)
+        {
+            detailsBuilder.AppendLine($"                <p><span class='label'>Reminder milestone:</span> {H(milestoneLabel)}</p>");
+        }
+        else if (!isNotify)
+        {
+            detailsBuilder.AppendLine($"                <p><span class='label'>Status:</span> {H(status)}</p>");
+        }
+        detailsBuilder.AppendLine($"                <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>");
+        detailsBuilder.AppendLine($"                <p><span class='label'>Service Principal Object ID:</span> {H(app.Id)}</p>");
+        detailsBuilder.AppendLine($"                <p><span class='label'>App ID:</span> {H(app.AppId)}</p>");
+        detailsBuilder.AppendLine($"                <p><span class='label'>Certificate Thumbprint:</span> {H(cert.Thumbprint)}</p>");
+        detailsBuilder.AppendLine($"                <p><span class='label'>{dateLabel}:</span> {H(dateText)}</p>");
+        if (!isNotify)
+        {
+            detailsBuilder.AppendLine($"                <p><span class='label'>Days Remaining:</span> {daysUntilExpiry}</p>");
+            var modeText = manualSend ? "Manual resend requested from dashboard." : "Automatically generated notification.";
+            detailsBuilder.AppendLine($"                <p><span class='label'>Notification:</span> {H(modeText)}</p>");
+        }
+        detailsBuilder.AppendLine($"                <a class='button' href='{H(appPortalUrl)}'>Open Enterprise Application</a>");
 
-        return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 700px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: {headerColor}; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
-        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
-        .notice {{ background: #fff4ce; border-left: 4px solid {headerColor}; padding: 15px; margin: 15px 0; }}
-        .details {{ background: white; padding: 15px; border-radius: 4px; margin-top: 15px; }}
-        .label {{ font-weight: 600; color: #666; }}
-        .button {{ display: inline-block; padding: 10px 14px; background: #0078d4; color: white; text-decoration: none; border-radius: 4px; margin-top: 12px; }}
-        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h2 style='margin:0;'>{title}</h2>
-        </div>
-        <div class='content'>
-            <div class='notice'>
-                <strong>{H(introText)}</strong>
+        var footerNote = isNotify
+            ? "No automatic rotation will occur while Auto-Rotate is set to Notify."
+            : "Please review and remediate this application promptly.";
+
+        var noticeColor = isExpired || isNotify ? "#d13438" : "#ffb900";
+        var content = $@"
+            <div style='background: #fff4ce; border-left: 4px solid {noticeColor}; padding: 15px; margin: 15px 0;'>
+                {introHtml}
             </div>
             <div class='details'>
-                <p><span class='label'>Status:</span> {H(statusText)}</p>
-                <p><span class='label'>Application:</span> {H(app.DisplayName)}</p>
-                <p><span class='label'>Service Principal Object ID:</span> {H(app.Id)}</p>
-                <p><span class='label'>App ID:</span> {H(app.AppId)}</p>
-                <p><span class='label'>Certificate Thumbprint:</span> {H(cert.Thumbprint)}</p>
-                <p><span class='label'>{(isExpired ? "Expired On" : "Expires On")}:</span> {H(dateText)}</p>
-                <p><span class='label'>Days Remaining:</span> {daysUntilExpiry}</p>
-                <p><span class='label'>Notification:</span> {H(modeText)}</p>
-                <a class='button' href='{H(appPortalUrl)}'>Open Enterprise Application</a>
+{detailsBuilder}
             </div>
-            <p style='margin-top:16px;'>Please review and remediate this application promptly.</p>
-        </div>
-        <div class='footer'>
-            This is an automated message from the SAML Certificate Rotation Tool.
-        </div>
-    </div>
-</body>
-</html>";
+            <p style='margin-top:16px;'>{footerNote}</p>";
+
+        return EmailShell(headerColor, title, null, content, maxWidth: 700);
     }
 
     /// <inheritdoc />
@@ -678,34 +574,11 @@ public class NotificationService : INotificationService
             </div>");
         }
 
-        return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 750px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: #0078d4; color: white; padding: 20px; border-radius: 8px 8px 0 0; }}
-        .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #e0e0e0; }}
-        .footer {{ padding: 15px; font-size: 12px; color: #666; text-align: center; }}
-    </style>
-</head>
-<body>
-    <div class='container'>
-        <div class='header'>
-            <h2 style='margin:0;'>🔐 SAML Certificate Rotation Summary</h2>
-            <p style='margin: 5px 0 0 0; opacity: 0.9;'>{DateTime.UtcNow:dddd, MMMM d, yyyy}</p>
-        </div>
-        <div class='content'>
+        var content = $@"
             <p>The following certificate operations were performed on applications you sponsor:</p>
-            {sectionsHtml}
-        </div>
-        <div class='footer'>
-            This is an automated message from the SAML Certificate Rotation Tool.
-        </div>
-    </div>
-</body>
-</html>";
+            {sectionsHtml}";
+
+        return EmailShell("#0078d4", "🔐 SAML Certificate Rotation Summary", $"{DateTime.UtcNow:dddd, MMMM d, yyyy}", content, maxWidth: 750);
     }
 
     private static int GetCategorySortOrder(string category)
@@ -713,7 +586,7 @@ public class NotificationService : INotificationService
         return category switch
         {
             "Certificate Created" => 1,
-            "Certificate Created (Notify-Only)" => 2,
+            "Certificate Created (Notify-App)" => 2,
             "Certificate Activated" => 3,
             _ => 99
         };
@@ -725,8 +598,8 @@ public class NotificationService : INotificationService
         {
             "Certificate Created" => ("🆕", "#0078d4",
                 "A new signing certificate has been created. It is not yet active and will be activated automatically closer to expiration."),
-            "Certificate Created (Notify-Only)" => ("🆕", "#0078d4",
-                "A new signing certificate has been created for a notify-only application. It will NOT be auto-activated."),
+            "Certificate Created (Notify-App)" => ("🆕", "#0078d4",
+                "A new signing certificate has been created for a notify-app. It will NOT be auto-activated."),
             "Certificate Activated" => ("✅", "#107c10",
                 "A new signing certificate has been activated. If your SAML SP does not auto-fetch metadata, you may need to update it manually."),
             _ => ("ℹ️", "#797775", "")
@@ -795,12 +668,12 @@ public class NotificationService : INotificationService
         {
             case "CertificateCreated":
                 subject = $"[TEST] [SAML Cert Rotation] New Certificate Created - {sampleApp.DisplayName}";
-                body = GenerateCertificateCreatedEmail(sampleApp, newCert);
+                body = GenerateCertificateActionEmail(sampleApp, newCert, isActivation: false);
                 break;
 
             case "CertificateActivated":
                 subject = $"[TEST] [SAML Cert Rotation] Certificate Activated - {sampleApp.DisplayName}";
-                body = GenerateCertificateActivatedEmail(sampleApp, newCert);
+                body = GenerateCertificateActionEmail(sampleApp, newCert, isActivation: true);
                 break;
 
             case "Error":
@@ -832,7 +705,7 @@ public class NotificationService : INotificationService
 
             case "NotifyReminder":
                 subject = $"[TEST] [SAML Cert Rotation] [Notify] Certificate Expiring in 25 day(s) - {sampleApp.DisplayName}";
-                body = GenerateNotifyOnlyReminderEmail(sampleApp, activeCert, 25, appUrl, "30-day reminder");
+                body = GenerateSponsorExpirationStatusEmail(sampleApp, activeCert, 25, appUrl, "Notify", manualSend: false, milestoneLabel: "30-day reminder");
                 break;
 
             case "SponsorExpirationExpired":
@@ -876,7 +749,7 @@ public class NotificationService : INotificationService
                         StartDateTime = DateTime.UtcNow,
                         EndDateTime = DateTime.UtcNow.AddYears(3)
                     }},
-                    new SponsorNotificationItem { App = sampleApp3, Category = "Certificate Created (Notify-Only)", Certificate = new SamlCertificate
+                    new SponsorNotificationItem { App = sampleApp3, Category = "Certificate Created (Notify-App)", Certificate = new SamlCertificate
                     {
                         Thumbprint = "1122334455667788990011223344556677889900",
                         StartDateTime = DateTime.UtcNow,

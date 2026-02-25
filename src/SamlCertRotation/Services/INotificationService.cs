@@ -28,7 +28,7 @@ public interface INotificationService
     Task<bool> SendDailySummaryAsync(DashboardStats stats, List<RotationResult> results);
 
     /// <summary>
-    /// Send notify-only reminder to app sponsor when certificate is approaching expiry
+    /// Send reminder to app sponsor when a notify-app certificate is approaching expiry
     /// </summary>
     Task<bool> SendNotifyOnlyReminderAsync(SamlApplication app, SamlCertificate expiringCert, int daysUntilExpiry, string appPortalUrl, string milestoneLabel);
 

@@ -37,19 +37,22 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 
 ### 6. Email Notification System via Logic App
 - Emails are sent via an **Azure Logic App** (Office 365 Outlook connector) triggered by HTTP POST from the Function App.
-- **Six notification types** (all HTML-formatted with Segoe UI styling, previewable in the Testing tab):
+- **Nine notification types** (all HTML-formatted with Segoe UI styling, previewable in the Testing tab):
   - **Certificate Created** — Sent to app sponsor when a new cert is generated (AutoRotate=on, or notify apps with Create Certs for Notify enabled).
   - **Certificate Activated** — Sent to sponsor when a cert is made active. Includes an "Action May Be Required" warning about updating the SAML SP (AutoRotate=on only).
   - **Error** — Sent to all notification recipients when rotation fails.
   - **Daily Summary** — Sent to admin recipients after each timer run with stats and per-app results table. Uses a `SuccessActions` set for accurate success/failure counting.
-  - **Notify-Only Reminder** — For AutoRotate=notify apps: milestone-based reminders sent to the sponsor with Entra portal deep-link.
-  - **Sponsor Expiration Notification** — Sent once per cert when it actually expires (AutoRotate=on or notify only).
+  - **Reminders** — For AutoRotate=notify apps: milestone-based reminders sent to the sponsor with Entra portal deep-link.
+  - **Certificate Expiration** — Sent once per cert when it actually expires (AutoRotate=on or notify only).
+  - **Manual Reminder – Critical** — Manual-only sponsor reminder for certs in Critical status.
+  - **Manual Reminder – Warning** — Manual-only sponsor reminder for certs in Warning status.
+  - **Sponsor Summary – Prod Runs** — Consolidated email sent to each sponsor after a production run summarising all certificate actions on their sponsored apps.
 - All user-supplied values are **HTML-encoded** before embedding in email templates.
 
 ### 7. Sponsor Notification Settings
-- **Sponsors Receive Notifications** toggle (default: enabled). Controls whether sponsors get cert-created/activated/notify-only emails. Only applies to AutoRotate=on or notify apps.
+- **Sponsors Receive Notifications** toggle (default: enabled). Controls whether sponsors get cert-created/activated/reminder emails. Only applies to AutoRotate=on or notify apps.
 - **Notify Sponsors on Expiration** toggle (default: enabled). Controls whether sponsors receive a one-time notification when their app's certificate actually expires. Only applies to AutoRotate=on or notify apps.
-- **Three configurable sponsor reminder milestones** for notify-only apps (default: 30, 7, 1 days before expiry).
+- **Three configurable sponsor reminder milestones** for notify apps (default: 30, 7, 1 days before expiry).
 - **Milestone deduplication**: Before sending any reminder, the service checks audit log entries against the active cert thumbprint + milestone label to prevent duplicate sends.
 
 ### 8. Manual Trigger Runs from Dashboard
@@ -321,7 +324,7 @@ Create in Microsoft Entra Admin Center:
 | Activate Certificate Days | 30 | Days before expiry to activate new certificate |
 | Notification Emails | — | Comma-separated admin emails for daily summary |
 | Sponsors Receive Notifications | Enabled | Whether sponsors receive cert-created/activated/reminder emails |
-| 1st/2nd/3rd Sponsor Reminder Days | 30/7/1 | Milestone days for notify-only app reminders |
+| 1st/2nd/3rd Sponsor Reminder Days | 30/7/1 | Milestone days for notify app reminders |
 | Notify Sponsors on Expiration | Enabled | Send one-time email to sponsor when cert expires |
 | Report-Only Mode | Enabled | Log what would happen without making changes |
 | Create Certs for Notify Apps | Disabled | Create certificates for AutoRotate=notify apps (without activating) |

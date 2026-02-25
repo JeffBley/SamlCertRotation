@@ -232,13 +232,13 @@ public class CertificateRotationService : ICertificateRotationService
                                 app.Id,
                                 app.DisplayName,
                                 AuditActionType.CertificateCreatedReportOnly,
-                                $"Report-only mode: would create a new certificate for notify-only app. Active cert expires in {daysUntilExpiry} day(s).",
+                                $"Report-only mode: would create a new certificate for notify-app. Active cert expires in {daysUntilExpiry} day(s).",
                                 activeCert.Thumbprint,
                                 performedBy: performedBy);
                         }
                         else
                         {
-                            _logger.LogInformation("Creating new certificate for notify-only app {AppName}", app.DisplayName);
+                            _logger.LogInformation("Creating new certificate for notify-app {AppName}", app.DisplayName);
                             var newCert = await _graphService.CreateSamlCertificateAsync(app.Id);
                             if (newCert != null)
                             {
@@ -248,12 +248,12 @@ public class CertificateRotationService : ICertificateRotationService
                                     app.Id,
                                     app.DisplayName,
                                     AuditActionType.CertificateCreated,
-                                    $"Created new certificate for notify-only app, expiring {newCert.EndDateTime:yyyy-MM-dd}. Certificate will NOT be auto-activated.",
+                                    $"Created new certificate for notify-app, expiring {newCert.EndDateTime:yyyy-MM-dd}. Certificate will NOT be auto-activated.",
                                     activeCert.Thumbprint,
                                     newCert.Thumbprint,
                                     performedBy);
                                 if (pendingSponsorNotifications != null)
-                                    pendingSponsorNotifications.Add(new SponsorNotificationItem { App = app, Category = "Certificate Created (Notify-Only)", Certificate = newCert });
+                                    pendingSponsorNotifications.Add(new SponsorNotificationItem { App = app, Category = "Certificate Created (Notify-App)", Certificate = newCert });
                                 else
                                     await _notificationService.SendCertificateCreatedNotificationAsync(app, newCert);
                             }

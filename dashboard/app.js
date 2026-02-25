@@ -3106,8 +3106,18 @@ async function loadTestEmailTemplates() {
 }
 
 function formatTemplateName(name) {
-    // CertificateCreated -> Certificate Created, SponsorExpirationExpired -> Sponsor Expiration Expired
-    return name.replace(/([A-Z])/g, ' $1').trim();
+    const displayNames = {
+        CertificateCreated: 'Certificate Created',
+        CertificateActivated: 'Certificate Activated',
+        Error: 'Error',
+        DailySummary: 'Daily Summary',
+        NotifyReminder: 'Reminders',
+        SponsorExpirationExpired: 'Certificate Expiration',
+        SponsorExpirationCritical: 'Manual Reminder – Critical',
+        SponsorExpirationWarning: 'Manual Reminder – Warning',
+        ConsolidatedSponsor: 'Sponsor Summary – Prod Runs'
+    };
+    return displayNames[name] || name.replace(/([A-Z])/g, ' $1').trim();
 }
 
 function updateTestEmailSendButton() {
@@ -3161,6 +3171,10 @@ const testEmailExplanations = {
     SponsorExpirationWarning: {
         description: 'Sponsor notification for warning certificate status.',
         when: 'Sent manually only — triggered when an admin clicks "Resend Reminder" from the dashboard for an app whose active certificate is in Warning status (days remaining ≤ Create cert days threshold but above Activate cert days). There is no automatic trigger for this template.'
+    },
+    ConsolidatedSponsor: {
+        description: 'Consolidated sponsor summary sent after production runs.',
+        when: 'Sent automatically at the end of each Prod Run (timer-triggered or manual) when one or more certificate actions (Created, Created for Notify-App, Activated) were performed on apps that share the same sponsor. Groups all actions into a single email per sponsor rather than sending individual notifications.'
     }
 };
 
