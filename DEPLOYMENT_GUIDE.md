@@ -44,8 +44,8 @@ Navigate to https://portal.azure.com/#cloudshell/
 Set-Location $HOME
 
 # Clone the repository
-git clone https://github.com/JeffBley/SamlCertRotation.git SamlCertRotationv2
-Set-Location SamlCertRotationv2
+git clone https://github.com/JeffBley/SamlCertRotation.git SamlCertRotation
+Set-Location SamlCertRotation
 git checkout main
 ```
 
@@ -53,7 +53,7 @@ git checkout main
 
 ```powershell
 # Navigate to project root and verify structure
-Set-Location "$HOME/SamlCertRotationv2"
+Set-Location "$HOME/SamlCertRotation"
 Get-ChildItem
 ```
 You should see:
@@ -70,7 +70,7 @@ You should see:
 Cloud Shell storage persists between sessions. Always sync to the latest code before building or deploying to avoid stale UI/API regressions.
 
 ```powershell
-Set-Location "$HOME/SamlCertRotationv2"
+Set-Location "$HOME/SamlCertRotation"
 git fetch origin
 git pull origin main
 ```
@@ -93,7 +93,7 @@ az account set --subscription "<YOUR_SUBSCRIPTION_ID>"
 
 ```powershell
 # Set variables (modify as needed)
-$RESOURCE_GROUP = "rg-saml-cert-rotation-v2"
+$RESOURCE_GROUP = "rg-saml-cert-rotation"
 $LOCATION = "eastus"
 
 # Create resource group
@@ -110,13 +110,13 @@ Cloud Shell variables are lost when switching between Classic/New mode or on ses
 # Saved by Step 1.6 — sourced automatically by later steps
 `$RESOURCE_GROUP = "$RESOURCE_GROUP"
 `$LOCATION = "$LOCATION"
-"@ | Set-Content -Path "$HOME/SamlCertRotationv2/infrastructure/session-vars.ps1" -Encoding utf8
+"@ | Set-Content -Path "$HOME/SamlCertRotation/infrastructure/session-vars.ps1" -Encoding utf8
 
 Write-Host "Session variables saved to session-vars.ps1"
 ```
 
 > **Tip**: If you ever switch Cloud Shell modes or return after a timeout, simply run:  
-> `. $HOME/SamlCertRotationv2/infrastructure/session-vars.ps1`  
+> `. $HOME/SamlCertRotation/infrastructure/session-vars.ps1`  
 > to restore all variables. The remaining steps do this automatically.
 
 ---
@@ -130,11 +130,11 @@ Custom Security Attributes allow you to tag which SAML apps should be auto-rotat
 1. Open a new browser tab and go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Protection** → **Custom security attributes**
 3. Click **+ Add attribute set**:
-   - **Name**: Enter a name like `SamlCertRotationv2`
+   - **Name**: Enter a name like `SamlCertRotation`
    - **Description**: `Attributes for SAML certificate rotation automation`
    - **Maximum number of attributes**: 10
 4. Click **Add**
-5. Select the `SamlCertRotationv2` attribute set
+5. Select the `SamlCertRotation` attribute set
 6. Click **+ Add attribute**:
    - **Attribute name**: Enter a name like `AutoRotate`
    - **Description**: `Enable automatic SAML certificate rotation`
@@ -152,7 +152,7 @@ Custom Security Attributes allow you to tag which SAML apps should be auto-rotat
 Edit the parameters file with your values:
 
 ```powershell
-Set-Location "$HOME/SamlCertRotationv2/infrastructure"
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 
 # Open in the Cloud Shell editor (Classic) or nano (New Cloud Shell)
 # Use whichever editor is available in your shell:
@@ -172,15 +172,15 @@ Save the file (`Ctrl+S` then `Ctrl+Q` in Classic; `Ctrl+O` then `Ctrl+X` in nano
 
 ```powershell
 # Make sure you're in the infrastructure directory
-Set-Location "$HOME/SamlCertRotationv2/infrastructure"
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 
 # Restore session variables (safe to re-run; handles Classic/New switch or session timeout)
-if (Test-Path "$HOME/SamlCertRotationv2/infrastructure/session-vars.ps1") {
-    . "$HOME/SamlCertRotationv2/infrastructure/session-vars.ps1"
+if (Test-Path "$HOME/SamlCertRotation/infrastructure/session-vars.ps1") {
+    . "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
     Write-Host "Restored session variables (RESOURCE_GROUP=$RESOURCE_GROUP)"
 } elseif (-not $RESOURCE_GROUP) {
     # Fallback: set inline if session-vars.ps1 was never created
-    $RESOURCE_GROUP = "rg-saml-cert-rotation-v2"
+    $RESOURCE_GROUP = "rg-saml-cert-rotation"
     Write-Host "Using default RESOURCE_GROUP=$RESOURCE_GROUP"
 }
 
@@ -202,11 +202,11 @@ Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 
 ```powershell
 # Re-run this block anytime (including after Cloud Shell session timeout or shell switch).
-Set-Location "$HOME/SamlCertRotationv2/infrastructure"
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 
 # Ensure resource group is set
 if (Test-Path "./session-vars.ps1") { . "./session-vars.ps1" }
-if (-not $RESOURCE_GROUP) { $RESOURCE_GROUP = "rg-saml-cert-rotation-v2" }
+if (-not $RESOURCE_GROUP) { $RESOURCE_GROUP = "rg-saml-cert-rotation" }
 
 # Load deployment outputs — try local file first, fall back to Azure
 $outputs = $null
@@ -224,7 +224,7 @@ if (-not $outputs) {
 }
 
 # Read tenant ID from parameters file so it survives session timeouts
-$TENANT_ID = (Get-Content "$HOME/SamlCertRotationv2/infrastructure/main.parameters.json" -Raw | ConvertFrom-Json).parameters.tenantId.value
+$TENANT_ID = (Get-Content "$HOME/SamlCertRotation/infrastructure/main.parameters.json" -Raw | ConvertFrom-Json).parameters.tenantId.value
 if ([string]::IsNullOrWhiteSpace($TENANT_ID) -or $TENANT_ID -like "<insert*") {
     throw "Set parameters.tenantId.value in infrastructure/main.parameters.json before running this step."
 }
@@ -317,7 +317,7 @@ Switch back to the **Cloud Shell** and run the following:
 
 ```powershell
 # Restore session variables (in case you switched Cloud Shell modes)
-. "$HOME/SamlCertRotationv2/infrastructure/session-vars.ps1"
+. "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
 
 # Assign the Attribute Assignment Reader role to the managed identity
 # This grants read access to custom security attributes on all objects
@@ -336,10 +336,10 @@ az rest --method POST `
 
 ```powershell
 # Navigate to project root
-Set-Location "$HOME/SamlCertRotationv2"
+Set-Location "$HOME/SamlCertRotation"
 
 # Restore session variables (safe to re-run after shell switch or timeout)
-. "$HOME/SamlCertRotationv2/infrastructure/session-vars.ps1"
+. "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
 
 # Restore and build
 dotnet restore src/SamlCertRotation/SamlCertRotation.csproj
@@ -356,7 +356,7 @@ dotnet publish src/SamlCertRotation/SamlCertRotation.csproj `
 ```powershell
 # IMPORTANT: Publish from the project directory using Functions Core Tools.
 # This avoids intermittent 404 regressions caused by config-zip package indexing issues.
-Set-Location "$HOME/SamlCertRotationv2/src/SamlCertRotation"
+Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
 
 # Ensure Functions Core Tools is available in Cloud Shell
 func --version
@@ -401,10 +401,10 @@ The dashboard uses Azure AD authentication with Enterprise Application assignmen
 
 ```powershell
 #Set Variables
-$APP_NAME = "SAML Certificate Rotation Dashboard v2"
+$APP_NAME = "SAML Certificate Rotation Dashboard"
 
 # Restore session variables (safe to re-run after shell switch or timeout)
-. "$HOME/SamlCertRotationv2/infrastructure/session-vars.ps1"
+. "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
 
 # Get Static Web App hostname
 $SWA_HOSTNAME = az staticwebapp show `
@@ -534,7 +534,7 @@ Now assign users or groups to the application in the Entra Portal (assumes your 
 
 1. Go to [Microsoft Entra admin center](https://entra.microsoft.com)
 2. Navigate to **Applications** → **Enterprise applications**
-3. Open your enterprise app (`SAML Certificate Rotation Dashboard v2`)
+3. Open your enterprise app (`SAML Certificate Rotation Dashboard`)
 4. Go to **Users and groups** → **Add user/group**
 5. Under **Users and groups**, select the existing user or group you want to grant access
 6. Under **Select a role**, choose one:
@@ -622,7 +622,7 @@ Start-Sleep -Seconds 60
 
 ```powershell
 # Read tenant ID from infrastructure/main.parameters.json
-$TENANT_ID = (Get-Content "$HOME/SamlCertRotationv2/infrastructure/main.parameters.json" -Raw | ConvertFrom-Json).parameters.tenantId.value
+$TENANT_ID = (Get-Content "$HOME/SamlCertRotation/infrastructure/main.parameters.json" -Raw | ConvertFrom-Json).parameters.tenantId.value
 
 if ([string]::IsNullOrWhiteSpace($TENANT_ID) -or $TENANT_ID -like "<insert*") {
     throw "Set parameters.tenantId.value in infrastructure/main.parameters.json before running this step."
@@ -725,7 +725,7 @@ $accessControlConfig = @{
     keyVaultName = $KEY_VAULT_NAME
 } | ConvertTo-Json
 
-Set-Content -Path "$HOME/SamlCertRotationv2/infrastructure/access-control-config.json" -Value $accessControlConfig
+Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.json" -Value $accessControlConfig
 ```
 
 ### Summary of Access Control Settings
@@ -766,7 +766,7 @@ Set-Content -Path "$HOME/SamlCertRotationv2/infrastructure/access-control-config
 
 ```powershell
 # Restore session variables (safe to re-run after shell switch or timeout)
-. "$HOME/SamlCertRotationv2/infrastructure/session-vars.ps1"
+. "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
 
 # Get deployment token
 $SWA_TOKEN = az staticwebapp secrets list `
@@ -778,11 +778,11 @@ $SWA_TOKEN = az staticwebapp secrets list `
 ### 7.2 Update Dashboard Configuration
 
 ```powershell
-Set-Location "$HOME/SamlCertRotationv2/dashboard"
+Set-Location "$HOME/SamlCertRotation/dashboard"
 
 # Ensure $TENANT_ID is available (recover from session timeout if needed)
 if ([string]::IsNullOrWhiteSpace($TENANT_ID)) {
-    $TENANT_ID = (Get-Content "$HOME/SamlCertRotationv2/infrastructure/main.parameters.json" -Raw | ConvertFrom-Json).parameters.tenantId.value
+    $TENANT_ID = (Get-Content "$HOME/SamlCertRotation/infrastructure/main.parameters.json" -Raw | ConvertFrom-Json).parameters.tenantId.value
 }
 if ([string]::IsNullOrWhiteSpace($TENANT_ID) -or $TENANT_ID -like "<insert*") {
     throw "TENANT_ID is not set. Update infrastructure/main.parameters.json and re-run Step 3.3, or set `$TENANT_ID manually."
@@ -872,7 +872,7 @@ The Logic App was deployed with a **Send an email (V2)** action pre-configured. 
 4. Go to **Properties** → **Custom security attributes**
 5. Click **Add assignment**
 6. Select:
-   - Attribute set: `SamlCertRotationv2`
+   - Attribute set: `SamlCertRotation`
    - Attribute name: `AutoRotate`
    - Assigned values: `on` `off` or `notify`
 7. Click **Save**
@@ -974,7 +974,7 @@ Replace `<original-swa-name>` with your Static Web App's auto-generated hostname
 
 #### 2. Update the App Registration redirect URI
 
-1. Go to [Microsoft Entra admin center](https://entra.microsoft.com) → **App registrations** → `SAML Certificate Rotation Dashboard v2`
+1. Go to [Microsoft Entra admin center](https://entra.microsoft.com) → **App registrations** → `SAML Certificate Rotation Dashboard`
 2. Click **Authentication**
 3. Click **Add Redirect URIs**
 4. Select **Web** 
@@ -991,10 +991,10 @@ The Function App must trust the custom domain as an additional SWA token issuer,
 $CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>" # Example: "samldashboard.contoso.com"
 
 # Restore session variables (clone repo first if this is a fresh shell)
-if (-not (Test-Path "$HOME/SamlCertRotationv2")) {
-    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotationv2"
+if (-not (Test-Path "$HOME/SamlCertRotation")) {
+    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
-Set-Location "$HOME/SamlCertRotationv2/infrastructure"
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 . ./session-vars.ps1
 
 Write-Host "Function App: $FUNCTION_APP_NAME"
@@ -1044,10 +1044,10 @@ Or via CLI:
 
 ```powershell
 # Restore session variables (clone repo first if this is a fresh shell)
-if (-not (Test-Path "$HOME/SamlCertRotationv2")) {
-    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotationv2"
+if (-not (Test-Path "$HOME/SamlCertRotation")) {
+    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
-Set-Location "$HOME/SamlCertRotationv2/infrastructure"
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 . ./session-vars.ps1
 
 az functionapp config appsettings set `
@@ -1068,10 +1068,10 @@ The dashboard client secret (`SamlDashboardClientSecret`) does not auto-rotate. 
 
 ```powershell
 # Restore session variables (clone repo first if this is a fresh shell)
-if (-not (Test-Path "$HOME/SamlCertRotationv2")) {
-    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotationv2"
+if (-not (Test-Path "$HOME/SamlCertRotation")) {
+    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
-Set-Location "$HOME/SamlCertRotationv2/infrastructure"
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 . ./session-vars.ps1
 
 Write-Host "Function App:   $FUNCTION_APP_NAME"
@@ -1189,10 +1189,10 @@ During Step 6.7, the deploying user was granted **Key Vault Secrets Officer**. T
 
 ```powershell
 # Restore session variables (clone repo first if this is a fresh shell)
-if (-not (Test-Path "$HOME/SamlCertRotationv2")) {
-    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotationv2"
+if (-not (Test-Path "$HOME/SamlCertRotation")) {
+    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
-Set-Location "$HOME/SamlCertRotationv2/infrastructure"
+Set-Location "$HOME/SamlCertRotation/infrastructure"
 . ./session-vars.ps1
 
 $USER_OBJECT_ID = az ad signed-in-user show --query id -o tsv
