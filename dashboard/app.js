@@ -1172,7 +1172,7 @@ function renderMyApps(apps) {
                     <th${hide('policyType')}>Policy Type</th>
                     <th${hide('createCertDays')}>Create Cert (days)</th>
                     <th${hide('activateCertDays')}>Activate Cert (days)</th>
-                    <th${hide('deeplink')}>Deeplink</th>
+                    <th${hide('deeplink')}>View in Entra ID</th>
                     ${hasAnyAction ? '<th style="width:60px;">Actions</th>' : ''}
                 </tr>
             </thead>
@@ -2237,7 +2237,7 @@ function renderMyStaleCerts(apps) {
                     <th>Application Name</th>
                     <th>App ID</th>
                     <th>Expired Inactive Certs</th>
-                    <th>Deeplink</th>
+                    <th>View in Entra ID</th>
                 </tr>
             </thead>
             <tbody>
