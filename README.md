@@ -269,6 +269,32 @@ Create in Microsoft Entra Admin Center:
 - **Input validation**: GUID format validation on all ID parameters, email format validation on sponsor updates, OData injection prevention on audit queries
 - **Security headers**: HSTS, CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, strict Referrer-Policy
 
+### SWA Token Trust Model
+
+The Function App accepts three authentication paths in priority order:
+
+1. **Entra ID token** (signature + issuer verified via OIDC discovery) — most secure
+2. **`x-ms-client-principal` header** (base64 JSON set by SWA reverse proxy)
+3. **SWA-issued JWT** (issuer-matched only, no signature validation)
+
+Path 3 (`ParseIdentityFromSwaIssuedToken` in `DashboardFunctionBase.cs`) deliberately skips cryptographic signature validation and relies on issuer matching against the configured `SWA_DEFAULT_HOSTNAME` / `SWA_HOSTNAME` values. This mirrors the trust model of the `x-ms-client-principal` header — both are set by SWA's reverse proxy and are trustworthy only when requests flow through it.
+
+**Risk**: If the Function App is accessible directly (bypassing SWA), an attacker could craft a JWT with a matching issuer claim and gain unauthorized access. This is acceptable within the SWA linked-backend architecture because SWA acts as the sole ingress point, but it requires:
+
+- **Network-level controls**: Do not expose the Function App's `*.azurewebsites.net` endpoint to end users. SWA's backend link proxies API requests internally.
+- **Correct hostname configuration**: Ensure `SWA_DEFAULT_HOSTNAME` (set automatically by Bicep) and `SWA_HOSTNAME` (if using a custom domain) are set to your exact SWA hostnames. Do not use wildcard or overly broad values.
+- **Access restrictions** (defense in depth): Consider adding Azure Function App [access restrictions](https://learn.microsoft.com/en-us/azure/app-service/app-service-ip-restrictions) to limit inbound traffic to SWA's backend traffic only, though this is not strictly required since direct Function App URLs are not published.
+
+## Known Limitations
+
+### Key Vault References for Platform Settings on Consumption Plan
+
+The Function App runs on a **Consumption plan**. The `AzureWebJobsStorage` and `WEBSITE_CONTENTAZUREFILECONNECTIONSTRING` app settings **cannot** use Key Vault references (`@Microsoft.KeyVault(...)`) on this plan. The Azure Functions runtime needs these values to mount the Azure Files content share *before* the app starts, but Key Vault reference resolution happens *during* app startup — creating a chicken-and-egg problem that prevents the SCM (Kudu) site from starting, which blocks all deployments.
+
+These two settings use inline connection strings in `main.bicep`. All other secrets (e.g., `StorageConnectionString` used by application code, `LogicAppEmailUrl`) continue to use Key Vault references.
+
+The fully secure alternative is [identity-based connections](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#configure-an-identity-based-connection) using `AzureWebJobsStorage__accountName` with managed identity RBAC, but this has [limitations on Consumption plan](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#connecting-to-host-storage-with-an-identity) and is not currently implemented.
+
 ## License
 
 MIT

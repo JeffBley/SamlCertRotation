@@ -181,7 +181,7 @@ Set-Location "$HOME/SamlCertRotation/infrastructure"
 # Restore session variables (safe to re-run; handles Classic/New switch or session timeout)
 if (Test-Path "$HOME/SamlCertRotation/infrastructure/session-vars.ps1") {
     . "$HOME/SamlCertRotation/infrastructure/session-vars.ps1"
-    Write-Host "Restored session variables (RESOURCE_GROUP=$RESOURCE_GROUP)"
+    Write-Host "Restored session variables (RESOURCE_GROUP=$RESOURCE_GROUP)" -Foreground Green
 } elseif (-not $RESOURCE_GROUP) {
     # Fallback: set inline if session-vars.ps1 was never created
     $RESOURCE_GROUP = "rg-saml-cert-rotation"
@@ -356,15 +356,16 @@ dotnet publish src/SamlCertRotation/SamlCertRotation.csproj `
 ### 5.2 Deploy to Azure Function App
 
 ```powershell
-# IMPORTANT: Publish from the project directory using Functions Core Tools.
-# This avoids intermittent 404 regressions caused by config-zip package indexing issues.
-Set-Location "$HOME/SamlCertRotation/src/SamlCertRotation"
+Set-Location "$HOME/SamlCertRotation"
 
-# Ensure Functions Core Tools is available in Cloud Shell
-func --version
+# Create a zip package from the publish output (Step 5.1)
+Compress-Archive -Path ./publish/* -DestinationPath ./publish.zip -Force
 
-# Deploy with explicit runtime
-func azure functionapp publish $FUNCTION_APP_NAME --dotnet-isolated
+# Deploy via zip deploy
+az functionapp deployment source config-zip `
+    --resource-group $RESOURCE_GROUP `
+    --name $FUNCTION_APP_NAME `
+    --src ./publish.zip
 ```
 
 ### 5.3 Verify Function Indexing and Route Health

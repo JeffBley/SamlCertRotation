@@ -116,14 +116,12 @@ resource logicAppEmailUrlSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' =
   ]
 }
 
-// Key Vault secret for Storage Account connection string
-// Connection string is built inline to avoid exposing the account key in an intermediate Bicep variable
-// (intermediate variables are logged in ARM deployment operations, visible to resource group Readers)
+// Key Vault secret for Storage Account connection string (used by application code via StorageConnectionString setting)
 resource storageConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'StorageConnectionString'
   properties: {
-    value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
+    value: storageConnectionString
   }
   dependsOn: [
     keyVaultSecretsOfficerRole
@@ -152,8 +150,8 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   }
 }
 
-// Storage connection string is built inline in the Key Vault secret resource (storageConnectionStringSecret)
-// to avoid exposing the account key in an intermediate variable logged by ARM deployment operations
+// Get storage account connection string
+var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
 
 // ============================================================================
 // Log Analytics Workspace
@@ -246,22 +244,22 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         ]
         supportCredentials: false
       }
+      // NOTE: AzureWebJobsStorage and WEBSITE_CONTENTAZUREFILECONNECTIONSTRING must be plain
+      // connection strings (not Key Vault references) on Consumption plan. The platform needs
+      // these values to mount the Azure Files share BEFORE the app starts and can resolve
+      // Key Vault references. Using KV refs here causes SCM 502/503 and deployment failures.
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=StorageConnectionString)'
+          value: storageConnectionString
         }
         {
           name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=StorageConnectionString)'
+          value: storageConnectionString
         }
         {
           name: 'WEBSITE_CONTENTSHARE'
           value: toLower(functionAppName)
-        }
-        {
-          name: 'WEBSITE_SKIP_CONTENTSHARE_VALIDATION'
-          value: '1'
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
@@ -343,7 +341,6 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
     }
   }
   dependsOn: [
-    storageConnectionStringSecret
     logicAppEmailUrlSecret
   ]
   tags: {
