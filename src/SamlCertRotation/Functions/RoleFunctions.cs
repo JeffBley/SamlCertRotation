@@ -2,6 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using SamlCertRotation.Helpers;
 using SamlCertRotation.Models;
 using System.Net;
 using System.Text;
@@ -183,13 +184,13 @@ public class RoleFunctions
     /// </summary>
     private static ClientPrincipal? ParsePrincipalFromClientPrincipalHeader(HttpRequestData req)
     {
-        var encodedPrincipal = GetHeaderValue(req, "x-ms-client-principal");
+        var encodedPrincipal = AuthHelper.GetHeaderValue(req, "x-ms-client-principal");
         if (string.IsNullOrWhiteSpace(encodedPrincipal))
         {
             return null;
         }
 
-        var principalJson = DecodePrincipalPayload(encodedPrincipal);
+        var principalJson = AuthHelper.DecodePrincipalPayload(encodedPrincipal);
         if (string.IsNullOrWhiteSpace(principalJson))
         {
             return null;
@@ -214,78 +215,6 @@ public class RoleFunctions
         {
             PropertyNameCaseInsensitive = true
         });
-    }
-
-    /// <summary>
-    /// Reads header values with a case-insensitive fallback scan.
-    /// </summary>
-    private static string? GetHeaderValue(HttpRequestData req, string headerName)
-    {
-        if (req.Headers.TryGetValues(headerName, out var values))
-        {
-            var value = values.FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
-        }
-
-        foreach (var header in req.Headers)
-        {
-            if (!string.Equals(header.Key, headerName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var value = header.Value?.FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Decodes URL-safe base64 principal payloads and returns JSON text when valid.
-    /// </summary>
-    private static string? DecodePrincipalPayload(string payload)
-    {
-        if (string.IsNullOrWhiteSpace(payload))
-        {
-            return null;
-        }
-
-        var decoded = Uri.UnescapeDataString(payload.Trim());
-        try
-        {
-            return Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(decoded)));
-        }
-        catch
-        {
-            if (decoded.StartsWith("{", StringComparison.Ordinal) || decoded.StartsWith("[", StringComparison.Ordinal))
-            {
-                return decoded;
-            }
-
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Normalizes URL-safe base64 into standard padded base64.
-    /// </summary>
-    private static string NormalizeBase64(string value)
-    {
-        var normalized = value.Replace('-', '+').Replace('_', '/');
-        var padding = normalized.Length % 4;
-        if (padding > 0)
-        {
-            normalized = normalized.PadRight(normalized.Length + (4 - padding), '=');
-        }
-
-        return normalized;
     }
 
     /// <summary>

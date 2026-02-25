@@ -85,7 +85,18 @@ function escapeHtml(text) {
     if (text == null) return '';
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.innerHTML
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Debounce utility — delays fn execution until pause of `delay` ms
+function debounce(fn, delay = 250) {
+    let timer;
+    return function (...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), delay);
+    };
 }
 
 function toSafeClassToken(value, fallback = 'unknown') {
@@ -1089,6 +1100,7 @@ async function loadData(force = true) {
 
 // ── My SAML Apps (Sponsor view) ──────────────────────────────────
 let myAppsData = [];
+let myAppsRawResult = null; // cached raw API response for reuse by My Stale Certs
 let myAppsSponsorCanRotate = false;
 let myAppsSponsorCanUpdatePolicy = false;
 let myAppsSponsorCanEditSponsors = false;
@@ -1100,6 +1112,7 @@ async function loadMyApps(force = true) {
     container.innerHTML = '<div class="loading">Loading your sponsored applications...</div>';
     try {
         const result = await apiCall('dashboard/my-apps');
+        myAppsRawResult = result;
         myAppsData = result.apps || [];
         myAppsSponsorCanRotate = result.sponsorsCanRotateCerts === true;
         myAppsSponsorCanUpdatePolicy = result.sponsorsCanUpdatePolicy === true;
@@ -1420,12 +1433,14 @@ async function loadPolicy(force = true) {
         return;
     }
     try {
-        const policy = await apiCall('policy');
+        const [policy, settings] = await Promise.all([
+            apiCall('policy'),
+            apiCall('settings')
+        ]);
         cachedPolicy = policy;
         document.getElementById('createDays').value = policy.createCertDaysBeforeExpiry;
         document.getElementById('activateDays').value = policy.activateCertDaysBeforeExpiry;
 
-        const settings = await apiCall('settings');
         cachedPolicySettings = settings;
         document.getElementById('createCertsForNotifyApps').value = settings.createCertsForNotifyApps === false ? 'disabled' : 'enabled';
         _cache.policy = true;
@@ -1437,8 +1452,8 @@ async function loadPolicy(force = true) {
 // Save policy settings
 async function savePolicy() {
     try {
-        const createDays = parseInt(document.getElementById('createDays').value);
-        const activateDays = parseInt(document.getElementById('activateDays').value);
+        const createDays = parseInt(document.getElementById('createDays').value, 10);
+        const activateDays = parseInt(document.getElementById('activateDays').value, 10);
 
         if (isNaN(createDays) || createDays < 1 || createDays > 365) {
             showError('Create cert days must be between 1 and 365.');
@@ -2260,8 +2275,15 @@ async function loadMyStaleCerts(force = true) {
     if (!force && _cache.myStaleCerts) { renderMyStaleCerts(myStaleCerts); return; }
     container.innerHTML = '<div class="loading">Loading stale certificate data...</div>';
     try {
-        const result = await apiCall('dashboard/my-apps');
-        const apps = result.apps || [];
+        // Reuse cached my-apps data if available, otherwise fetch
+        let apps;
+        if (myAppsRawResult && _cache.myApps) {
+            apps = myAppsRawResult.apps || [];
+        } else {
+            const result = await apiCall('dashboard/my-apps');
+            myAppsRawResult = result;
+            apps = result.apps || [];
+        }
         myStaleCerts = [];
         const now = new Date();
 
@@ -2769,8 +2791,8 @@ function previewBulkUpdates(csvData) {
             });
             clearCount++;
         } else {
-            // Basic email validation
-            if (!newSponsor.includes('@') || !newSponsor.includes('.')) {
+            // Email validation using standard pattern
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newSponsor)) {
                 changes.push({
                     applicationId: row.applicationId,
                     displayName: app.displayName,
@@ -2879,7 +2901,7 @@ document.getElementById('btn-refresh-apps').addEventListener('click', loadData);
 const btnRefreshMyApps = document.getElementById('btn-refresh-myapps');
 if (btnRefreshMyApps) btnRefreshMyApps.addEventListener('click', loadMyApps);
 const myAppSearch = document.getElementById('myapp-search');
-if (myAppSearch) myAppSearch.addEventListener('input', applyMyAppsFilter);
+if (myAppSearch) myAppSearch.addEventListener('input', debounce(applyMyAppsFilter));
 
 // My SAML Apps export
 const btnExportMyApps = document.getElementById('btn-export-myapps');
@@ -2945,8 +2967,8 @@ document.getElementById('btn-bulk-cancel').addEventListener('click', closeBulkSp
 document.getElementById('btn-bulk-apply').addEventListener('click', applyBulkSponsorUpdates);
 
 // Applications tab filters
-document.getElementById('app-search').addEventListener('input', applyFilters);
-document.getElementById('app-sponsor-search').addEventListener('input', applyFilters);
+document.getElementById('app-search').addEventListener('input', debounce(applyFilters));
+document.getElementById('app-sponsor-search').addEventListener('input', debounce(applyFilters));
 document.getElementById('app-sort-by').addEventListener('change', applyFilters);
 document.getElementById('app-sort-direction').addEventListener('change', applyFilters);
 document.getElementById('btn-toggle-app-filters').addEventListener('click', toggleAppFilterPanel);
@@ -3001,9 +3023,9 @@ document.querySelectorAll('.audit-action-filter-option-input').forEach(function 
 document.getElementById('audit-result-filter-toggle').addEventListener('click', function (e) { toggleAuditResultFilterDropdown(e); });
 document.getElementById('audit-result-filter-dropdown').addEventListener('click', function (e) { e.stopPropagation(); });
 document.querySelectorAll('.audit-result-filter-option-input').forEach(function (cb) { cb.addEventListener('change', onAuditResultFilterChanged); });
-document.getElementById('audit-initiated-by-search').addEventListener('input', applyAuditFilters);
-document.getElementById('audit-application-search').addEventListener('input', applyAuditFilters);
-document.getElementById('audit-details-search').addEventListener('input', applyAuditFilters);
+document.getElementById('audit-initiated-by-search').addEventListener('input', debounce(applyAuditFilters));
+document.getElementById('audit-application-search').addEventListener('input', debounce(applyAuditFilters));
+document.getElementById('audit-details-search').addEventListener('input', debounce(applyAuditFilters));
 document.getElementById('audit-sort-by').addEventListener('change', applyAuditFilters);
 document.getElementById('audit-sort-direction').addEventListener('change', applyAuditFilters);
 document.getElementById('audit-columns-filter-toggle').addEventListener('click', function (e) {
@@ -3155,7 +3177,7 @@ document.getElementById('btn-send-test-email').addEventListener('click', async (
     statusEl.style.display = 'none';
 
     try {
-        const result = await apiCall('/testing/send-test-email', {
+        const result = await apiCall('testing/send-test-email', {
             method: 'POST',
             body: JSON.stringify({ template, toEmail })
         });

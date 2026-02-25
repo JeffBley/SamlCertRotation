@@ -215,14 +215,14 @@ public class DashboardFunctions
 
         try
         {
-            var stats = await _rotationService.GetDashboardStatsAsync();
+            // Fetch full apps once and reuse for both stats filtering and certificate data
+            var fullApps = await _graphService.GetSamlApplicationsAsync();
+            var fullAppLookup = fullApps.ToDictionary(a => a.Id, a => a);
+
+            var stats = await _rotationService.GetDashboardStatsAsync(fullApps);
             var myApps = stats.Apps
                 .Where(a => IsSponsorOf(a.Sponsor, userEmail))
                 .ToList();
-
-            // Also fetch full app data to include certificates (for stale cert detection)
-            var fullApps = await _graphService.GetSamlApplicationsAsync();
-            var fullAppLookup = fullApps.ToDictionary(a => a.Id, a => a);
 
             var appsWithCerts = myApps.Select(app =>
             {
@@ -528,6 +528,12 @@ public class DashboardFunctions
             if (policy == null)
             {
                 return await CreateErrorResponse(req, "Invalid policy format", HttpStatusCode.BadRequest);
+            }
+
+            var policyValidationError = ValidateAppPolicyValues(policy);
+            if (policyValidationError != null)
+            {
+                return await CreateErrorResponse(req, policyValidationError, HttpStatusCode.BadRequest);
             }
 
             policy.RowKey = id;
@@ -935,6 +941,12 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "Invalid policy format", HttpStatusCode.BadRequest);
             }
 
+            var policyValidationError = ValidateAppPolicyValues(policy);
+            if (policyValidationError != null)
+            {
+                return await CreateErrorResponse(req, policyValidationError, HttpStatusCode.BadRequest);
+            }
+
             policy.RowKey = id;
 
             // Snapshot current values before applying changes
@@ -1030,7 +1042,7 @@ public class DashboardFunctions
             {
                 var daysParam = req.Query["days"];
                 var days = int.TryParse(daysParam, out var d) ? d : 30;
-                days = Math.Max(1, days);
+                days = Math.Clamp(days, 1, 365);
                 startDate = DateTime.UtcNow.AddDays(-days);
                 endDate = DateTime.UtcNow;
             }
@@ -1944,6 +1956,11 @@ public class DashboardFunctions
                 return await CreateErrorResponse(req, "No updates provided", HttpStatusCode.BadRequest);
             }
 
+            if (updates.Count > 500)
+            {
+                return await CreateErrorResponse(req, "Bulk update is limited to 500 items per request", HttpStatusCode.BadRequest);
+            }
+
             var results = new List<object>();
             var successCount = 0;
             var clearCount = 0;
@@ -2278,12 +2295,12 @@ public class DashboardFunctions
         }
 
         // 2. Try x-ms-client-principal base64 header — set by SWA reverse proxy
-        var encodedPrincipal = GetHeaderValue(req, "x-ms-client-principal");
+        var encodedPrincipal = AuthHelper.GetHeaderValue(req, "x-ms-client-principal");
         if (!string.IsNullOrWhiteSpace(encodedPrincipal))
         {
             try
             {
-                var json = DecodePrincipalPayload(encodedPrincipal);
+                var json = AuthHelper.DecodePrincipalPayload(encodedPrincipal);
                 if (!string.IsNullOrWhiteSpace(json))
                 {
                     using var document = JsonDocument.Parse(json);
@@ -2596,10 +2613,10 @@ public class DashboardFunctions
     {
         var candidates = new List<(string Source, string Token)>();
 
-        AddCandidate(candidates, "x-ms-auth-token", GetHeaderValue(req, "x-ms-auth-token"));
-        AddCandidate(candidates, "x-ms-token-aad-id-token", GetHeaderValue(req, "x-ms-token-aad-id-token"));
-        AddCandidate(candidates, "x-ms-token-aad-access-token", GetHeaderValue(req, "x-ms-token-aad-access-token"));
-        AddCandidate(candidates, "authorization", GetHeaderValue(req, "authorization"));
+        AddCandidate(candidates, "x-ms-auth-token", AuthHelper.GetHeaderValue(req, "x-ms-auth-token"));
+        AddCandidate(candidates, "x-ms-token-aad-id-token", AuthHelper.GetHeaderValue(req, "x-ms-token-aad-id-token"));
+        AddCandidate(candidates, "x-ms-token-aad-access-token", AuthHelper.GetHeaderValue(req, "x-ms-token-aad-access-token"));
+        AddCandidate(candidates, "authorization", AuthHelper.GetHeaderValue(req, "authorization"));
 
         return candidates;
     }
@@ -2731,11 +2748,16 @@ public class DashboardFunctions
     /// </summary>
     private static bool IsAuthenticatedPrincipal(string? userId, HashSet<string> roles)
     {
-        return !string.IsNullOrWhiteSpace(userId)
-               || roles.Contains("authenticated")
-               || roles.Contains("admin")
-               || roles.Contains("reader")
-               || roles.Contains("sponsor");
+        if (string.IsNullOrWhiteSpace(userId)
+            && !roles.Contains("authenticated")
+            && !roles.Contains("admin")
+            && !roles.Contains("reader")
+            && !roles.Contains("sponsor"))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -2799,83 +2821,6 @@ public class DashboardFunctions
         }
     }
 
-    /// <summary>
-    /// Reads a header value with case-insensitive fallback for Functions header collections.
-    /// </summary>
-    private static string? GetHeaderValue(HttpRequestData req, string headerName)
-    {
-        if (req.Headers.TryGetValues(headerName, out var values))
-        {
-            var direct = values.FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(direct))
-            {
-                return direct;
-            }
-        }
-
-        foreach (var header in req.Headers)
-        {
-            if (!string.Equals(header.Key, headerName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var value = header.Value?.FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Decodes URL/base64 encoded principal payloads; returns JSON when available.
-    /// </summary>
-    private static string? DecodePrincipalPayload(string payload)
-    {
-        if (string.IsNullOrWhiteSpace(payload))
-        {
-            return null;
-        }
-
-        var trimmed = payload.Trim();
-        var decoded = Uri.UnescapeDataString(trimmed);
-
-        try
-        {
-            return Encoding.UTF8.GetString(Convert.FromBase64String(NormalizeBase64(decoded)));
-        }
-        catch
-        {
-            if (decoded.StartsWith("{", StringComparison.Ordinal) || decoded.StartsWith("[", StringComparison.Ordinal))
-            {
-                return decoded;
-            }
-
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Converts URL-safe base64 to standard base64 and pads to valid length.
-    /// </summary>
-    private static string NormalizeBase64(string value)
-    {
-        var normalized = value
-            .Replace('-', '+')
-            .Replace('_', '/');
-
-        var padding = normalized.Length % 4;
-        if (padding > 0)
-        {
-            normalized = normalized.PadRight(normalized.Length + (4 - padding), '=');
-        }
-
-        return normalized;
-    }
-
     private static string? TryGetString(JsonElement element, string propertyName)
     {
         if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.String)
@@ -2915,6 +2860,33 @@ public class DashboardFunctions
         }
 
         return "OK";
+    }
+
+    /// <summary>
+    /// Validates app policy day values are within acceptable ranges.
+    /// Returns an error message string if invalid, or null if valid.
+    /// </summary>
+    private static string? ValidateAppPolicyValues(AppPolicy policy)
+    {
+        if (policy.CreateCertDaysBeforeExpiry.HasValue)
+        {
+            if (policy.CreateCertDaysBeforeExpiry.Value < 1 || policy.CreateCertDaysBeforeExpiry.Value > 365)
+                return "CreateCertDaysBeforeExpiry must be between 1 and 365.";
+        }
+
+        if (policy.ActivateCertDaysBeforeExpiry.HasValue)
+        {
+            if (policy.ActivateCertDaysBeforeExpiry.Value < 1 || policy.ActivateCertDaysBeforeExpiry.Value > 365)
+                return "ActivateCertDaysBeforeExpiry must be between 1 and 365.";
+        }
+
+        if (policy.CreateCertDaysBeforeExpiry.HasValue && policy.ActivateCertDaysBeforeExpiry.HasValue)
+        {
+            if (policy.ActivateCertDaysBeforeExpiry.Value >= policy.CreateCertDaysBeforeExpiry.Value)
+                return "ActivateCertDaysBeforeExpiry must be less than CreateCertDaysBeforeExpiry.";
+        }
+
+        return null;
     }
 
     /// <summary>
