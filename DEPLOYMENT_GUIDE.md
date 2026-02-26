@@ -359,7 +359,12 @@ dotnet publish src/SamlCertRotation/SamlCertRotation.csproj `
 Set-Location "$HOME/SamlCertRotation"
 
 # Create a zip package from the publish output (Step 5.1)
-Compress-Archive -Path ./publish/* -DestinationPath ./publish.zip -Force
+# NOTE: Use Push-Location + Get-ChildItem -Force to include the hidden
+# .azurefunctions/ directory, which Compress-Archive -Path ./publish/*
+# silently skips on Linux/macOS (glob does not match dot-directories).
+Push-Location ./publish
+Get-ChildItem -Force | Compress-Archive -DestinationPath ../publish.zip -Force
+Pop-Location
 
 # Deploy via zip deploy
 az functionapp deployment source config-zip `
@@ -371,19 +376,27 @@ az functionapp deployment source config-zip `
 ### 5.3 Verify Function Indexing and Route Health
 
 ```powershell
-# Verify deployment - functions must be listed
-az functionapp function list `
+# Get the Function App host key for admin endpoint access
+$MASTER_KEY = az functionapp keys list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --query "[].name" `
-    --output table
+    --query "masterKey" -o tsv
 
-# Quick route check (401/403 is expected without SWA auth context; 404 is not)
 $FUNCTION_HOST = az functionapp show `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
     --query "defaultHostName" -o tsv
 
+# Verify functions are indexed via admin endpoint
+# (az functionapp function list may return empty on Consumption plan — this is a known CLI issue)
+$functions = Invoke-RestMethod `
+    -Uri "https://$FUNCTION_HOST/admin/functions?code=$MASTER_KEY" `
+    -Method GET
+
+Write-Host "Indexed functions: $($functions.Count)"
+$functions | ForEach-Object { Write-Host "  $($_.name) -> $($_.invoke_url_template)" }
+
+# Quick route check (401/403 is expected without SWA auth context; 404 means functions didn't index)
 try {
     Invoke-WebRequest "https://$FUNCTION_HOST/api/dashboard/stats" -UseBasicParsing
 } catch {
@@ -391,7 +404,7 @@ try {
 }
 ```
 
-You should see functions listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). A `404` indicates deployment or routing issues.
+You should see **29 functions** listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). A `404` indicates the `.azurefunctions` directory is missing from the zip — see the note in Step 5.2.
 
 
 ---
