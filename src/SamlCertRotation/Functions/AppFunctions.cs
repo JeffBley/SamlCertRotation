@@ -175,8 +175,11 @@ public class AppFunctions : DashboardFunctionBase
             var sponsorsCanRotateCertsTask = _policyService.GetSponsorsCanRotateCertsEnabledAsync();
             var sponsorsCanUpdatePolicyTask = _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
             var sponsorsCanEditSponsorsTask = _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
+            var globalPolicyTask = _policyService.GetGlobalPolicyAsync();
 
-            await Task.WhenAll(sponsorsCanRotateCertsTask, sponsorsCanUpdatePolicyTask, sponsorsCanEditSponsorsTask);
+            await Task.WhenAll(sponsorsCanRotateCertsTask, sponsorsCanUpdatePolicyTask, sponsorsCanEditSponsorsTask, globalPolicyTask);
+
+            var globalPolicy = globalPolicyTask.Result;
 
             // Fix #9: Use .Result after Task.WhenAll since tasks are guaranteed complete
             return await CreateJsonResponse(req, new
@@ -184,7 +187,9 @@ public class AppFunctions : DashboardFunctionBase
                 apps = appsWithCerts,
                 sponsorsCanRotateCerts = sponsorsCanRotateCertsTask.Result,
                 sponsorsCanUpdatePolicy = sponsorsCanUpdatePolicyTask.Result,
-                sponsorsCanEditSponsors = sponsorsCanEditSponsorsTask.Result
+                sponsorsCanEditSponsors = sponsorsCanEditSponsorsTask.Result,
+                globalCreateCertDaysBeforeExpiry = globalPolicy.CreateCertDaysBeforeExpiry,
+                globalActivateCertDaysBeforeExpiry = globalPolicy.ActivateCertDaysBeforeExpiry
             });
         }
         catch (Exception ex)

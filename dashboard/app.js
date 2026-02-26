@@ -499,12 +499,10 @@ function onAppFilterChanged() {
 
 function getComputedAppStatus(app) {
     const daysUntilExpiry = typeof app.daysUntilExpiry === 'number' ? app.daysUntilExpiry : null;
-    const createThreshold = typeof app.createCertDaysBeforeExpiry === 'number'
-        ? app.createCertDaysBeforeExpiry
-        : createCertDaysThreshold;
-    const activateThreshold = typeof app.activateCertDaysBeforeExpiry === 'number'
-        ? app.activateCertDaysBeforeExpiry
-        : activateCertDaysThreshold;
+    const appCreateThreshold = Number(app.createCertDaysBeforeExpiry ?? app.CreateCertDaysBeforeExpiry);
+    const appActivateThreshold = Number(app.activateCertDaysBeforeExpiry ?? app.ActivateCertDaysBeforeExpiry);
+    const createThreshold = Number.isFinite(appCreateThreshold) ? appCreateThreshold : createCertDaysThreshold;
+    const activateThreshold = Number.isFinite(appActivateThreshold) ? appActivateThreshold : activateCertDaysThreshold;
 
     if (daysUntilExpiry === null) {
         return 'ok';
@@ -1126,6 +1124,16 @@ async function loadMyApps(force = true) {
     container.innerHTML = '<div class="loading">Loading your sponsored applications...</div>';
     try {
         const result = await apiCall('dashboard/my-apps');
+
+        const globalCreateThreshold = Number(result.globalCreateCertDaysBeforeExpiry ?? result.GlobalCreateCertDaysBeforeExpiry);
+        const globalActivateThreshold = Number(result.globalActivateCertDaysBeforeExpiry ?? result.GlobalActivateCertDaysBeforeExpiry);
+        if (Number.isFinite(globalCreateThreshold)) {
+            createCertDaysThreshold = globalCreateThreshold;
+        }
+        if (Number.isFinite(globalActivateThreshold)) {
+            activateCertDaysThreshold = globalActivateThreshold;
+        }
+
         myAppsRawResult = result;
         myAppsData = result.apps || [];
         myAppsSponsorCanRotate = result.sponsorsCanRotateCerts === true;
