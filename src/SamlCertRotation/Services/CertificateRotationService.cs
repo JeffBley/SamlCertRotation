@@ -564,6 +564,10 @@ public class CertificateRotationService : ICertificateRotationService
 
             foreach (var app in apps)
             {
+                var hasAppPolicy = appPolicyLookup.TryGetValue(app.Id, out var appPolicy);
+                var effectiveCreateDays = (hasAppPolicy ? appPolicy!.CreateCertDaysBeforeExpiry : null) ?? globalPolicy.CreateCertDaysBeforeExpiry;
+                var effectiveActivateDays = (hasAppPolicy ? appPolicy!.ActivateCertDaysBeforeExpiry : null) ?? globalPolicy.ActivateCertDaysBeforeExpiry;
+
                 // Count by auto-rotate status
                 switch (app.AutoRotateStatus?.ToLowerInvariant())
                 {
@@ -589,7 +593,7 @@ public class CertificateRotationService : ICertificateRotationService
 
                     if (daysUntilExpiry < 0)
                         stats.AppsWithExpiredCerts++;
-                    else if (daysUntilExpiry <= expiringSoonThresholdDays)
+                    else if (daysUntilExpiry <= effectiveCreateDays)
                         stats.AppsExpiringSoon++;
                     else if (daysUntilExpiry <= 60)
                         stats.AppsExpiringIn60Days++;
@@ -597,7 +601,6 @@ public class CertificateRotationService : ICertificateRotationService
                         stats.AppsExpiringIn90Days++;
 
                     // Add to summary list
-                    var hasAppPolicy1 = appPolicyLookup.TryGetValue(app.Id, out var appPolicy1);
                     stats.Apps.Add(new SamlAppSummary
                     {
                         Id = app.Id,
@@ -607,15 +610,14 @@ public class CertificateRotationService : ICertificateRotationService
                         AutoRotateStatus = app.AutoRotateStatus,
                         CertExpiryDate = activeCert.EndDateTime,
                         DaysUntilExpiry = daysUntilExpiry,
-                        ExpiryCategory = GetExpiryCategory(daysUntilExpiry, expiringSoonThresholdDays),
-                        PolicyType = hasAppPolicy1 ? "App-Specific" : "Global",
-                        CreateCertDaysBeforeExpiry = (hasAppPolicy1 ? appPolicy1!.CreateCertDaysBeforeExpiry : null) ?? globalPolicy.CreateCertDaysBeforeExpiry,
-                        ActivateCertDaysBeforeExpiry = (hasAppPolicy1 ? appPolicy1!.ActivateCertDaysBeforeExpiry : null) ?? globalPolicy.ActivateCertDaysBeforeExpiry
+                        ExpiryCategory = GetExpiryCategory(daysUntilExpiry, effectiveCreateDays, effectiveActivateDays),
+                        PolicyType = hasAppPolicy ? "App-Specific" : "Global",
+                        CreateCertDaysBeforeExpiry = effectiveCreateDays,
+                        ActivateCertDaysBeforeExpiry = effectiveActivateDays
                     });
                 }
                 else
                 {
-                    var hasAppPolicy2 = appPolicyLookup.TryGetValue(app.Id, out var appPolicy2);
                     stats.Apps.Add(new SamlAppSummary
                     {
                         Id = app.Id,
@@ -624,9 +626,9 @@ public class CertificateRotationService : ICertificateRotationService
                         Sponsor = app.Sponsor,
                         AutoRotateStatus = app.AutoRotateStatus,
                         ExpiryCategory = "Unknown",
-                        PolicyType = hasAppPolicy2 ? "App-Specific" : "Global",
-                        CreateCertDaysBeforeExpiry = (hasAppPolicy2 ? appPolicy2!.CreateCertDaysBeforeExpiry : null) ?? globalPolicy.CreateCertDaysBeforeExpiry,
-                        ActivateCertDaysBeforeExpiry = (hasAppPolicy2 ? appPolicy2!.ActivateCertDaysBeforeExpiry : null) ?? globalPolicy.ActivateCertDaysBeforeExpiry
+                        PolicyType = hasAppPolicy ? "App-Specific" : "Global",
+                        CreateCertDaysBeforeExpiry = effectiveCreateDays,
+                        ActivateCertDaysBeforeExpiry = effectiveActivateDays
                     });
                 }
             }
@@ -641,12 +643,11 @@ public class CertificateRotationService : ICertificateRotationService
         return stats;
     }
 
-    private static string GetExpiryCategory(int daysUntilExpiry, int expiringSoonThresholdDays)
+    private static string GetExpiryCategory(int daysUntilExpiry, int createThresholdDays, int activateThresholdDays)
     {
         if (daysUntilExpiry < 0) return "Expired";
-        if (daysUntilExpiry <= expiringSoonThresholdDays) return "Critical";
-        if (daysUntilExpiry <= 60) return "Warning";
-        if (daysUntilExpiry <= 90) return "Attention";
+        if (daysUntilExpiry <= activateThresholdDays) return "Critical";
+        if (daysUntilExpiry <= createThresholdDays) return "Warning";
         return "OK";
     }
 

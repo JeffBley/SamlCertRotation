@@ -499,6 +499,12 @@ function onAppFilterChanged() {
 
 function getComputedAppStatus(app) {
     const daysUntilExpiry = typeof app.daysUntilExpiry === 'number' ? app.daysUntilExpiry : null;
+    const createThreshold = typeof app.createCertDaysBeforeExpiry === 'number'
+        ? app.createCertDaysBeforeExpiry
+        : createCertDaysThreshold;
+    const activateThreshold = typeof app.activateCertDaysBeforeExpiry === 'number'
+        ? app.activateCertDaysBeforeExpiry
+        : activateCertDaysThreshold;
 
     if (daysUntilExpiry === null) {
         return 'ok';
@@ -508,11 +514,11 @@ function getComputedAppStatus(app) {
         return 'expired';
     }
 
-    if (daysUntilExpiry <= activateCertDaysThreshold) {
+    if (daysUntilExpiry <= activateThreshold) {
         return 'critical';
     }
 
-    if (daysUntilExpiry <= createCertDaysThreshold) {
+    if (daysUntilExpiry <= createThreshold) {
         return 'warning';
     }
 
@@ -1078,15 +1084,15 @@ async function loadData(force = true) {
         document.getElementById('stat-null').textContent = stats.appsWithAutoRotateNull;
         document.getElementById('stat-expired').textContent = stats.appsWithExpiredCerts;
 
-        // Compute OK / Warning / Critical counts from per-app expiryCategory
-        const categoryCounts = { OK: 0, Warning: 0, Critical: 0 };
+        // Compute OK / Warning / Critical counts from dynamic status thresholds
+        const categoryCounts = { ok: 0, warning: 0, critical: 0 };
         (stats.apps || []).forEach(a => {
-            const cat = (a.expiryCategory || '').trim();
-            if (cat in categoryCounts) categoryCounts[cat]++;
+            const status = getComputedAppStatus(a);
+            if (status in categoryCounts) categoryCounts[status]++;
         });
-        document.getElementById('stat-ok').textContent = categoryCounts.OK;
-        document.getElementById('stat-warning').textContent = categoryCounts.Warning;
-        document.getElementById('stat-critical').textContent = categoryCounts.Critical;
+        document.getElementById('stat-ok').textContent = categoryCounts.ok;
+        document.getElementById('stat-warning').textContent = categoryCounts.warning;
+        document.getElementById('stat-critical').textContent = categoryCounts.critical;
         document.getElementById('stat-warning-sublabel').textContent = `Expiring ≤${createCertDaysThreshold} Days`;
         document.getElementById('stat-critical-sublabel').textContent = `Expiring ≤${activateCertDaysThreshold} Days`;
 
