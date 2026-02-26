@@ -2,31 +2,31 @@
 ## Admin View
 ### Overview 
 
-![](docs/images/Samldashoverview.png)
+![](docs/images/SamlDashOverview.png)
 
 ### Applications
 
-![](docs/images/Samldashapps.png)
+![](docs/images/SamlDashApps.png)
 
 ### Certificate Clean up
 
-![](docs/images/Samldashcerts.png)
+![](docs/images/SamlDashCerts.png)
 
 ### Policy Settings
 
-![](docs/images/Samldashpolicy.png)
+![](docs/images/SamlDashPolicy.png)
 
 ### Settings
 
-![](docs/images/Samldashsettings1.png)
-![](docs/images/Samldashsettings2.png)
+![](docs/images/SamlDashSettings1.png)
+![](docs/images/SamlDashSettings2.png)
 
 ## Sponsor View
 ### My SAML Apps
 
-![](docs/images/mysaml.png)
+![](docs/images/MySaml.png)
 
 ### My Stale Certs
 
-![](docs/images/mycerts.png)
+![](docs/images/MyCerts.png)
 
