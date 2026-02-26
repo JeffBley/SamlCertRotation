@@ -21,6 +21,13 @@
 ![](docs/images/SamlDashSettings1.png)
 ![](docs/images/SamlDashSettings2.png)
 
+### Reports
+
+![](docs/images/SamlReports1.png)
+
+![](docs/images/SamlReports2.png)
+
+
 ## Sponsor View
 ### My SAML Apps
 
