@@ -21,10 +21,10 @@
       "value": "<insert custom security attribute name here>"
     },
     "defaultCreateCertDays": {
-      "value": 30
+      "value": 60
     },
     "defaultActivateCertDays": {
-      "value": 14
+      "value": 30
     },
     "swaLocation": {
       "value": "eastus2"

@@ -6,7 +6,7 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 
 ### 1. Automated SAML Certificate Rotation Engine
 
-- **Two-phase rotation lifecycle**: (1) **Create** a new certificate when the active cert is within `CreateCertDaysBeforeExpiry` (default 30 days), and (2) **Activate** the pending cert when within `ActivateCertDaysBeforeExpiry` (default 14 days). Each threshold is independently configurable.
+- **Two-phase rotation lifecycle**: (1) **Create** a new certificate when the active cert is within `CreateCertDaysBeforeExpiry` (default 60 days), and (2) **Activate** the pending cert when within `ActivateCertDaysBeforeExpiry` (default 30 days). Each threshold is independently configurable.
   - Global Policy defining each threshold can be overwritten per-app.
 - **Timer-triggered scanner** runs on a configurable CRON schedule (default: daily 6:00 AM UTC via `RotationSchedule` app setting).
 - Each SAML service principal has an `AutoRotate` custom security attribute (in attribute set `SamlCertRotation`) with these modes:
@@ -46,7 +46,7 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 
 ### 7. Audit Log System
 - Every significant action logged to Azure Table Storage with: ServicePrincipalId, AppDisplayName, ActionType, Description, IsSuccess, ErrorMessage, CertificateThumbprint, NewCertificateThumbprint, PerformedBy (user UPN or "System").
-- **13 action types**: CertificateCreated, CertificateCreatedReportOnly, CertificateActivated, CertificateActivatedReportOnly, CertificateExpiringSoon, ScanCompleted, ScanCompletedReportOnly, SettingsUpdated, SponsorUpdated, SponsorExpirationReminderSent, StaleCertCleanupReminderSent, Error.
+- **12 action types**: CertificateCreated, CertificateCreatedReportOnly, CertificateActivated, CertificateActivatedReportOnly, CertificateExpiringSoon, ScanCompleted, ScanCompletedReportOnly, SettingsUpdated, SponsorUpdated, SponsorExpirationReminderSent, StaleCertCleanupReminderSent, Error.
 - **Bulk audit query** with GUID validation to prevent OData injection.
 
 ### 8. Audit Log and Reports Retention & Purge
@@ -62,16 +62,16 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Azure Resources                                 │
+│                              Azure Resources                                │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
+│                                                                             │
 │  ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────────┐  │
-│  │  Static Web App  │────▶│  Function App   │────▶│  Microsoft Graph API │  │
+│  │  Static Web App  │────▶│  Function App   │────▶│  Microsoft Graph API│  │
 │  │   (Dashboard)    │     │  (.NET 8)       │     │  (Entra ID)          │  │
 │  └──────────────────┘     └─────────────────┘     └──────────────────────┘  │
-│          │                        │                                          │
-│          │                        ├──────────────┐                           │
-│          │                        ▼              ▼                           │
+│          │                        │                                         │
+│          │                        ├──────────────┐                          │
+│          │                        ▼              ▼                          │
 │          │                ┌─────────────┐  ┌──────────┐                     │
 │          │                │   Key Vault │  │ Table    │                     │
 │          │                │  (Secrets)  │  │ Storage  │                     │
@@ -79,22 +79,22 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 │          │                                 │(Audit)   │                     │
 │          │                                 │(Reports) │                     │
 │          │                                 └──────────┘                     │
-│          │                                                                   │
+│          │                                                                  │
 │          │                ┌─────────────────────────────┐                   │
 │          └───────────────▶│  Managed Identity           │                   │
 │                           │  (Graph API Permissions)    │                   │
 │                           └─────────────────────────────┘                   │
-│                                                                              │
+│                                                                             │
 │  ┌──────────────────┐     ┌─────────────────┐                               │
 │  │    Logic App     │────▶│  Office 365     │───▶ Email Notifications      │
 │  │  (Email Trigger) │     │  Connection     │                               │
 │  └──────────────────┘     └─────────────────┘                               │
-│                                                                              │
+│                                                                             │
 │  ┌──────────────────┐     ┌─────────────────┐                               │
 │  │  Log Analytics   │◀────│ App Insights    │                               │
 │  │   Workspace      │     │ (Monitoring)    │                               │
 │  └──────────────────┘     └─────────────────┘                               │
-│                                                                              │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,7 +111,6 @@ See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed step-by-step instruc
 - Azure Cloud Shell (recommended, all tools pre-installed) or local environment with:
   - Azure CLI
   - .NET 8 SDK
-  - Azure Functions Core Tools v4
   - Node.js 18+ (for SWA CLI deployment)
   - Microsoft Graph PowerShell module
 

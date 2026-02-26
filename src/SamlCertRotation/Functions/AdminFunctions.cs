@@ -280,6 +280,8 @@ public class AdminFunctions : DashboardFunctionBase
                 return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
             }
 
+            var previousSponsor = app.Sponsor?.Trim() ?? "(none)";
+
             var updated = await _graphService.UpdateAppSponsorTagAsync(id, sponsorEmail);
             if (!updated)
             {
@@ -290,7 +292,7 @@ public class AdminFunctions : DashboardFunctionBase
                 id,
                 app.DisplayName,
                 AuditActionType.SponsorUpdated,
-                $"Sponsor updated to AppSponsor={sponsorEmail}",
+                $"Sponsor updated: {previousSponsor} \u2192 {sponsorEmail}",
                 performedBy: GetPerformedBy(identity));
 
             return await CreateJsonResponse(req, new

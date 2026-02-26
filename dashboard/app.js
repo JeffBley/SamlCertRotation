@@ -2047,7 +2047,7 @@ function renderAuditLogTable(entries) {
                     const showId = spId && spId !== 'SYSTEM' ? spId : '-';
                     return `
                     <tr>
-                        <td${ahide('time')}>${new Date(entry.timestamp).toLocaleString()}</td>
+                        <td${ahide('time')} style="white-space:nowrap;">${new Date(entry.timestamp).toLocaleDateString()}<br>${new Date(entry.timestamp).toLocaleTimeString()}</td>
                         <td${ahide('application')}>${escapeHtml(entry.appDisplayName || '-')}</td>
                         <td${ahide('applicationId')} style="${ac('applicationId') ? '' : 'display:none;'}font-size:12px;">${escapeHtml(showId)}</td>
                         <td${ahide('initiatedBy')}>${escapeHtml(entry.performedBy || 'System')}</td>

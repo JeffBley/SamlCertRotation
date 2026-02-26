@@ -386,6 +386,8 @@ public class SponsorFunctions : DashboardFunctionBase
             // Normalize: trim each part and rejoin
             sponsorEmail = string.Join(";", sponsorEmails);
 
+            var previousSponsor = app.Sponsor?.Trim() ?? "(none)";
+
             var updated = await _graphService.UpdateAppSponsorTagAsync(id, sponsorEmail);
             if (!updated)
             {
@@ -396,7 +398,7 @@ public class SponsorFunctions : DashboardFunctionBase
                 id,
                 app.DisplayName,
                 AuditActionType.SponsorUpdated,
-                $"Sponsor updated via sponsor portal. AppSponsor={sponsorEmail}",
+                $"Sponsor updated via sponsor portal: {previousSponsor} \u2192 {sponsorEmail}",
                 performedBy: userEmail);
 
             return await CreateJsonResponse(req, new
