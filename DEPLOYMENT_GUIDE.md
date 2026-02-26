@@ -376,27 +376,18 @@ az functionapp deployment source config-zip `
 ### 5.3 Verify Function Indexing and Route Health
 
 ```powershell
-# Get the Function App host key for admin endpoint access
-$MASTER_KEY = az functionapp keys list `
+# List deployed functions
+az functionapp function list `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
-    --query "masterKey" -o tsv
+    --query "[].{name:name, language:language}" -o table
 
+# Quick route check (401/403 is expected without SWA auth context; 404 means functions didn't index)
 $FUNCTION_HOST = az functionapp show `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
     --query "defaultHostName" -o tsv
 
-# Verify functions are indexed via admin endpoint
-# (az functionapp function list may return empty on Consumption plan — this is a known CLI issue)
-$functions = Invoke-RestMethod `
-    -Uri "https://$FUNCTION_HOST/admin/functions?code=$MASTER_KEY" `
-    -Method GET
-
-Write-Host "Indexed functions: $($functions.Count)"
-$functions | ForEach-Object { Write-Host "  $($_.name) -> $($_.invoke_url_template)" }
-
-# Quick route check (401/403 is expected without SWA auth context; 404 means functions didn't index)
 try {
     Invoke-WebRequest "https://$FUNCTION_HOST/api/dashboard/stats" -UseBasicParsing
 } catch {
@@ -404,7 +395,9 @@ try {
 }
 ```
 
-You should see **29 functions** listed including `CertificateChecker`, `GetDashboardStats`, `GetRoles`, etc. The route check should return `401` (authentication required). A `404` indicates the `.azurefunctions` directory is missing from the zip — see the note in Step 5.2.
+You should see **29 functions** listed. The route check should return `401` (authentication required). A `404` indicates the `.azurefunctions` directory is missing from the zip — see the note in Step 5.2.
+
+> **Note:** On Consumption plans, `az functionapp function list` may occasionally return an empty list even when functions are deployed correctly. If the list is empty but the route check returns `401` (not `404`), your functions are indexed and working. You can also verify via the Azure Portal under **Function App → Functions**.
 
 
 ---
