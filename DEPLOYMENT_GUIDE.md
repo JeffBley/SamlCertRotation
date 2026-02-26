@@ -861,7 +861,7 @@ The Logic App was deployed with a **Send an email (V2)** action pre-configured. 
 
 > **Note**: If you want to use a Shared mailbox to send the notifications, you can replace **Send an email (V2)** with **Send an email from a shared mailbox (V2)**. Enter the email of the shared mailbox in the **Original Mailbox Address** field. Connect with a user that has **Send As** permissions on that mailbox. Readd the To, Subject, and Body dynamic content to their respective fields.
 
-<insert screenshot
+![Shared mailbox config in Logic Apps](docs/images/SharedMailbox.png)
 
 ---
 

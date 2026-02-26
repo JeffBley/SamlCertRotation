@@ -895,8 +895,8 @@ async function confirmModalAction() {
             showLoading(isReportOnly ? 'Running report-only evaluation...' : 'Running production rotation...');
 
             const endpoint = isReportOnly
-                ? 'rotation/trigger/report-only'
-                : 'rotation/trigger/prod';
+                ? 'admin/trigger-rotation/report-only'
+                : 'admin/trigger-rotation/prod';
 
             const result = await apiCall(endpoint, { method: 'POST' });
             const skipped = typeof result.skipped === 'number'
