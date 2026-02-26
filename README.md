@@ -11,7 +11,7 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 - **Timer-triggered scanner** runs on a configurable CRON schedule (default: daily 6:00 AM UTC via `RotationSchedule` app setting).
 - Each SAML service principal has an `AutoRotate` custom security attribute (in attribute set `SamlCertRotation`) with these modes:
   - **`on`** — Full auto-rotation (create + activate certificates automatically).
-  - **`notify`** — Notify-only mode; sends milestone reminders to the app sponsor but does not create/activate certificates.
+  - **`notify`** — Notify-only mode; sends milestone reminders to the app sponsor and optionally can auto-create certificates (will not activate).
   - **`off`** — Explicitly excluded from processing.
   - **Not set** — Not configured; excluded from rotation runs.
 
@@ -23,6 +23,7 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 ### 3. Application Sponsor Management
 - Each service principal can have one or more **AppSponsor** emails stored as a tag on the service principal: `AppSponsor=email@example.com`.
 - Admins can **edit the sponsor** via the Applications tab actions menu or in bulk via uploading a CSV. Prefilled and template CSV's can be downloaded.
+- App Sponsors are primarily for notification that action has been taken or needs to be taken regarding the SAML certificates.
 
 ### 4. Email Notification System via Logic App
 - Email notifications can be sent to app sponsors when the certificates are nearing their expiration, when certificates are automatically created/activated, or when stale certificates require deletion. Multiple configuration options are available.
