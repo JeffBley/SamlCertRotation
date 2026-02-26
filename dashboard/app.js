@@ -3262,6 +3262,10 @@ const testEmailExplanations = {
     ConsolidatedSponsor: {
         description: 'Consolidated sponsor summary sent after production runs.',
         when: 'Sent automatically at the end of each Prod Run (timer-triggered or manual) when one or more certificate actions (Created, Created for Notify-App, Activated) were performed on apps that share the same sponsor. Groups all actions into a single email per sponsor rather than sending individual notifications.'
+    },
+    StaleCertCleanupReminder: {
+        description: 'Reminder to delete expired inactive certificates.',
+        when: 'Sent automatically on the configured stale cert cleanup schedule to sponsors of applications that have expired, inactive certificates still present. Lists each expired certificate with its thumbprint and expiry date so the sponsor can coordinate removal with the application team.'
     }
 };
 
