@@ -147,6 +147,27 @@ public class PolicyService : IPolicyService
         {
             await EnsureTableExistsAsync();
             policy.PartitionKey = "AppPolicy";
+
+            var hasThresholdOverride = policy.CreateCertDaysBeforeExpiry.HasValue || policy.ActivateCertDaysBeforeExpiry.HasValue;
+            var hasNotifyOverride = policy.CreateCertsForNotifyOverride.HasValue;
+            var hasAdditionalEmails = !string.IsNullOrWhiteSpace(policy.AdditionalNotificationEmails);
+            var hasAnyOverride = hasThresholdOverride || hasNotifyOverride || hasAdditionalEmails;
+
+            if (!hasAnyOverride)
+            {
+                try
+                {
+                    await _policyTable.DeleteEntityAsync(policy.PartitionKey, policy.RowKey, ETag.All);
+                    _logger.LogInformation("Cleared app policy overrides for {Id}; using global defaults", policy.RowKey);
+                }
+                catch (RequestFailedException ex) when (ex.Status == 404)
+                {
+                    _logger.LogInformation("No existing app policy to clear for {Id}; already using global defaults", policy.RowKey);
+                }
+
+                return true;
+            }
+
             await _policyTable.UpsertEntityAsync(policy, TableUpdateMode.Replace);
             _logger.LogInformation("Updated app policy for {Id}", policy.RowKey);
             return true;
