@@ -478,11 +478,11 @@ public class AdminFunctions : DashboardFunctionBase
 
     /// <summary>
     /// Manually trigger certificate rotation in report-only mode.
-    /// Alias routes removed per issue #12 — use the canonical admin/ routes only.
+    /// Route uses rotation/ prefix (not admin/) to avoid conflict with Functions host reserved admin path.
     /// </summary>
     [Function("TriggerRotationReportOnly")]
     public async Task<HttpResponseData> TriggerRotationReportOnly(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation/report-only")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "rotation/trigger/report-only")] HttpRequestData req)
     {
         var (authError, identity) = await AuthorizeRequestAsync(req, requireAdmin: true);
         if (authError != null) return authError;
@@ -537,11 +537,11 @@ public class AdminFunctions : DashboardFunctionBase
 
     /// <summary>
     /// Manually trigger certificate rotation in production mode.
-    /// Alias routes removed per issue #12 — use the canonical admin/ routes only.
+    /// Route uses rotation/ prefix (not admin/) to avoid conflict with Functions host reserved admin path.
     /// </summary>
     [Function("TriggerRotationProd")]
     public async Task<HttpResponseData> TriggerRotationProd(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/trigger-rotation/prod")] HttpRequestData req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "rotation/trigger/prod")] HttpRequestData req)
     {
         var (authError, identity) = await AuthorizeRequestAsync(req, requireAdmin: true);
         if (authError != null) return authError;

@@ -151,8 +151,8 @@ See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed step-by-step instruc
 | `/api/audit/app/{id}` | GET | Reader | Get audit logs for specific app |
 | `/api/reports` | GET | Reader | List all run reports |
 | `/api/reports/{id}` | GET | Reader | Get specific run report with detailed results |
-| `/api/admin/trigger-rotation/prod` | POST | Admin | Trigger production rotation run |
-| `/api/admin/trigger-rotation/report-only` | POST | Admin | Trigger report-only rotation run |
+| `/api/rotation/trigger/prod` | POST | Admin | Trigger production rotation run |
+| `/api/rotation/trigger/report-only` | POST | Admin | Trigger report-only rotation run |
 | `/api/testing/send-test-email` | POST | Admin | Send test notification email |
 | `/api/testing/email-templates` | GET | Admin | Preview all email template HTML |
 | `/api/GetRoles` | GET/POST | — | Get current user's roles (SWA rolesSource) |
