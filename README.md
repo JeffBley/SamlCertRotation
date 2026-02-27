@@ -47,6 +47,9 @@ Full deployment guide: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 - API endpoints, settings, security notes, project structure: [docs/TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md)
 - Dashboard screenshots: [Screenshots.md](Screenshots.md)
 
+## Feedback
+If you'd like to report a bug, request a new feature, or provide general feedback, please fill out [this form](https://forms.microsoft.com/Pages/ResponsePage.aspx?id=v4j5cvGGr0GRqy180BHbRzJPxA9VE9lOj9XpVW39Gy9UOThENFFLMUY2UVZHNTRBQUFNNVNDWU05Ny4u).
+
 ## License
 
 MIT
