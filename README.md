@@ -4,7 +4,10 @@ Automated SAML certificate lifecycle management for Microsoft Entra ID Enterpris
 
 ## What This Does
 
-- Rotates SAML signing certificates using a two-phase lifecycle (create, then activate).
+- Rotates SAML signing certificates
+  - If app's Custom Security Attribute = on, will create and activate new cert - Perfect for SAML apps that support secondary certificates and monitor the federation metadata URL
+  - If app's Custom Security Attribute = notify, will just send reminders to app sponsors and optionally create new certificates ready to be activated - Perfect for SAML apps that require manual cert rotation on the app side
+  - If app's Custom Security Attribute = off or null, app takes no action - Admins can continuously identify new SAML apps with null CSA value to know which apps should be evaluated and classified into a category (on, notify, or off)
 - Supports report-only mode for safe validation before production changes.
 - Provides Admin / Reader / Sponsor role-based dashboard access.
 - Sends sponsor and admin notifications through Logic App + Office 365.
