@@ -88,7 +88,7 @@ public interface IPolicyService
     Task UpdateNotifySponsorsOnExpirationEnabledAsync(bool enabled);
 
     /// <summary>
-    /// Get whether sponsor reminders for notify apps are enabled (default true/enabled)
+    /// Get whether sponsor reminders for notify apps are enabled (default false/disabled)
     /// </summary>
     Task<bool> GetSponsorRemindersEnabledAsync();
 
@@ -149,13 +149,35 @@ public interface IPolicyService
 
     /// <summary>
     /// Get whether sponsors can create and rotate certificates (default false/disabled)
+    /// LEGACY – reads old combined setting for backward compatibility.
+    /// New code should use GetSponsorsCanCreateCertsEnabledAsync / GetSponsorsCanActivateCertsEnabledAsync.
     /// </summary>
     Task<bool> GetSponsorsCanRotateCertsEnabledAsync();
 
     /// <summary>
-    /// Update sponsors can rotate certificates setting
+    /// Update sponsors can rotate certificates setting (legacy combined toggle)
     /// </summary>
     Task UpdateSponsorsCanRotateCertsEnabledAsync(bool enabled);
+
+    /// <summary>
+    /// Get whether sponsors can create certificates (default false/disabled)
+    /// </summary>
+    Task<bool> GetSponsorsCanCreateCertsEnabledAsync();
+
+    /// <summary>
+    /// Update sponsors can create certificates setting
+    /// </summary>
+    Task UpdateSponsorsCanCreateCertsEnabledAsync(bool enabled);
+
+    /// <summary>
+    /// Get whether sponsors can activate certificates (default false/disabled)
+    /// </summary>
+    Task<bool> GetSponsorsCanActivateCertsEnabledAsync();
+
+    /// <summary>
+    /// Update sponsors can activate certificates setting
+    /// </summary>
+    Task UpdateSponsorsCanActivateCertsEnabledAsync(bool enabled);
 
     /// <summary>
     /// Get whether sponsors can update policy for their apps (default false/disabled)
@@ -186,4 +208,14 @@ public interface IPolicyService
     /// Update stale-cert cleanup reminder emails setting
     /// </summary>
     Task UpdateStaleCertCleanupRemindersEnabledAsync(bool enabled);
+
+    /// <summary>
+    /// Get whether to use the Entra ID notificationEmailAddresses field as the sponsor source (default true/enabled)
+    /// </summary>
+    Task<bool> GetUseEntraNotificationEmailAsSponsorEnabledAsync();
+
+    /// <summary>
+    /// Update the use-Entra-notification-email-as-sponsor setting
+    /// </summary>
+    Task UpdateUseEntraNotificationEmailAsSponsorEnabledAsync(bool enabled);
 }

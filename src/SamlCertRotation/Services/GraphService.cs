@@ -8,6 +8,7 @@ using SamlCertRotation.Models;
 using Azure.Core;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Net.Http.Headers;
 
 namespace SamlCertRotation.Services;
@@ -44,7 +45,7 @@ public class GraphService : IGraphService
     }
 
     /// <inheritdoc />
-    public async Task<List<SamlApplication>> GetSamlApplicationsAsync()
+    public async Task<List<SamlApplication>> GetSamlApplicationsAsync(bool useEntraNotificationEmailAsSponsor = true)
     {
         var samlApps = new List<SamlApplication>();
 
@@ -88,7 +89,7 @@ public class GraphService : IGraphService
             // Phase 2: Map all service principals to SamlApplication objects
             foreach (var sp in allServicePrincipals)
             {
-                samlApps.Add(MapToSamlApplication(sp));
+                samlApps.Add(MapToSamlApplication(sp, useEntraNotificationEmailAsSponsor));
             }
 
             var appsWithCsaFromQuery = samlApps.Count(a => !string.IsNullOrWhiteSpace(a.AutoRotateStatus));
@@ -149,7 +150,7 @@ public class GraphService : IGraphService
     }
 
     /// <inheritdoc />
-    public async Task<SamlApplication?> GetSamlApplicationAsync(string servicePrincipalId)
+    public async Task<SamlApplication?> GetSamlApplicationAsync(string servicePrincipalId, bool useEntraNotificationEmailAsSponsor = true)
     {
         try
         {
@@ -164,7 +165,7 @@ public class GraphService : IGraphService
                     };
                 });
 
-            return sp != null ? MapToSamlApplication(sp) : null;
+            return sp != null ? MapToSamlApplication(sp, useEntraNotificationEmailAsSponsor) : null;
         }
         catch (Exception ex)
         {
@@ -174,16 +175,16 @@ public class GraphService : IGraphService
     }
 
     /// <inheritdoc />
-    public async Task<SamlCertificate?> CreateSamlCertificateAsync(string servicePrincipalId, int validityInYears = 3)
+    public async Task<SamlCertificate?> CreateSamlCertificateAsync(string servicePrincipalId, int lifespanDays = 1095)
     {
         try
         {
-            _logger.LogInformation("Creating new SAML certificate for service principal {Id}", servicePrincipalId);
+            _logger.LogInformation("Creating new SAML certificate for service principal {Id} with lifespan {Days} days", servicePrincipalId, lifespanDays);
 
             var requestBody = new AddTokenSigningCertificatePostRequestBody
             {
                 DisplayName = $"CN=SamlCertRotation-{DateTime.UtcNow:yyyyMMdd}",
-                EndDateTime = DateTimeOffset.UtcNow.AddYears(validityInYears)
+                EndDateTime = DateTimeOffset.UtcNow.AddDays(lifespanDays)
             };
 
             var result = await _graphClient.ServicePrincipals[servicePrincipalId]
@@ -201,7 +202,7 @@ public class GraphService : IGraphService
                 KeyId = result.KeyId?.ToString() ?? string.Empty,
                 Thumbprint = result.Thumbprint ?? string.Empty,
                 StartDateTime = result.StartDateTime?.UtcDateTime ?? DateTime.UtcNow,
-                EndDateTime = result.EndDateTime?.UtcDateTime ?? DateTime.UtcNow.AddYears(validityInYears),
+                EndDateTime = result.EndDateTime?.UtcDateTime ?? DateTime.UtcNow.AddDays(lifespanDays),
                 Type = result.Type ?? "AsymmetricX509Cert",
                 Usage = result.Usage ?? "Sign",
                 IsActive = false
@@ -293,6 +294,16 @@ public class GraphService : IGraphService
         }
     }
 
+    /// <summary>
+    /// Basic email format validation to prevent sending to malformed addresses.
+    /// </summary>
+    private static readonly Regex EmailRegex = new(
+        @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static bool IsValidEmail(string email) =>
+        !string.IsNullOrWhiteSpace(email) && EmailRegex.IsMatch(email.Trim());
+
     /// <inheritdoc />
     public async Task<bool> SendEmailAsync(List<string> recipients, string subject, string htmlBody)
     {
@@ -301,6 +312,24 @@ public class GraphService : IGraphService
             if (!recipients.Any())
             {
                 _logger.LogWarning("No recipients specified for email notification");
+                return false;
+            }
+
+            // Validate email format and filter out invalid addresses
+            var validRecipients = recipients
+                .Where(r => IsValidEmail(r))
+                .Select(r => r.Trim())
+                .ToList();
+
+            var invalidCount = recipients.Count - validRecipients.Count;
+            if (invalidCount > 0)
+            {
+                _logger.LogWarning("Filtered out {Count} invalid email address(es) from recipient list", invalidCount);
+            }
+
+            if (!validRecipients.Any())
+            {
+                _logger.LogWarning("No valid recipients remaining after email format validation");
                 return false;
             }
 
@@ -316,7 +345,7 @@ public class GraphService : IGraphService
             using var httpClient = _httpClientFactory.CreateClient();
             var payload = new
             {
-                to = string.Join(";", recipients),
+                to = string.Join(";", validRecipients),
                 subject = subject,
                 body = htmlBody
             };
@@ -330,7 +359,7 @@ public class GraphService : IGraphService
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("Email sent successfully via Logic App to {Count} recipients", recipients.Count);
+                _logger.LogInformation("Email sent successfully via Logic App to {Count} recipients", validRecipients.Count);
                 return true;
             }
             else
@@ -490,7 +519,71 @@ public class GraphService : IGraphService
         }
     }
 
-    private SamlApplication MapToSamlApplication(ServicePrincipal sp)
+    /// <inheritdoc />
+    public async Task<bool> UpdateNotificationEmailAddressesAsync(string servicePrincipalId, string sponsorEmails)
+    {
+        if (string.IsNullOrWhiteSpace(servicePrincipalId))
+        {
+            throw new ArgumentException("Service principal ID is required.", nameof(servicePrincipalId));
+        }
+
+        if (string.IsNullOrWhiteSpace(sponsorEmails))
+        {
+            throw new ArgumentException("Sponsor email is required.", nameof(sponsorEmails));
+        }
+
+        try
+        {
+            // Split semicolon-separated string into individual emails for the Graph API array
+            var emailList = sponsorEmails
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+            var patchBody = new ServicePrincipal
+            {
+                NotificationEmailAddresses = emailList
+            };
+
+            await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(patchBody);
+
+            _logger.LogInformation("Updated notificationEmailAddresses for service principal {Id}", servicePrincipalId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating notificationEmailAddresses for service principal {Id}", servicePrincipalId);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ClearNotificationEmailAddressesAsync(string servicePrincipalId)
+    {
+        if (string.IsNullOrWhiteSpace(servicePrincipalId))
+        {
+            throw new ArgumentException("Service principal ID is required.", nameof(servicePrincipalId));
+        }
+
+        try
+        {
+            var patchBody = new ServicePrincipal
+            {
+                NotificationEmailAddresses = new List<string>()
+            };
+
+            await _graphClient.ServicePrincipals[servicePrincipalId].PatchAsync(patchBody);
+
+            _logger.LogInformation("Cleared notificationEmailAddresses for service principal {Id}", servicePrincipalId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error clearing notificationEmailAddresses for service principal {Id}", servicePrincipalId);
+            throw;
+        }
+    }
+
+    private SamlApplication MapToSamlApplication(ServicePrincipal sp, bool useEntraNotificationEmailAsSponsor = true)
     {
         var samlApp = new SamlApplication
         {
@@ -499,7 +592,9 @@ public class GraphService : IGraphService
             DisplayName = sp.DisplayName ?? string.Empty,
             ActiveCertificateThumbprint = sp.PreferredTokenSigningKeyThumbprint,
             NotificationEmails = sp.NotificationEmailAddresses?.ToList() ?? new List<string>(),
-            Sponsor = ExtractSponsorFromTags(sp.Tags)
+            Sponsor = useEntraNotificationEmailAsSponsor
+                ? ExtractSponsorFromNotificationEmails(sp.NotificationEmailAddresses)
+                : ExtractSponsorFromTags(sp.Tags)
         };
 
         // Parse custom security attributes
@@ -572,6 +667,27 @@ public class GraphService : IGraphService
 
         var sponsorEmail = sponsorTag.Substring(SponsorTagPrefix.Length).Trim();
         return string.IsNullOrWhiteSpace(sponsorEmail) ? null : sponsorEmail;
+    }
+
+    /// <summary>
+    /// Extracts sponsor emails from the Entra ID notificationEmailAddresses field.
+    /// The field is a list of strings; each string may contain semicolon-separated emails.
+    /// </summary>
+    private static string? ExtractSponsorFromNotificationEmails(List<string>? notificationEmailAddresses)
+    {
+        if (notificationEmailAddresses == null || notificationEmailAddresses.Count == 0)
+        {
+            return null;
+        }
+
+        // Flatten: each entry may be semicolon-separated
+        var allEmails = notificationEmailAddresses
+            .SelectMany(entry => entry.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return allEmails.Count > 0 ? string.Join(";", allEmails) : null;
     }
 
     private static string? ExtractCustomSecurityAttributeValue(object? attributeSetValue, string attributeName)

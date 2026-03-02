@@ -73,6 +73,7 @@ public class PolicyService : IPolicyService
                 RowKey = "Default",
                 CreateCertDaysBeforeExpiry = _defaultCreateDays,
                 ActivateCertDaysBeforeExpiry = _defaultActivateDays,
+                NewCertLifespanDays = 1095,
                 IsEnabled = true,
                 Description = "Default global rotation policy"
             };
@@ -99,6 +100,8 @@ public class PolicyService : IPolicyService
             throw new ArgumentException("ActivateCertDaysBeforeExpiry must be at least 1.", nameof(policy));
         if (policy.ActivateCertDaysBeforeExpiry >= policy.CreateCertDaysBeforeExpiry)
             throw new ArgumentException("ActivateCertDaysBeforeExpiry must be less than CreateCertDaysBeforeExpiry.", nameof(policy));
+        if (policy.NewCertLifespanDays < 1 || policy.NewCertLifespanDays > 1095)
+            throw new ArgumentException("NewCertLifespanDays must be between 1 and 1095.", nameof(policy));
 
         try
         {
@@ -150,8 +153,9 @@ public class PolicyService : IPolicyService
 
             var hasThresholdOverride = policy.CreateCertDaysBeforeExpiry.HasValue || policy.ActivateCertDaysBeforeExpiry.HasValue;
             var hasNotifyOverride = policy.CreateCertsForNotifyOverride.HasValue;
+            var hasLifespanOverride = policy.NewCertLifespanDays.HasValue;
             var hasAdditionalEmails = !string.IsNullOrWhiteSpace(policy.AdditionalNotificationEmails);
-            var hasAnyOverride = hasThresholdOverride || hasNotifyOverride || hasAdditionalEmails;
+            var hasAnyOverride = hasThresholdOverride || hasNotifyOverride || hasLifespanOverride || hasAdditionalEmails;
 
             if (!hasAnyOverride)
             {
@@ -198,6 +202,7 @@ public class PolicyService : IPolicyService
             RowKey = servicePrincipalId,
             CreateCertDaysBeforeExpiry = appPolicy.CreateCertDaysBeforeExpiry ?? globalPolicy.CreateCertDaysBeforeExpiry,
             ActivateCertDaysBeforeExpiry = appPolicy.ActivateCertDaysBeforeExpiry ?? globalPolicy.ActivateCertDaysBeforeExpiry,
+            NewCertLifespanDays = appPolicy.NewCertLifespanDays ?? globalPolicy.NewCertLifespanDays,
             IsEnabled = globalPolicy.IsEnabled,
             Description = $"Effective policy for {servicePrincipalId}"
         };
@@ -469,7 +474,7 @@ public class PolicyService : IPolicyService
             _logger.LogWarning(ex, "Error getting sponsor reminders enabled setting from storage");
         }
 
-        return true;
+        return false; // disabled by default
     }
 
     /// <inheritdoc />
@@ -808,6 +813,96 @@ public class PolicyService : IPolicyService
     }
 
     /// <inheritdoc />
+    public async Task<bool> GetSponsorsCanCreateCertsEnabledAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorsCanCreateCerts");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsors-can-create-certs setting from storage");
+        }
+
+        return false; // disabled by default
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSponsorsCanCreateCertsEnabledAsync(bool enabled)
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "SponsorsCanCreateCerts")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated sponsors-can-create-certs setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsors-can-create-certs setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> GetSponsorsCanActivateCertsEnabledAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "SponsorsCanActivateCerts");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting sponsors-can-activate-certs setting from storage");
+        }
+
+        return false; // disabled by default
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateSponsorsCanActivateCertsEnabledAsync(bool enabled)
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "SponsorsCanActivateCerts")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated sponsors-can-activate-certs setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating sponsors-can-activate-certs setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<bool> GetSponsorsCanUpdatePolicyEnabledAsync()
     {
         try
@@ -938,6 +1033,51 @@ public class PolicyService : IPolicyService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating stale-cert-cleanup-reminders setting");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> GetUseEntraNotificationEmailAsSponsorEnabledAsync()
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var response = await _policyTable.GetEntityIfExistsAsync<TableEntity>("Settings", "UseEntraNotificationEmailAsSponsor");
+            if (response.HasValue && response.Value != null)
+            {
+                var value = response.Value.GetString("Enabled");
+                if (bool.TryParse(value, out var enabled))
+                {
+                    return enabled;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error getting use-entra-notification-email-as-sponsor setting from storage");
+        }
+
+        return true; // enabled by default
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateUseEntraNotificationEmailAsSponsorEnabledAsync(bool enabled)
+    {
+        try
+        {
+            await EnsureTableExistsAsync();
+            var entity = new TableEntity("Settings", "UseEntraNotificationEmailAsSponsor")
+            {
+                { "Enabled", enabled.ToString() }
+            };
+
+            await _policyTable.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+            _logger.LogInformation("Updated use-entra-notification-email-as-sponsor setting: {Enabled}", enabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating use-entra-notification-email-as-sponsor setting");
             throw;
         }
     }

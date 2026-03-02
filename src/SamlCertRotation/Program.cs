@@ -1,6 +1,7 @@
 using Azure.Data.Tables;
 using Azure.Core;
 using Azure.Identity;
+using Azure.Storage.Blobs;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -41,6 +42,14 @@ var host = new HostBuilder()
             var connectionString = configuration["StorageConnectionString"] 
                 ?? configuration["AzureWebJobsStorage"];
             return new TableServiceClient(connectionString);
+        });
+
+        // Register Blob Service Client (used for distributed locks)
+        services.AddSingleton(sp =>
+        {
+            var connectionString = configuration["StorageConnectionString"]
+                ?? configuration["AzureWebJobsStorage"];
+            return new BlobServiceClient(connectionString);
         });
 
         // Register application services

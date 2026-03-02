@@ -5,681 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAML Certificate Rotation Dashboard</title>
     <link rel="icon" type="image/png" href="favicon.png?v=2">
-    <style>
-        :root {
-            --primary: #0078d4;
-            --success: #107c10;
-            --warning: #ffb900;
-            --danger: #d13438;
-            --gray: #797775;
-            --bg: #f3f2f1;
-            --card-bg: #ffffff;
-            --text: #323130;
-            --text-secondary: #605e5c;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            line-height: 1.5;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        header {
-            background: linear-gradient(135deg, var(--primary), #005a9e);
-            color: white;
-            padding: 24px 0;
-            margin-bottom: 24px;
-        }
-
-        header h1 {
-            font-weight: 600;
-            font-size: 24px;
-        }
-
-        header p {
-            opacity: 0.9;
-            font-size: 14px;
-        }
-
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header-left h1, .header-left p {
-            margin: 0;
-        }
-
-        .logout-btn {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
-        }
-
-        .logout-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-
-        .filter-bar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px;
-            margin-bottom: 16px;
-            padding: 12px 16px;
-            background: #f8f8f8;
-            border-radius: 6px;
-            align-items: center;
-        }
-
-        .filter-bar label {
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-secondary);
-        }
-
-        .filter-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-
-        .filter-checkbox {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-
-        .filter-checkbox input {
-            cursor: pointer;
-        }
-
-        .stats-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            margin-bottom: 24px;
-            align-items: center;
-        }
-
-        .stats-row {
-            display: flex;
-            gap: 16px;
-            justify-content: center;
-        }
-
-        .stats-row .stat-card {
-            width: 200px;
-            flex: 0 0 auto;
-        }
-
-        .stat-card {
-            background: var(--card-bg);
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-            text-align: center;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-        }
-
-        .stat-card[data-navigate] {
-            cursor: pointer;
-        }
-
-        .stat-value {
-            font-size: 36px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-
-        .stat-label {
-            font-size: 12px;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .stat-card.on .stat-value { color: var(--success); }
-        .stat-card.off .stat-value { color: var(--danger); }
-        .stat-card.notify .stat-value { color: #0078d4; }
-        .stat-card.null .stat-value { color: var(--gray); }
-        .stat-card.ok .stat-value { color: var(--success); }
-        .stat-card.warning .stat-value { color: var(--warning); }
-        .stat-card.expiring .stat-value { color: var(--warning); }
-        .stat-card.critical .stat-value { color: #e65100; }
-        .stat-card.expired .stat-value { color: var(--danger); }
-        .stat-sublabel { font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
-
-        .section {
-            background: var(--card-bg);
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 24px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-        }
-
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid #edebe9;
-        }
-
-        .section h2 {
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: background-color 0.2s;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #005a9e;
-        }
-
-        .btn-secondary {
-            background: #f3f2f1;
-            color: var(--text);
-            border: 1px solid #d2d0ce;
-        }
-
-        .btn-secondary:hover {
-            background: #edebe9;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #edebe9;
-            word-break: break-word;
-            overflow-wrap: break-word;
-        }
-
-        th {
-            font-weight: 600;
-            color: var(--text-secondary);
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            white-space: nowrap;
-        }
-
-        tr:hover {
-            background: #f9f9f9;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
-            white-space: nowrap;
-        }
-
-        .status-on { background: #dff6dd; color: #0e700e; }
-        .status-off { background: #fde7e9; color: #c42b1c; }
-        .status-notify { background: #fff4ce; color: #835c00; }
-        .status-null { background: #edebe9; color: #605e5c; }
-
-        .expiry-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .expiry-expired { background: #fde7e9; color: #c42b1c; }
-        .expiry-critical { background: #fde7e9; color: #c42b1c; }
-        .expiry-warning { background: #fff4ce; color: #835c00; }
-        .expiry-attention { background: #fff4ce; color: #835c00; }
-        .expiry-ok { background: #dff6dd; color: #0e700e; }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: var(--text-secondary);
-        }
-
-        .loading::after {
-            content: '';
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--primary);
-            border-top-color: transparent;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-left: 10px;
-            vertical-align: middle;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .error {
-            background: #fde7e9;
-            color: #c42b1c;
-            padding: 16px;
-            border-radius: 8px;
-        }
-
-        #error-container {
-            position: fixed;
-            top: 70px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 9999;
-            width: auto;
-            min-width: 320px;
-            max-width: 600px;
-            pointer-events: none;
-        }
-
-        #error-container > * {
-            pointer-events: auto;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-
-        #tabs-wrapper {
-            margin-bottom: 20px;
-        }
-
-        .tabs {
-            display: flex;
-            gap: 4px;
-            border-bottom: 2px solid #edebe9;
-        }
-
-        .sponsor-tabs {
-            align-items: center;
-        }
-
-        .tab-row-label {
-            font-size: 12px;
-            font-weight: 600;
-            color: #605e5c;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 8px 12px 8px 4px;
-            white-space: nowrap;
-        }
-
-        .tab {
-            padding: 12px 24px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            border-bottom: 2px solid transparent;
-            margin-bottom: -2px;
-            transition: all 0.2s;
-        }
-
-        .tab:hover {
-            color: var(--primary);
-        }
-
-        .tab.active {
-            color: var(--primary);
-            border-bottom-color: var(--primary);
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        .last-updated {
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
-
-        .policy-form {
-            max-width: 500px;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        .form-group label {
-            display: block;
-            font-weight: 500;
-            margin-bottom: 6px;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #d2d0ce;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
-        }
-
-        footer {
-            text-align: center;
-            padding: 20px;
-            color: var(--text-secondary);
-            font-size: 12px;
-        }
-
-        /* Actions dropdown menu */
-        .actions-cell {
-            position: relative;
-        }
-
-        .actions-btn {
-            background: none;
-            border: 1px solid #d2d0ce;
-            border-radius: 4px;
-            padding: 4px 8px;
-            cursor: pointer;
-            font-size: 16px;
-            color: var(--text-secondary);
-            transition: all 0.2s;
-        }
-
-        .actions-btn:hover {
-            background: #f4f4f4;
-            border-color: var(--primary);
-        }
-
-        .dropdown-menu {
-            display: none;
-            position: absolute;
-            right: 0;
-            top: 100%;
-            background: white;
-            border: 1px solid #d2d0ce;
-            border-radius: 6px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 1000;
-            min-width: 200px;
-            overflow: hidden;
-        }
-
-        .dropdown-menu.show {
-            display: block;
-        }
-
-        .dropdown-item {
-            display: block;
-            width: 100%;
-            padding: 10px 16px;
-            border: none;
-            background: none;
-            text-align: left;
-            cursor: pointer;
-            font-size: 14px;
-            color: var(--text);
-            transition: background 0.15s;
-        }
-
-        .dropdown-item:hover {
-            background: #f4f4f4;
-        }
-
-        .dropdown-item:disabled,
-        .dropdown-item.disabled {
-            color: #a19f9d;
-            background: #f8f8f8;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        .dropdown-item.danger {
-            color: var(--danger);
-        }
-
-        .dropdown-item.danger:hover {
-            background: #fde7e9;
-        }
-
-        .multi-select-filter-wrapper {
-            position: relative;
-            min-width: 260px;
-        }
-
-        .multi-select-filter-toggle {
-            min-width: 260px;
-            text-align: left;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .multi-select-filter-dropdown {
-            right: auto;
-            left: 0;
-            min-width: 260px;
-            max-height: 260px;
-            overflow-y: auto;
-            padding: 8px;
-        }
-
-        .multi-select-filter-option {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 4px 0;
-            font-size: 14px;
-            color: var(--text);
-        }
-
-        /* Confirmation modal */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.5);
-            z-index: 2000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-overlay.show {
-            display: flex;
-        }
-
-        .modal {
-            background: white;
-            border-radius: 8px;
-            padding: 24px;
-            max-width: 400px;
-            width: 90%;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-        }
-
-        .modal h3 {
-            margin-bottom: 12px;
-            color: var(--danger);
-        }
-
-        .modal p {
-            margin-bottom: 20px;
-            color: var(--text-secondary);
-        }
-
-        .modal-buttons {
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-        }
-
-        .modal-buttons button {
-            padding: 8px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .btn-cancel {
-            background: #f4f4f4;
-            border: 1px solid #d2d0ce;
-            color: var(--text);
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            border: none;
-            color: white;
-        }
-
-        /* Sign in page styles */
-        .signin-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 60vh;
-            text-align: center;
-        }
-
-        .signin-container h2 {
-            margin-bottom: 16px;
-        }
-
-        .signin-container p {
-            margin-bottom: 24px;
-            color: var(--text-secondary);
-        }
-
-        .signin-btn {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 12px 32px;
-            border-radius: 4px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .signin-btn:hover {
-            background: #005a9e;
-        }
-
-        /* Rotate button in settings */
-        .btn-secondary {
-            background: #f4f4f4;
-            border: 1px solid #d2d0ce;
-            color: var(--text);
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
-        }
-
-        .btn-secondary:hover {
-            background: #e8e8e8;
-            border-color: #b8b8b8;
-        }
-
-        /* Info icon tooltip */
-        .info-icon {
-            cursor: help;
-            font-size: 14px;
-            position: relative;
-        }
-
-        .info-icon:hover::after {
-            content: attr(title);
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            bottom: 100%;
-            margin-bottom: 8px;
-            background: #333;
-            color: white;
-            padding: 10px 14px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: normal;
-            white-space: normal;
-            width: 320px;
-            z-index: 1000;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            line-height: 1.4;
-        }
-
-        .info-icon:hover::before {
-            content: '';
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            bottom: 100%;
-            margin-bottom: 2px;
-            border: 6px solid transparent;
-            border-top-color: #333;
-        }
-
-        .btn-secondary:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <header>
@@ -689,8 +15,8 @@
                     <h1>SAML Certificate Rotation Dashboard</h1>
                     <p>Automated certificate lifecycle management for Microsoft Entra ID</p>
                 </div>
-                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-                    <span id="user-upn" style="font-size:12px;color:#fff;opacity:0.85;"></span>
+                <div class="header-right">
+                    <span id="user-upn" class="header-upn"></span>
                     <button class="logout-btn" id="btn-sign-out">Sign Out</button>
                 </div>
             </div>
@@ -700,7 +26,7 @@
     <div class="container">
         <div id="error-container"></div>
 
-        <div id="tabs-wrapper" style="visibility:hidden;">
+        <div id="tabs-wrapper" class="invisible">
             <div class="tabs" id="admin-tabs">
                 <button class="tab active" data-tab="overview">Overview</button>
                 <button class="tab" data-tab="applications">Applications</button>
@@ -711,7 +37,7 @@
                 <button class="tab" data-tab="reports">Reports</button>
                 <button class="tab" data-tab="testing">Testing</button>
             </div>
-            <div class="tabs sponsor-tabs" id="sponsor-tabs" style="display:none;">
+            <div class="tabs sponsor-tabs d-none" id="sponsor-tabs">
                 <button class="tab" data-tab="myapps">My SAML Apps</button>
                 <button class="tab" data-tab="mystalecerts">My Stale Certs</button>
             </div>
@@ -775,18 +101,18 @@
                     <h2>SAML Applications</h2>
                     <div>
                         <span class="last-updated" id="last-updated"></span>
-                        <div style="position:relative;display:inline-block;">
+                        <div class="dropdown-wrapper">
                             <button class="btn btn-secondary" id="btn-bulk-sponsors">Bulk update sponsors ▾</button>
-                            <div id="bulk-sponsors-dropdown" class="dropdown-menu" style="min-width:260px;">
+                            <div id="bulk-sponsors-dropdown" class="dropdown-menu dropdown-menu-lg">
                                 <button class="dropdown-item" id="btn-bulk-upload-csv">Bulk Update Sponsors - CSV upload</button>
                                 <button class="dropdown-item" id="btn-download-empty-csv">Download empty CSV</button>
                                 <button class="dropdown-item" id="btn-download-filled-csv">Download filled CSV</button>
                             </div>
                         </div>
-                        <input type="file" id="bulk-csv-file-input" accept=".csv" style="display:none;">
-                        <div style="position:relative;display:inline-block;">
+                        <input type="file" id="bulk-csv-file-input" accept=".csv" class="d-none">
+                        <div class="dropdown-wrapper">
                             <button class="btn btn-secondary" id="btn-export-apps">Export ▾</button>
-                            <div id="export-apps-dropdown" class="dropdown-menu" style="min-width:180px;">
+                            <div id="export-apps-dropdown" class="dropdown-menu dropdown-menu-md">
                                 <button class="dropdown-item" id="btn-export-apps-csv">Download as CSV</button>
                                 <button class="dropdown-item" id="btn-export-apps-json">Download as JSON</button>
                             </div>
@@ -798,15 +124,15 @@
                 </div>
                 <div class="filter-bar">
                     <div class="filter-group">
-                        <input type="text" id="app-search" placeholder="Search application name..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:240px;">
+                        <input type="text" id="app-search" placeholder="Search application name..." class="form-input-lg">
                         <button class="btn btn-secondary" id="btn-toggle-app-filters">Add Filters</button>
                         <button class="btn btn-secondary" id="btn-clear-app-filters">Clear Filters</button>
-                        <select id="app-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                        <select id="app-sort-by" class="form-control">
                             <option value="name">Sort: Name</option>
                             <option value="daysRemaining" selected>Sort: Days Remaining</option>
                             <option value="expiryDate">Sort: Expiry Date</option>
                         </select>
-                        <select id="app-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                        <select id="app-sort-direction" class="form-control">
                             <option value="asc">Asc</option>
                             <option value="desc">Desc</option>
                         </select>
@@ -830,8 +156,8 @@
                         </div>
                     </div>
                 </div>
-                <div id="app-filter-panel" style="display:none;padding:12px 16px;background:#f8f8f8;border-radius:6px;margin-bottom:16px;">
-                    <div class="filter-group" style="flex-wrap:wrap;gap:12px;align-items:center;">
+                <div id="app-filter-panel" class="filter-panel">
+                    <div class="filter-group filter-group-wrap">
                         <div class="multi-select-filter-wrapper">
                             <button type="button" id="app-auto-rotate-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
                                 <span id="app-auto-rotate-filter-label">Auto-Rotate</span>
@@ -866,7 +192,7 @@
                                 <label class="multi-select-filter-option"><input type="checkbox" class="app-policy-type-filter-option-input" value="App-Specific">App-Specific</label>
                             </div>
                         </div>
-                        <input type="text" id="app-sponsor-search" placeholder="Filter by sponsor..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
+                        <input type="text" id="app-sponsor-search" placeholder="Filter by sponsor..." class="form-input-md">
                     </div>
                 </div>
                 <div id="apps-table-container">
@@ -880,9 +206,9 @@
                 <div class="section-header">
                     <h2>My SAML Apps</h2>
                     <div>
-                        <div style="position:relative;display:inline-block;">
+                        <div class="dropdown-wrapper">
                             <button class="btn btn-secondary" id="btn-export-myapps">Export ▾</button>
-                            <div id="export-myapps-dropdown" class="dropdown-menu" style="min-width:180px;">
+                            <div id="export-myapps-dropdown" class="dropdown-menu dropdown-menu-md">
                                 <button class="dropdown-item" id="btn-export-myapps-csv">Download as CSV</button>
                                 <button class="dropdown-item" id="btn-export-myapps-json">Download as JSON</button>
                             </div>
@@ -892,15 +218,15 @@
                 </div>
                 <div class="filter-bar">
                     <div class="filter-group">
-                        <input type="text" id="myapp-search" placeholder="Search application name..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:240px;">
+                        <input type="text" id="myapp-search" placeholder="Search application name..." class="form-input-lg">
                         <button class="btn btn-secondary" id="btn-toggle-myapp-filters">Add Filters</button>
                         <button class="btn btn-secondary" id="btn-clear-myapp-filters">Clear Filters</button>
-                        <select id="myapp-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                        <select id="myapp-sort-by" class="form-control">
                             <option value="name">Sort: Name</option>
                             <option value="daysRemaining" selected>Sort: Days Remaining</option>
                             <option value="expiryDate">Sort: Expiry Date</option>
                         </select>
-                        <select id="myapp-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                        <select id="myapp-sort-direction" class="form-control">
                             <option value="asc">Asc</option>
                             <option value="desc">Desc</option>
                         </select>
@@ -924,8 +250,8 @@
                         </div>
                     </div>
                 </div>
-                <div id="myapp-filter-panel" style="display:none;padding:12px 16px;background:#f8f8f8;border-radius:6px;margin-bottom:16px;">
-                    <div class="filter-group" style="flex-wrap:wrap;gap:12px;align-items:center;">
+                <div id="myapp-filter-panel" class="filter-panel">
+                    <div class="filter-group filter-group-wrap">
                         <div class="multi-select-filter-wrapper">
                             <button type="button" id="myapp-auto-rotate-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
                                 <span id="myapp-auto-rotate-filter-label">Auto-Rotate</span>
@@ -973,9 +299,9 @@
                 <div class="section-header">
                     <h2>My Stale Certs</h2>
                     <div>
-                        <div style="position:relative;display:inline-block;">
+                        <div class="dropdown-wrapper">
                             <button class="btn btn-secondary" id="btn-export-mystalecerts">Export ▾</button>
-                            <div id="export-mystalecerts-dropdown" class="dropdown-menu" style="min-width:180px;">
+                            <div id="export-mystalecerts-dropdown" class="dropdown-menu dropdown-menu-md">
                                 <button class="dropdown-item" id="btn-export-mystalecerts-csv">Download as CSV</button>
                                 <button class="dropdown-item" id="btn-export-mystalecerts-json">Download as JSON</button>
                             </div>
@@ -983,7 +309,7 @@
                         <button class="btn btn-secondary" id="btn-refresh-mystalecerts">Refresh</button>
                     </div>
                 </div>
-                <p style="margin-bottom:16px;color:#666;">
+                <p class="section-desc">
                     Your sponsored applications listed below have inactive certificates that are expired and should be removed.
                     Use the links to open each application in Entra admin center for certificate management.
                 </p>
@@ -998,9 +324,9 @@
                 <div class="section-header">
                     <h2>Certificate Clean-up</h2>
                     <div>
-                        <div style="position:relative;display:inline-block;">
+                        <div class="dropdown-wrapper">
                             <button class="btn btn-secondary" id="btn-export-cleanup">Export ▾</button>
-                            <div id="export-cleanup-dropdown" class="dropdown-menu" style="min-width:180px;">
+                            <div id="export-cleanup-dropdown" class="dropdown-menu dropdown-menu-md">
                                 <button class="dropdown-item" id="btn-export-cleanup-csv">Download as CSV</button>
                                 <button class="dropdown-item" id="btn-export-cleanup-json">Download as JSON</button>
                             </div>
@@ -1008,7 +334,7 @@
                         <button class="btn btn-secondary" id="btn-refresh-cleanup">Refresh</button>
                     </div>
                 </div>
-                <p style="margin-bottom:16px;color:#666;">
+                <p class="section-desc">
                     Applications listed below have inactive certificates that are expired and should be removed. 
                     Certificate deletion must be done manually in the Azure Portal as it requires the original signing key.
                 </p>
@@ -1033,12 +359,17 @@
                         <input type="number" id="activateDays" min="1" max="365" value="30">
                     </div>
                     <div class="form-group">
+                        <label for="certLifespanDays">New certificate lifespan (days)</label>
+                        <input type="number" id="certLifespanDays" min="1" max="1095" value="1095">
+                        <p class="form-hint">How long newly created certificates are valid for (1–1095 days). Default is 1095 (~3 years).</p>
+                    </div>
+                    <div class="form-group">
                         <label for="createCertsForNotifyApps">Create new certs for apps marked as Notify</label>
-                        <select id="createCertsForNotifyApps" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <select id="createCertsForNotifyApps" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, Notify apps will have new certificates automatically created (but not activated) before expiry. When disabled, Notify apps receive reminders only.</p>
+                        <p class="form-hint">When enabled, Notify apps will have new certificates automatically created (but not activated) before expiry. When disabled, Notify apps receive reminders only.</p>
                     </div>
                     <button class="btn btn-primary" id="btn-save-policy">Save Policy</button>
                 </div>
@@ -1050,9 +381,9 @@
                 <div class="section-header">
                     <h2>Audit Log</h2>
                     <div>
-                        <div style="position:relative;display:inline-block;">
+                        <div class="dropdown-wrapper">
                             <button class="btn btn-secondary" id="btn-export-audit">Export ▾</button>
-                            <div id="export-audit-dropdown" class="dropdown-menu" style="min-width:180px;">
+                            <div id="export-audit-dropdown" class="dropdown-menu dropdown-menu-md">
                                 <button class="dropdown-item" id="btn-export-audit-csv">Download as CSV</button>
                                 <button class="dropdown-item" id="btn-export-audit-json">Download as JSON</button>
                             </div>
@@ -1060,30 +391,30 @@
                         <button class="btn btn-secondary" id="btn-refresh-audit">Refresh</button>
                     </div>
                 </div>
-                <div class="filter-bar" style="margin-bottom: 16px;">
+                <div class="filter-bar">
                     <div class="filter-group">
-                        <label style="display:flex;align-items:center;gap:6px;">
+                        <label class="label-inline">
                             From
-                            <input type="date" id="audit-from-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;">
+                            <input type="date" id="audit-from-date" class="form-input-sm">
                         </label>
-                        <label style="display:flex;align-items:center;gap:6px;">
+                        <label class="label-inline">
                             To
-                            <input type="date" id="audit-to-date" style="padding:6px 8px;border:1px solid #d2d0ce;border-radius:4px;">
+                            <input type="date" id="audit-to-date" class="form-input-sm">
                         </label>
                         <button class="btn btn-secondary" id="btn-toggle-audit-filters">Add Filter</button>
                         <button class="btn btn-secondary" id="btn-clear-audit-filters">Clear Filters</button>
-                        <select id="audit-sort-by" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                        <select id="audit-sort-by" class="form-control">
                             <option value="time">Sort: Time</option>
                             <option value="application">Sort: Application</option>
                             <option value="initiatedBy">Sort: Initiated By</option>
                             <option value="action">Sort: Action</option>
                             <option value="result">Sort: Result</option>
                         </select>
-                        <select id="audit-sort-direction" style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+                        <select id="audit-sort-direction" class="form-control">
                             <option value="desc">Desc</option>
                             <option value="asc">Asc</option>
                         </select>
-                        <div class="multi-select-filter-wrapper" style="margin-left:auto;">
+                        <div class="multi-select-filter-wrapper ml-auto">
                             <button type="button" id="audit-columns-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
                                 <span id="audit-columns-filter-label">Columns</span>
                                 <span>▾</span>
@@ -1100,8 +431,8 @@
                         </div>
                     </div>
                 </div>
-                <div id="audit-filter-panel" style="display:none;padding:12px 16px;background:#f8f8f8;border-radius:6px;margin-bottom:16px;">
-                    <div class="filter-group" style="flex-wrap:wrap;gap:12px;align-items:center;">
+                <div id="audit-filter-panel" class="filter-panel">
+                    <div class="filter-group filter-group-wrap">
                         <div class="multi-select-filter-wrapper">
                             <button type="button" id="audit-action-filter-toggle" class="btn btn-secondary multi-select-filter-toggle">
                                 <span id="audit-action-filter-label">Actions</span>
@@ -1131,9 +462,9 @@
                                 <label class="multi-select-filter-option"><input type="checkbox" class="audit-result-filter-option-input" value="failed">Failed</label>
                             </div>
                         </div>
-                        <input type="text" id="audit-initiated-by-search" placeholder="Filter by Initiated By..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
-                        <input type="text" id="audit-application-search" placeholder="Filter by Application..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
-                        <input type="text" id="audit-details-search" placeholder="Filter by Details..." style="padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;min-width:180px;">
+                        <input type="text" id="audit-initiated-by-search" placeholder="Filter by Initiated By..." class="form-input-md">
+                        <input type="text" id="audit-application-search" placeholder="Filter by Application..." class="form-input-md">
+                        <input type="text" id="audit-details-search" placeholder="Filter by Details..." class="form-input-md">
                     </div>
                 </div>
                 <div id="audit-table-container">
@@ -1150,7 +481,7 @@
                         <h2>Run Reports</h2>
                         <button class="btn btn-secondary" id="btn-refresh-reports">Refresh</button>
                     </div>
-                    <p style="font-size:13px;color:#666;margin-bottom:16px;">History of automation runs. Click "View Report" to see the full per-application detail for any run.</p>
+                    <p class="section-note">History of automation runs. Click "View Report" to see the full per-application detail for any run.</p>
                     <table class="data-table" id="reports-table">
                         <thead>
                             <tr>
@@ -1165,19 +496,19 @@
                             </tr>
                         </thead>
                         <tbody id="reports-table-body">
-                            <tr><td colspan="8" style="text-align:center;color:#888;">Loading...</td></tr>
+                            <tr><td colspan="8" class="text-center-muted">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
             <!-- Report detail view (hidden by default) -->
-            <div id="reports-detail-view" style="display:none;">
+            <div id="reports-detail-view" class="d-none">
                 <div class="section">
-                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                    <div class="report-detail-header">
                         <button class="btn btn-secondary" id="btn-back-to-reports">← Back to Reports</button>
-                        <h2 style="margin:0;" id="report-detail-title">Run Report</h2>
+                        <h2 class="m-0" id="report-detail-title">Run Report</h2>
                     </div>
-                    <div id="report-detail-summary" style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px;padding:16px;background:#f8f8f8;border-radius:6px;">
+                    <div id="report-detail-summary" class="report-summary-panel">
                     </div>
                     <table class="data-table" id="report-detail-table">
                         <thead>
@@ -1201,37 +532,37 @@
                 <div class="section-header">
                     <h2>Emails</h2>
                 </div>
-                <p style="font-size:13px;color:#666;margin-bottom:16px;">Send a test email using any template to preview what recipients will receive. Emails are sent using the same Graph API mail-from configuration as production.</p>
-                <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
-                    <div style="flex:1;min-width:220px;">
-                        <label for="testEmailTemplate" style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Template</label>
-                        <select id="testEmailTemplate" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                <p class="section-note">Send a test email using any template to preview what recipients will receive. Emails are sent using the same Graph API mail-from configuration as production.</p>
+                <div class="testing-layout">
+                    <div class="testing-field">
+                        <label for="testEmailTemplate" class="form-label">Template</label>
+                        <select id="testEmailTemplate" class="form-select-full">
                             <option value="">— Select a template —</option>
                         </select>
                     </div>
-                    <div style="flex:1;min-width:220px;">
-                        <label for="testEmailTo" style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">To</label>
-                        <input type="email" id="testEmailTo" placeholder="recipient@example.com" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;box-sizing:border-box;">
+                    <div class="testing-field">
+                        <label for="testEmailTo" class="form-label">To</label>
+                        <input type="email" id="testEmailTo" placeholder="recipient@example.com" class="form-input-full">
                     </div>
                     <div>
-                        <button class="btn" id="btn-send-test-email" disabled style="padding:8px 24px;font-size:14px;background:#d2d0ce;color:#666;border:none;border-radius:4px;cursor:not-allowed;">Send</button>
+                        <button class="btn btn-send-disabled" id="btn-send-test-email" disabled>Send</button>
                     </div>
                 </div>
-                <div id="testEmailTemplateDescription" style="font-size:12px;color:#888;margin-top:8px;min-height:18px;line-height:1.5;"></div>
-                <div id="testEmailStatus" style="margin-top:12px;display:none;padding:10px 14px;border-radius:4px;font-size:13px;"></div>
+                <div id="testEmailTemplateDescription" class="template-desc"></div>
+                <div id="testEmailStatus" class="form-status"></div>
             </div>
 
             <div class="section">
                 <div class="section-header">
                     <h2>Authentication</h2>
                 </div>
-                <p style="font-size:13px;color:#666;margin-bottom:16px;">Inspect the authentication metadata returned by Azure Static Web Apps for your current session.</p>
-                <button class="btn btn-primary" id="btn-view-auth-metadata" style="padding:8px 24px;font-size:14px;">View SWA Authentication Metadata</button>
+                <p class="section-note">Inspect the authentication metadata returned by Azure Static Web Apps for your current session.</p>
+                <button class="btn btn-primary btn-lg" id="btn-view-auth-metadata">View SWA Authentication Metadata</button>
             </div>
         </div>
 
         <div id="tab-settings" class="tab-content">
-            <div style="margin-bottom: 20px;">
+            <div class="mb-20">
                 <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
             </div>
             <div class="section">
@@ -1241,150 +572,166 @@
                 <div class="policy-form">
                     <div class="form-group">
                         <label for="notificationEmails">Receive Daily Summaries</label>
-                        <p style="font-size:12px;color:#666;margin-bottom:8px;">Enter email addresses that should receive email notifications summarizing the <em>automated</em> daily runs. Separate multiple addresses with commas.</p>
-                        <textarea id="notificationEmails" rows="3" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;resize:vertical;" placeholder="admin@example.com, security@example.com"></textarea>
+                        <p class="form-desc">Enter email addresses that should receive email notifications summarizing the <em>automated</em> daily runs. Separate multiple addresses with commas.</p>
+                        <textarea id="notificationEmails" rows="3" class="form-textarea" placeholder="admin@example.com, security@example.com"></textarea>
                     </div>
                     <div class="form-group">
                         <label for="sponsorsReceiveNotifications">Automation Notifications for Sponsors</label>
-                        <select id="sponsorsReceiveNotifications" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <select id="sponsorsReceiveNotifications" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;">Sponsors will receive notifications when this app manually or automatically creates or activates SAML certificates. This only applies to apps with auto-rotation set to on or notify.</p>
+                        <p class="form-hint">Sponsors will receive notifications when this app manually or automatically creates or activates SAML certificates. This only applies to apps with auto-rotation set to on or notify.</p>
                     </div>
                     <div class="form-group">
                         <label for="sponsorRemindersEnabled">Sponsor Reminders for Apps Marked <strong>Notify</strong></label>
-                        <select id="sponsorRemindersEnabled" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <select id="sponsorRemindersEnabled" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;">This only applies to apps marked as "notify". You can configure up to 3 reminder emails informing the sponsor that their app's certificate is about to expire.</p>
+                        <p class="form-hint">This only applies to apps marked as "notify". You can configure up to 3 reminder emails informing the sponsor that their app's certificate is about to expire.</p>
                     </div>
-                    <div id="sponsor-reminder-settings" class="form-group" style="display:none;">
+                    <div id="sponsor-reminder-settings" class="form-group d-none">
                         <label for="sponsorReminderCount">Number of reminders</label>
-                        <select id="sponsorReminderCount" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <select id="sponsorReminderCount" class="form-select-full">
                             <option value="1">1</option>
                             <option value="2">2</option>
                             <option value="3" selected>3</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;margin-bottom:10px;">Enter the number of days before expiration to notify sponsors (whole numbers, 1-180).</p>
+                        <p class="form-hint-mb">Enter the number of days before expiration to notify sponsors (whole numbers, 1-180).</p>
                         <div id="sponsorReminderDaysContainer">
                             <div id="reminder1-group">
                                 <label for="sponsorFirstReminderDays">1st reminder</label>
-                                <input type="number" id="sponsorFirstReminderDays" min="1" max="180" step="1" value="30" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                                <input type="number" id="sponsorFirstReminderDays" min="1" max="180" step="1" value="30" class="form-select-full">
                             </div>
-                            <div id="reminder2-group" style="margin-top:10px;">
+                            <div id="reminder2-group" class="mt-10">
                                 <label for="sponsorSecondReminderDays">2nd reminder</label>
-                                <input type="number" id="sponsorSecondReminderDays" min="1" max="180" step="1" value="7" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                                <input type="number" id="sponsorSecondReminderDays" min="1" max="180" step="1" value="7" class="form-select-full">
                             </div>
-                            <div id="reminder3-group" style="margin-top:10px;">
+                            <div id="reminder3-group" class="mt-10">
                                 <label for="sponsorThirdReminderDays">3rd reminder</label>
-                                <input type="number" id="sponsorThirdReminderDays" min="1" max="180" step="1" value="1" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                                <input type="number" id="sponsorThirdReminderDays" min="1" max="180" step="1" value="1" class="form-select-full">
                             </div>
                         </div>
                     </div>
                     <div class="form-group">
                         <label for="notifySponsorsOnExpiration">Notify Sponsors on Expiration</label>
-                        <select id="notifySponsorsOnExpiration" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <select id="notifySponsorsOnExpiration" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;">If enabled, App Sponsors will be notified after their SAML app certificates have expired. This only applies to apps with auto-rotation set to on or notify.</p>
+                        <p class="form-hint">If enabled, App Sponsors will be notified after their SAML app certificates have expired. This only applies to apps with auto-rotation set to on or notify.</p>
                     </div>
                     <div class="form-group">
                         <label for="staleCertCleanupReminders">Send Notifications to Delete Expired Inactive Certs</label>
-                        <select id="staleCertCleanupReminders" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <select id="staleCertCleanupReminders" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, a consolidated email is sent to each sponsor listing all their applications that have expired inactive certificates which should be deleted.</p>
+                        <p class="form-hint">When enabled, a consolidated email is sent to each sponsor listing all their applications that have expired inactive certificates which should be deleted.</p>
                     </div>
-                    <div id="staleCertCleanupScheduleGroup" class="form-group" style="display:none;">
-                        <label style="display:flex;align-items:center;gap:6px;">
+                    <div id="staleCertCleanupScheduleGroup" class="form-group d-none">
+                        <label class="label-inline">
                             Cleanup Reminder Schedule
                             <span class="info-icon" title="To change the schedule, navigate to the Function App → Settings → Environment variables → StaleCertCleanupSchedule. Use CRON format. The Function App must be restarted for changes to take effect.">ℹ️</span>
                         </label>
-                        <input type="text" id="staleCertCleanupSchedule" readonly style="background:#f4f4f4;width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;" value="Loading...">
-                        <p style="font-size:11px;color:#888;margin-top:4px;">Schedule for the expired-certificate cleanup reminder emails. Managed via the StaleCertCleanupSchedule environment variable.</p>
+                        <input type="text" id="staleCertCleanupSchedule" readonly class="form-readonly" value="Loading...">
+                        <p class="form-hint">Schedule for the expired-certificate cleanup reminder emails. Managed via the StaleCertCleanupSchedule environment variable.</p>
                     </div>
                 </div>
             </div>
 
-            <div class="section" style="margin-top: 24px;">
+            <div class="section mt-24">
                 <div class="section-header">
                     <h2>Automation Schedule</h2>
                 </div>
                 <div class="policy-form">
                     <div class="form-group">
-                        <label style="display:flex;align-items:center;gap:6px;">
+                        <label class="label-inline">
                             Rotation Check Schedule
                             <span class="info-icon" title="To change the schedule, navigate to the Function App (e.g., 'samlcert-func-...') → Settings → Environment variables → RotationSchedule. Use CRON format (e.g., '0 0 6 * * *' for 6 AM UTC daily). The Function App must be restarted for changes to take effect.">ℹ️</span>
                         </label>
-                        <input type="text" id="rotationSchedule" readonly style="background:#f4f4f4;" value="Loading...">
-                        <p style="font-size:11px;color:#888;margin-top:4px;">Automatic certificate rotation runs on this schedule. Currently set to run daily at 6:00 AM UTC.</p>
+                        <input type="text" id="rotationSchedule" readonly class="bg-muted" value="Loading...">
+                        <p class="form-hint">Automatic certificate rotation runs on this schedule. Currently set to run daily at 6:00 AM UTC.</p>
                     </div>
                     <div class="form-group">
                         <label for="retentionPolicyDays">Audit Log Retention policy (days)</label>
-                        <input type="number" id="retentionPolicyDays" min="1" value="180" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
-                        <p style="font-size:11px;color:#888;margin-top:4px;">Daily purge deletes audit logs older than this many days.</p>
+                        <input type="number" id="retentionPolicyDays" min="1" value="180" class="form-select-full">
+                        <p class="form-hint">Daily purge deletes audit logs older than this many days.</p>
                     </div>
                     <div class="form-group">
                         <label for="reportsRetentionPolicyDays">Reports Retention policy (days)</label>
-                        <input type="number" id="reportsRetentionPolicyDays" min="1" value="14" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
-                        <p style="font-size:11px;color:#888;margin-top:4px;">Daily purge deletes run reports older than this many days. Default: 14 days.</p>
+                        <input type="number" id="reportsRetentionPolicyDays" min="1" value="14" class="form-select-full">
+                        <p class="form-hint">Daily purge deletes run reports older than this many days. Default: 14 days.</p>
                     </div>
                 </div>
             </div>
 
-            <div class="section" style="margin-top: 24px;">
+            <div class="section mt-24">
                 <div class="section-header">
                     <h2>Run Settings</h2>
                 </div>
                 <div class="policy-form">
                     <div class="form-group">
                         <label for="reportOnlyMode">Report-only mode</label>
-                        <select id="reportOnlyMode" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
+                        <select id="reportOnlyMode" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;">Enabled (default) runs evaluation only and logs what would happen. Disabled runs production automation and can create or activate certificates.</p>
+                        <p class="form-hint">Enabled (default) runs evaluation only and logs what would happen. Disabled runs production automation and can create or activate certificates.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="useEntraNotificationEmailAsSponsor">Use Entra ID Notification Email as Sponsor</label>
+                        <select id="useEntraNotificationEmailAsSponsor" class="form-select-full">
+                            <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                        <p class="form-hint">When enabled, the Sponsor field is read from and written to the Entra ID <em>Notification Email Addresses</em> field on each service principal. When disabled, sponsors are stored in the application's <code>AppSponsor</code> tag.</p>
                     </div>
                 </div>
             </div>
 
-            <div class="section" style="margin-top: 24px;">
+            <div class="section mt-24">
                 <div class="section-header">
                     <h2>Security</h2>
                 </div>
                 <div class="policy-form">
                     <div class="form-group">
                         <label for="sessionTimeoutMinutes">Session timeout (minutes)</label>
-                        <input type="number" id="sessionTimeoutMinutes" min="0" max="480" step="1" value="15" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;">
-                        <p style="font-size:11px;color:#888;margin-top:4px;">Idle time before the user is prompted to stay signed in. Set to 0 to disable session timeout.</p>
+                        <input type="number" id="sessionTimeoutMinutes" min="0" max="480" step="1" value="15" class="form-select-full">
+                        <p class="form-hint">Idle time before the user is prompted to stay signed in. Set to 0 to disable session timeout.</p>
                     </div>
                     <div class="form-group">
-                        <label for="sponsorsCanRotateCerts">Sponsors can create and rotate certificates</label>
-                        <select id="sponsorsCanRotateCerts" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;background:white;">
+                        <label for="sponsorsCanCreateCerts">Sponsors can create certificates</label>
+                        <select id="sponsorsCanCreateCerts" class="form-select-full-bg">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, users with the Sponsor role can create new certificates and activate the newest certificate for applications they sponsor. Disabled by default.</p>
+                        <p class="form-hint">When enabled, users with the Sponsor role can create new certificates for applications they sponsor. Disabled by default.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="sponsorsCanActivateCerts">Sponsors can activate certificates</label>
+                        <select id="sponsorsCanActivateCerts" class="form-select-full-bg">
+                            <option value="enabled">Enabled</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                        <p class="form-hint">When enabled, users with the Sponsor role can activate the newest certificate for applications they sponsor. Disabled by default.</p>
                     </div>
                     <div class="form-group">
                         <label for="sponsorsCanUpdatePolicy">Sponsors can update policy for their apps</label>
-                        <select id="sponsorsCanUpdatePolicy" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;background:white;">
+                        <select id="sponsorsCanUpdatePolicy" class="form-select-full-bg">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, users with the Sponsor role can edit the rotation policy for applications they sponsor. Disabled by default.</p>
+                        <p class="form-hint">When enabled, users with the Sponsor role can edit the rotation policy for applications they sponsor. Disabled by default.</p>
                     </div>
                     <div class="form-group">
                         <label for="sponsorsCanEditSponsors">Sponsors can add/remove sponsors for their apps</label>
-                        <select id="sponsorsCanEditSponsors" style="width:100%;padding:8px 12px;border:1px solid #d2d0ce;border-radius:4px;font-size:14px;background:white;">
+                        <select id="sponsorsCanEditSponsors" class="form-select-full-bg">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p style="font-size:11px;color:#888;margin-top:4px;">When enabled, users with the Sponsor role can add or remove sponsors for applications they sponsor. Enabled by default.</p>
+                        <p class="form-hint">When enabled, users with the Sponsor role can add or remove sponsors for applications they sponsor. Enabled by default.</p>
                     </div>
                 </div>
             </div>
@@ -1401,29 +748,59 @@
         </div>
     </div>
 
+    <!-- Entra Sponsor + Reminders Confirmation Modal -->
+    <div id="entraReminderConfirmModal" class="modal-overlay">
+        <div class="modal modal-md">
+            <h3>Confirm Sponsor Source Change</h3>
+            <p>Enabling <strong>Use Entra ID Notification Email as Sponsor</strong> while <strong>Sponsor Reminders for Apps Marked Notify</strong> is also enabled may cause duplicate reminder emails. It is recommended to disable Sponsor Reminders. What would you like to do?</p>
+            <div class="modal-buttons modal-buttons-wrap">
+                <button class="btn-cancel" id="btn-entra-reminder-cancel">Cancel</button>
+                <button class="btn btn-primary" id="btn-entra-reminder-disable">Proceed and disable Sponsor Reminders</button>
+                <button class="btn btn-primary btn-warning-danger" id="btn-entra-reminder-proceed">Proceed and leave Sponsor Reminders enabled</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sponsor Reminders + Entra Sponsor Confirmation Modal -->
+    <div id="reminderEntraConfirmModal" class="modal-overlay">
+        <div class="modal modal-md">
+            <h3>Confirm Sponsor Reminders</h3>
+            <p><strong>Use Entra ID Notification Email as Sponsor</strong> is set to enabled. Entra ID already sends notifications to these emails 60, 30, and 7 days before expiry. Are you sure you want to enable additional notification emails?</p>
+            <div class="modal-buttons modal-buttons-wrap">
+                <button class="btn-cancel" id="btn-reminder-entra-cancel">Cancel</button>
+                <button class="btn btn-primary btn-warning-danger" id="btn-reminder-entra-proceed">Proceed</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit App Policy Modal -->
     <div id="editPolicyModal" class="modal-overlay">
-        <div class="modal" style="min-width:380px;">
+        <div class="modal modal-sm">
             <h3 id="editPolicyTitle">Edit App Policy</h3>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-weight:600;margin-bottom:4px;">Create cert (days before expiry)</label>
-                <input type="number" id="editPolicyCreateDays" min="1" max="365" style="width:100%;padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
-                <p style="font-size:11px;color:#888;margin-top:2px;">Leave blank to use the global default.</p>
+            <div class="mb-12">
+                <label class="form-label-sm">Create cert (days before expiry)</label>
+                <input type="number" id="editPolicyCreateDays" min="1" max="365" class="form-control-full">
+                <p class="form-hint-tight">Leave blank to use the global default.</p>
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-weight:600;margin-bottom:4px;">Activate cert (days before expiry)</label>
-                <input type="number" id="editPolicyActivateDays" min="1" max="365" style="width:100%;padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
-                <p style="font-size:11px;color:#888;margin-top:2px;">Leave blank to use the global default.</p>
+            <div class="mb-12">
+                <label class="form-label-sm">Activate cert (days before expiry)</label>
+                <input type="number" id="editPolicyActivateDays" min="1" max="365" class="form-control-full">
+                <p class="form-hint-tight">Leave blank to use the global default.</p>
             </div>
-            <div id="editPolicyError" style="color:#d13438;font-size:12px;margin-bottom:8px;display:none;"></div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block;font-weight:600;margin-bottom:4px;">Create certs for apps marked as Notify</label>
-                <select id="editPolicyNotifyOverride" style="width:100%;padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;">
+            <div class="mb-12">
+                <label class="form-label-sm">New certificate lifespan (days)</label>
+                <input type="number" id="editPolicyLifespanDays" min="1" max="1095" class="form-control-full">
+                <p class="form-hint-tight">Leave blank to use the global default (1–1095).</p>
+            </div>
+            <div id="editPolicyError" class="form-error"></div>
+            <div class="mb-12">
+                <label class="form-label-sm">Create certs for apps marked as Notify</label>
+                <select id="editPolicyNotifyOverride" class="form-control-full">
                     <option value="default">Default (Global Policy)</option>
                     <option value="enabled">Enabled</option>
                     <option value="disabled">Disabled</option>
                 </select>
-                <p style="font-size:11px;color:#888;margin-top:2px;">Override the global setting for this app.</p>
+                <p class="form-hint-tight">Override the global setting for this app.</p>
             </div>
             <div class="modal-buttons">
                 <button class="btn-cancel" id="btn-edit-policy-cancel">Cancel</button>
@@ -1434,23 +811,23 @@
 
     <!-- Bulk Sponsor Update Preview Modal -->
     <div id="bulkSponsorModal" class="modal-overlay">
-        <div class="modal" style="min-width:500px;max-width:700px;max-height:80vh;display:flex;flex-direction:column;">
+        <div class="modal modal-lg">
             <h3>Bulk Sponsor Update Preview</h3>
-            <div id="bulkSponsorSummary" style="margin-bottom:12px;font-size:13px;color:#666;"></div>
-            <div id="bulkSponsorPreview" style="overflow-y:auto;max-height:45vh;border:1px solid #d2d0ce;border-radius:4px;">
-                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <div id="bulkSponsorSummary" class="modal-summary"></div>
+            <div id="bulkSponsorPreview" class="modal-preview-scroll">
+                <table class="modal-preview-table">
                     <thead>
-                        <tr style="background:#f4f4f4;position:sticky;top:0;">
-                            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #d2d0ce;">Application</th>
-                            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #d2d0ce;">Current Sponsor</th>
-                            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #d2d0ce;">New Sponsor</th>
-                            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid #d2d0ce;">Action</th>
+                        <tr class="modal-preview-thead">
+                            <th class="modal-preview-th">Application</th>
+                            <th class="modal-preview-th">Current Sponsor</th>
+                            <th class="modal-preview-th">New Sponsor</th>
+                            <th class="modal-preview-th">Action</th>
                         </tr>
                     </thead>
                     <tbody id="bulkSponsorPreviewBody"></tbody>
                 </table>
             </div>
-            <div class="modal-buttons" style="margin-top:12px;">
+            <div class="modal-buttons mt-12">
                 <button class="btn-cancel" id="btn-bulk-cancel">Cancel</button>
                 <button class="btn btn-primary" id="btn-bulk-apply">Apply Changes</button>
             </div>
@@ -1460,7 +837,7 @@
     <!-- Session Timeout Modal -->
     <div id="sessionTimeoutModal" class="modal-overlay">
         <div class="modal">
-            <h3 style="color:#0078d4;">Are you still there?</h3>
+            <h3 class="text-primary">Are you still there?</h3>
             <p>Your session will expire due to inactivity. You will be signed out in <strong id="timeout-countdown">2:00</strong>.</p>
             <div class="modal-buttons">
                 <button class="btn-cancel" id="btn-timeout-signout">Sign Out</button>
@@ -1471,13 +848,13 @@
 
     <!-- Edit Sponsor Modal -->
     <div id="editSponsorModal" class="modal-overlay">
-        <div class="modal" style="min-width:420px;max-width:520px;">
-            <h3 id="editSponsorTitle" style="color:#0078d4;">Edit Sponsors</h3>
-            <p id="editSponsorSubtitle" style="font-size:13px;color:#666;margin-bottom:12px;">Add or remove sponsor email addresses.</p>
-            <div id="sponsorEmailRows" style="margin-bottom:12px;"></div>
-            <button type="button" id="btn-add-sponsor-row" style="background:none;border:none;color:#0078d4;cursor:pointer;font-size:13px;padding:4px 0;">+ Add another sponsor</button>
-            <div id="editSponsorError" style="color:#d13438;font-size:12px;margin-top:8px;display:none;"></div>
-            <div class="modal-buttons" style="margin-top:16px;">
+        <div class="modal modal-sponsor">
+            <h3 id="editSponsorTitle" class="text-primary">Edit Sponsors</h3>
+            <p id="editSponsorSubtitle" class="modal-subtitle">Add or remove sponsor email addresses.</p>
+            <div id="sponsorEmailRows" class="mb-12"></div>
+            <button type="button" id="btn-add-sponsor-row" class="btn-link">+ Add another sponsor</button>
+            <div id="editSponsorError" class="form-error-mt"></div>
+            <div class="modal-buttons mt-16">
                 <button class="btn-cancel" id="btn-sponsor-cancel">Cancel</button>
                 <button class="btn btn-primary" id="btn-sponsor-save">Save</button>
             </div>

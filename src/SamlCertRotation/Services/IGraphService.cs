@@ -10,17 +10,17 @@ public interface IGraphService
     /// <summary>
     /// Get all SAML enterprise applications in the tenant
     /// </summary>
-    Task<List<SamlApplication>> GetSamlApplicationsAsync();
+    Task<List<SamlApplication>> GetSamlApplicationsAsync(bool useEntraNotificationEmailAsSponsor = true);
 
     /// <summary>
     /// Get a specific SAML application by service principal ID
     /// </summary>
-    Task<SamlApplication?> GetSamlApplicationAsync(string servicePrincipalId);
+    Task<SamlApplication?> GetSamlApplicationAsync(string servicePrincipalId, bool useEntraNotificationEmailAsSponsor = true);
 
     /// <summary>
     /// Create a new SAML signing certificate for an application
     /// </summary>
-    Task<SamlCertificate?> CreateSamlCertificateAsync(string servicePrincipalId, int validityInYears = 3);
+    Task<SamlCertificate?> CreateSamlCertificateAsync(string servicePrincipalId, int lifespanDays = 1095);
 
     /// <summary>
     /// Set a certificate as the active SAML signing certificate
@@ -52,4 +52,15 @@ public interface IGraphService
     /// Remove the AppSponsor tag from a service principal while preserving all other tags
     /// </summary>
     Task<bool> ClearAppSponsorTagAsync(string servicePrincipalId);
+
+    /// <summary>
+    /// Update the notificationEmailAddresses field on a service principal.
+    /// Sets the field to a single entry containing semicolon-separated emails.
+    /// </summary>
+    Task<bool> UpdateNotificationEmailAddressesAsync(string servicePrincipalId, string sponsorEmails);
+
+    /// <summary>
+    /// Clear the notificationEmailAddresses field on a service principal.
+    /// </summary>
+    Task<bool> ClearNotificationEmailAddressesAsync(string servicePrincipalId);
 }

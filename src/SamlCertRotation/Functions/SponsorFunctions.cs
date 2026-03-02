@@ -47,7 +47,8 @@ public class SponsorFunctions : DashboardFunctionBase
         var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
 
         // Fetch the app once — reused for both authorization and the operation itself
-        var app = await _graphService.GetSamlApplicationAsync(id);
+        var useEntraSponsor = await GetUseEntraSponsorSettingAsync();
+        var app = await _graphService.GetSamlApplicationAsync(id, useEntraSponsor);
         if (app == null)
         {
             return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
@@ -60,8 +61,8 @@ public class SponsorFunctions : DashboardFunctionBase
                 return await CreateErrorResponse(req, "Sponsor role is required.", HttpStatusCode.Forbidden);
             }
 
-            var sponsorsCanRotate = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
-            if (!sponsorsCanRotate)
+            var sponsorsCanCreate = await _policyService.GetSponsorsCanCreateCertsEnabledAsync();
+            if (!sponsorsCanCreate)
             {
                 return await CreateErrorResponse(req, "Sponsors are not permitted to create certificates. This feature is disabled.", HttpStatusCode.Forbidden);
             }
@@ -76,7 +77,8 @@ public class SponsorFunctions : DashboardFunctionBase
 
         try
         {
-            var cert = await _graphService.CreateSamlCertificateAsync(id);
+            var effectivePolicy = await _policyService.GetEffectivePolicyAsync(id);
+            var cert = await _graphService.CreateSamlCertificateAsync(id, effectivePolicy.NewCertLifespanDays);
             if (cert == null)
             {
                 return await CreateErrorResponse(req, "Failed to create certificate");
@@ -86,7 +88,7 @@ public class SponsorFunctions : DashboardFunctionBase
                 id,
                 app.DisplayName,
                 AuditActionType.CertificateCreated,
-                $"New certificate created via sponsor portal. KeyId: {cert.KeyId}",
+                $"New certificate created via sponsor portal (lifespan: {effectivePolicy.NewCertLifespanDays} days). KeyId: {cert.KeyId}",
                 performedBy: userEmail);
 
             return await CreateJsonResponse(req, new
@@ -122,7 +124,8 @@ public class SponsorFunctions : DashboardFunctionBase
         var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
 
         // Fetch the app once — reused for both authorization and the operation itself
-        var app = await _graphService.GetSamlApplicationAsync(id);
+        var useEntraSponsor = await GetUseEntraSponsorSettingAsync();
+        var app = await _graphService.GetSamlApplicationAsync(id, useEntraSponsor);
         if (app == null)
         {
             return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
@@ -135,8 +138,8 @@ public class SponsorFunctions : DashboardFunctionBase
                 return await CreateErrorResponse(req, "Sponsor role is required.", HttpStatusCode.Forbidden);
             }
 
-            var sponsorsCanRotate = await _policyService.GetSponsorsCanRotateCertsEnabledAsync();
-            if (!sponsorsCanRotate)
+            var sponsorsCanActivate = await _policyService.GetSponsorsCanActivateCertsEnabledAsync();
+            if (!sponsorsCanActivate)
             {
                 return await CreateErrorResponse(req, "Sponsors are not permitted to activate certificates. This feature is disabled.", HttpStatusCode.Forbidden);
             }
@@ -227,7 +230,8 @@ public class SponsorFunctions : DashboardFunctionBase
                 return await CreateErrorResponse(req, "Sponsors are not permitted to update policies. This feature is disabled.", HttpStatusCode.Forbidden);
             }
 
-            var app = await _graphService.GetSamlApplicationAsync(id);
+            var useEntraSponsor = await GetUseEntraSponsorSettingAsync();
+            var app = await _graphService.GetSamlApplicationAsync(id, useEntraSponsor);
             if (app == null)
             {
                 return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
@@ -331,7 +335,8 @@ public class SponsorFunctions : DashboardFunctionBase
         var isAdmin = identity?.Roles.Contains(DashboardRoles.Admin) ?? false;
 
         // Fetch the app once — reused for both authorization and the operation itself
-        var app = await _graphService.GetSamlApplicationAsync(id);
+        var useEntraSponsor = await GetUseEntraSponsorSettingAsync();
+        var app = await _graphService.GetSamlApplicationAsync(id, useEntraSponsor);
         if (app == null)
         {
             return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
@@ -386,12 +391,18 @@ public class SponsorFunctions : DashboardFunctionBase
             // Normalize: trim each part and rejoin
             sponsorEmail = string.Join(";", sponsorEmails);
 
+            // When Entra sponsor source is enabled, limit to 5 emails
+            if (useEntraSponsor && sponsorEmails.Length > 5)
+            {
+                return await CreateErrorResponse(req, "Maximum of 5 sponsor emails allowed when 'Use Entra ID Notification Email as Sponsor' is enabled.", HttpStatusCode.BadRequest);
+            }
+
             var previousSponsor = app.Sponsor?.Trim() ?? "(none)";
 
-            var updated = await _graphService.UpdateAppSponsorTagAsync(id, sponsorEmail);
+            var updated = await UpdateSponsorAsync(id, sponsorEmail, useEntraSponsor);
             if (!updated)
             {
-                return await CreateErrorResponse(req, "Failed to update sponsor tag");
+                return await CreateErrorResponse(req, "Failed to update sponsor");
             }
 
             await _auditService.LogSuccessAsync(

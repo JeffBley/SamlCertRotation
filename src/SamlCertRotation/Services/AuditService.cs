@@ -37,17 +37,10 @@ public class AuditService : IAuditService
     /// <inheritdoc />
     public async Task LogAsync(AuditEntry entry)
     {
-        try
-        {
-            await EnsureTableExistsAsync();
-            await _auditTable.AddEntityAsync(entry);
-            _logger.LogInformation("Audit entry created: {ActionType} for {AppName}", 
-                entry.ActionType, entry.AppDisplayName);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create audit entry");
-        }
+        await EnsureTableExistsAsync();
+        await _auditTable.AddEntityAsync(entry);
+        _logger.LogInformation("Audit entry created: {ActionType} for {AppName}", 
+            entry.ActionType, entry.AppDisplayName);
     }
 
     /// <inheritdoc />

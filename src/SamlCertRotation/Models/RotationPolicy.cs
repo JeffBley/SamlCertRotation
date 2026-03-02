@@ -29,6 +29,11 @@ public class RotationPolicy : ITableEntity
     public int ActivateCertDaysBeforeExpiry { get; set; } = 30;
 
     /// <summary>
+    /// Lifespan in days for newly created certificates (1-1095, default 1095 = ~3 years)
+    /// </summary>
+    public int NewCertLifespanDays { get; set; } = 1095;
+
+    /// <summary>
     /// Whether the policy is enabled
     /// </summary>
     public bool IsEnabled { get; set; } = true;
@@ -83,6 +88,11 @@ public class AppPolicy : ITableEntity
     /// Override: create certs for notify-only apps (null = use global, true = enabled, false = disabled)
     /// </summary>
     public bool? CreateCertsForNotifyOverride { get; set; }
+
+    /// <summary>
+    /// Override: lifespan in days for newly created certificates (null = use global, 1-1095)
+    /// </summary>
+    public int? NewCertLifespanDays { get; set; }
 
     /// <summary>
     /// Additional notification emails specific to this app

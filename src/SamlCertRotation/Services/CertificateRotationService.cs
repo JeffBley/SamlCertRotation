@@ -1,3 +1,6 @@
+using Azure;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Specialized;
 using Microsoft.Extensions.Logging;
 using SamlCertRotation.Helpers;
 using SamlCertRotation.Models;
@@ -11,11 +14,14 @@ public class CertificateRotationService : ICertificateRotationService
 {
     private const string AutoRotateOn = "on";
     private const string AutoRotateNotify = "notify";
+    private const string LockContainerName = "rotation-locks";
+    private const string LockBlobName = "rotation-lock";
 
     private readonly IGraphService _graphService;
     private readonly IPolicyService _policyService;
     private readonly INotificationService _notificationService;
     private readonly IAuditService _auditService;
+    private readonly BlobServiceClient _blobServiceClient;
     private readonly ILogger<CertificateRotationService> _logger;
 
     public CertificateRotationService(
@@ -23,12 +29,14 @@ public class CertificateRotationService : ICertificateRotationService
         IPolicyService policyService,
         INotificationService notificationService,
         IAuditService auditService,
+        BlobServiceClient blobServiceClient,
         ILogger<CertificateRotationService> logger)
     {
         _graphService = graphService;
         _policyService = policyService;
         _notificationService = notificationService;
         _auditService = auditService;
+        _blobServiceClient = blobServiceClient;
         _logger = logger;
     }
 
@@ -37,14 +45,28 @@ public class CertificateRotationService : ICertificateRotationService
     {
         var results = new List<RotationResult>();
 
+        // Acquire distributed blob lease to prevent concurrent rotation runs across instances
+        var leaseClient = await AcquireRotationLockAsync();
+        if (leaseClient == null)
+        {
+            _logger.LogWarning("Another rotation instance is already running. Skipping this run.");
+            return results;
+        }
+
+        using var renewalCts = new CancellationTokenSource();
+        _ = RenewLeaseInBackgroundAsync(leaseClient, renewalCts.Token);
+
         try
         {
             _logger.LogInformation("Starting certificate rotation run at {Time}", DateTime.UtcNow);
             var reportOnlyMode = forceReportOnlyMode ?? await _policyService.GetReportOnlyModeEnabledAsync();
             _logger.LogInformation("Rotation run mode: {Mode}", reportOnlyMode ? "ReportOnly" : "Production");
 
+            // Determine sponsor source setting
+            var useEntraSponsor = await _policyService.GetUseEntraNotificationEmailAsSponsorEnabledAsync();
+
             // Get all SAML applications
-            var apps = await _graphService.GetSamlApplicationsAsync();
+            var apps = await _graphService.GetSamlApplicationsAsync(useEntraSponsor);
             _logger.LogInformation("Found {Count} SAML applications", apps.Count);
 
             // Filter to apps with AutoRotate = "on" or "notify"
@@ -133,7 +155,7 @@ public class CertificateRotationService : ICertificateRotationService
 
             // Send daily summary — reuse the apps list we already fetched to avoid another Graph round-trip
             var stats = await GetDashboardStatsAsync(apps);
-            await _notificationService.SendDailySummaryAsync(stats, results);
+            await _notificationService.SendDailySummaryAsync(stats, results, reportOnlyMode);
 
             _logger.LogInformation("Certificate rotation run completed");
         }
@@ -142,8 +164,91 @@ public class CertificateRotationService : ICertificateRotationService
             _logger.LogError(ex, "Error during certificate rotation run");
             throw;
         }
+        finally
+        {
+            renewalCts.Cancel();
+            await ReleaseRotationLockAsync(leaseClient);
+        }
 
         return results;
+    }
+
+    // ── Distributed lock helpers ─────────────────────────────────────────
+
+    /// <summary>
+    /// Try to acquire a 60-second blob lease that acts as a distributed lock.
+    /// Returns the <see cref="BlobLeaseClient"/> on success, or <c>null</c> if another instance holds the lease.
+    /// </summary>
+    private async Task<BlobLeaseClient?> AcquireRotationLockAsync()
+    {
+        try
+        {
+            var containerClient = _blobServiceClient.GetBlobContainerClient(LockContainerName);
+            await containerClient.CreateIfNotExistsAsync();
+
+            var blobClient = containerClient.GetBlobClient(LockBlobName);
+            if (!await blobClient.ExistsAsync())
+            {
+                try
+                {
+                    await blobClient.UploadAsync(BinaryData.FromString("lock"));
+                }
+                catch (RequestFailedException ex) when (ex.Status == 409)
+                {
+                    // Another instance created it concurrently — that's fine
+                }
+            }
+
+            var leaseClient = blobClient.GetBlobLeaseClient();
+            await leaseClient.AcquireAsync(TimeSpan.FromSeconds(60));
+            _logger.LogInformation("Acquired distributed rotation lock (lease {LeaseId})", leaseClient.LeaseId);
+            return leaseClient;
+        }
+        catch (RequestFailedException ex) when (ex.ErrorCode == "LeaseAlreadyPresent")
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Renew the lease every 45 seconds until cancelled. If the rotation takes longer than 60 s
+    /// without renewal, the lease expires and another instance could start concurrently.
+    /// </summary>
+    private async Task RenewLeaseInBackgroundAsync(BlobLeaseClient leaseClient, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(45), ct);
+                await leaseClient.RenewAsync(cancellationToken: ct);
+                _logger.LogDebug("Renewed distributed rotation lock lease");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when rotation completes
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to renew rotation lock lease — lock may expire");
+        }
+    }
+
+    /// <summary>
+    /// Best-effort release of the blob lease so the next run can start immediately.
+    /// </summary>
+    private async Task ReleaseRotationLockAsync(BlobLeaseClient leaseClient)
+    {
+        try
+        {
+            await leaseClient.ReleaseAsync();
+            _logger.LogInformation("Released distributed rotation lock");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to release rotation lock — lease will expire automatically");
+        }
     }
 
     private async Task<RotationResult> ProcessApplicationAsync(SamlApplication app, bool reportOnlyMode, Dictionary<string, List<AuditEntry>>? auditCache, string? performedBy = null, List<SponsorNotificationItem>? pendingSponsorNotifications = null)
@@ -239,7 +344,7 @@ public class CertificateRotationService : ICertificateRotationService
                         else
                         {
                             _logger.LogInformation("Creating new certificate for notify-app {AppName}", app.DisplayName);
-                            var newCert = await _graphService.CreateSamlCertificateAsync(app.Id);
+                            var newCert = await _graphService.CreateSamlCertificateAsync(app.Id, policy.NewCertLifespanDays);
                             if (newCert != null)
                             {
                                 result.Action = "Created (Notify)";
@@ -303,7 +408,7 @@ public class CertificateRotationService : ICertificateRotationService
                     {
                         _logger.LogInformation("Creating new certificate for {AppName}", app.DisplayName);
                         
-                        var newCert = await _graphService.CreateSamlCertificateAsync(app.Id);
+                        var newCert = await _graphService.CreateSamlCertificateAsync(app.Id, policy.NewCertLifespanDays);
                         
                         if (newCert != null)
                         {
@@ -541,7 +646,8 @@ public class CertificateRotationService : ICertificateRotationService
     /// <inheritdoc />
     public async Task<DashboardStats> GetDashboardStatsAsync()
     {
-        var apps = await _graphService.GetSamlApplicationsAsync();
+        var useEntraSponsor = await _policyService.GetUseEntraNotificationEmailAsSponsorEnabledAsync();
+        var apps = await _graphService.GetSamlApplicationsAsync(useEntraSponsor);
         return await GetDashboardStatsAsync(apps);
     }
 

@@ -52,7 +52,8 @@ public class StaleCertCleanupReminderFunction
                 return;
             }
 
-            var apps = await _graphService.GetSamlApplicationsAsync();
+            var useEntraSponsor = await _policyService.GetUseEntraNotificationEmailAsSponsorEnabledAsync();
+            var apps = await _graphService.GetSamlApplicationsAsync(useEntraSponsor);
             var notifiedApps = await _notificationService.SendStaleCertCleanupRemindersAsync(apps);
 
             // Audit each app that was included in a cleanup reminder
