@@ -552,7 +552,7 @@ Now assign users or groups to the application in the Entra Portal (assumes your 
 $CLIENT_SECRET = az ad app credential reset `
     --id $CLIENT_ID `
     --display-name "SWA Auth Secret" `
-    --years 2 `
+    --end-date (Get-Date).AddDays(729).ToString("yyyy-MM-ddTHH:mm:ssZ") `
     --query "password" -o tsv
 
 Write-Host "Client secret generated successfully. Length: $($CLIENT_SECRET.Length)"
