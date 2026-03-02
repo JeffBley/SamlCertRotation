@@ -928,6 +928,7 @@ The Key Vault contains two secrets that require periodic attention:
 | `LogicAppEmailUrl` | Logic App HTTP trigger callback URL (contains SAS token) | Does not expire, but is regenerated if the Logic App is redeployed | No |
 
 **Action**: Establish a rotation cadence for the dashboard client secret (recommended: 90-180 days). See [Rotate the Dashboard Client Secret](#rotate-the-dashboard-client-secret) below for instructions.
+> **NOTE:** Azure Static Web Apps do not support Certificates for authentication.
 
 > **NOTE:** The **LogicAppEmailUrl** Key Vault secret will be updated automatically when you redeploy the Bicep template. The secret is defined declaratively in main.bicep:105-114 using listCallbackUrl() on the Logic App trigger. Each time you run `az deployment group create` with this template, Bicep evaluates listCallbackUrl() at deploy time — if the Logic App was regenerated and has a new SAS token, the new URL will be written to the LogicAppEmailUrl secret in Key Vault, creating a new secret version. <br > <br > If you regenerate the Logic App trigger URL outside of a Bicep deployment (e.g., via the portal's "Regenerate access keys"), the Key Vault secret will not update until you re-run the Bicep deployment or update the Key Vault value manually.
 
