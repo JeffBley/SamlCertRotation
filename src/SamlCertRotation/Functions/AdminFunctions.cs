@@ -18,8 +18,9 @@ public class AdminFunctions : DashboardFunctionBase
     /// <summary>
     /// Simple in-memory cooldown to prevent accidental rapid-fire rotation triggers (#20).
     /// Not distributed — applies per instance only.
+    /// Uses Interlocked on ticks for thread-safe compare-and-swap.
     /// </summary>
-    private static DateTime _lastRotationTrigger = DateTime.MinValue;
+    private static long _lastRotationTriggerTicks = 0;
     private static readonly TimeSpan RotationCooldown = TimeSpan.FromSeconds(60);
 
     public AdminFunctions(
@@ -183,6 +184,11 @@ public class AdminFunctions : DashboardFunctionBase
             if (app == null)
             {
                 return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
+            }
+
+            if (app.Certificates == null || !app.Certificates.Any())
+            {
+                return await CreateErrorResponse(req, "No certificates found for this application", HttpStatusCode.BadRequest);
             }
 
             var activeCert = app.Certificates.FirstOrDefault(c => c.IsActive);
@@ -398,8 +404,10 @@ public class AdminFunctions : DashboardFunctionBase
                         Interlocked.Increment(ref skippedCount);
                         continue;
                     }
-                    // Normalize: trim each part and rejoin
+                    // Normalize: trim each part and rejoin, and persist back to the update object
+                    // so the parallel processing loop uses the normalized value.
                     newSponsor = string.Join(";", emailParts);
+                    update.SponsorEmail = newSponsor;
                 }
 
                 validUpdates.Add(update);
@@ -509,11 +517,13 @@ public class AdminFunctions : DashboardFunctionBase
         if (authError != null) return authError;
 
         // Rate-limit: Prevent accidental rapid-fire triggers (#20)
-        if (DateTime.UtcNow - _lastRotationTrigger < RotationCooldown)
+        var nowTicks = DateTime.UtcNow.Ticks;
+        var previousTicks = Interlocked.Read(ref _lastRotationTriggerTicks);
+        if (TimeSpan.FromTicks(nowTicks - previousTicks) < RotationCooldown
+            || Interlocked.CompareExchange(ref _lastRotationTriggerTicks, nowTicks, previousTicks) != previousTicks)
         {
             return await CreateErrorResponse(req, "A rotation was recently triggered. Please wait before trying again.", HttpStatusCode.TooManyRequests);
         }
-        _lastRotationTrigger = DateTime.UtcNow;
 
         _logger.LogInformation("Manual report-only rotation triggered");
 
@@ -568,11 +578,13 @@ public class AdminFunctions : DashboardFunctionBase
         if (authError != null) return authError;
 
         // Rate-limit: Prevent accidental rapid-fire triggers (#20)
-        if (DateTime.UtcNow - _lastRotationTrigger < RotationCooldown)
+        var nowTicks = DateTime.UtcNow.Ticks;
+        var previousTicks = Interlocked.Read(ref _lastRotationTriggerTicks);
+        if (TimeSpan.FromTicks(nowTicks - previousTicks) < RotationCooldown
+            || Interlocked.CompareExchange(ref _lastRotationTriggerTicks, nowTicks, previousTicks) != previousTicks)
         {
             return await CreateErrorResponse(req, "A rotation was recently triggered. Please wait before trying again.", HttpStatusCode.TooManyRequests);
         }
-        _lastRotationTrigger = DateTime.UtcNow;
 
         _logger.LogInformation("Manual production rotation triggered");
 

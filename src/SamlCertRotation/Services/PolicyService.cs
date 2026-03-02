@@ -15,6 +15,7 @@ public class PolicyService : IPolicyService
     private readonly ILogger<PolicyService> _logger;
     private readonly int _defaultCreateDays;
     private readonly int _defaultActivateDays;
+    private readonly object _ensureTableLock = new();
     private volatile Task? _ensureTableTask;
 
     private const string PolicyTableName = "RotationPolicies";
@@ -44,13 +45,22 @@ public class PolicyService : IPolicyService
     /// <summary>
     /// Ensures the table exists with retry-safe caching.
     /// Unlike Lazy&lt;Task&gt;, a faulted/canceled task is discarded so the next call retries.
+    /// Uses a lock to prevent the TOCTOU race where concurrent callers both see a null/faulted
+    /// task and both start CreateIfNotExistsAsync.
     /// </summary>
     private Task EnsureTableExistsAsync()
     {
         var task = _ensureTableTask;
         if (task is not null && !task.IsFaulted && !task.IsCanceled)
             return task;
-        return _ensureTableTask = _policyTable.CreateIfNotExistsAsync();
+
+        lock (_ensureTableLock)
+        {
+            task = _ensureTableTask;
+            if (task is not null && !task.IsFaulted && !task.IsCanceled)
+                return task;
+            return _ensureTableTask = _policyTable.CreateIfNotExistsAsync();
+        }
     }
 
     /// <inheritdoc />

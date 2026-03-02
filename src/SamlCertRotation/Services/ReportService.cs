@@ -14,6 +14,7 @@ public class ReportService : IReportService
 {
     private readonly TableClient _reportTable;
     private readonly ILogger<ReportService> _logger;
+    private readonly object _ensureTableLock = new();
     private volatile Task? _ensureTableTask;
 
     private const string ReportTableName = "RunReports";
@@ -27,13 +28,22 @@ public class ReportService : IReportService
     /// <summary>
     /// Ensures the table exists with retry-safe caching.
     /// Unlike Lazy&lt;Task&gt;, a faulted/canceled task is discarded so the next call retries.
+    /// Uses a lock to prevent the TOCTOU race where concurrent callers both see a null/faulted
+    /// task and both start CreateIfNotExistsAsync.
     /// </summary>
     private Task EnsureTableExistsAsync()
     {
         var task = _ensureTableTask;
         if (task is not null && !task.IsFaulted && !task.IsCanceled)
             return task;
-        return _ensureTableTask = _reportTable.CreateIfNotExistsAsync();
+
+        lock (_ensureTableLock)
+        {
+            task = _ensureTableTask;
+            if (task is not null && !task.IsFaulted && !task.IsCanceled)
+                return task;
+            return _ensureTableTask = _reportTable.CreateIfNotExistsAsync();
+        }
     }
 
     /// <inheritdoc />

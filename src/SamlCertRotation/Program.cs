@@ -39,16 +39,14 @@ var host = new HostBuilder()
         // Register Table Service Client
         services.AddSingleton(sp =>
         {
-            var connectionString = configuration["StorageConnectionString"] 
-                ?? configuration["AzureWebJobsStorage"];
+            var connectionString = ResolveStorageConnectionString(configuration);
             return new TableServiceClient(connectionString);
         });
 
         // Register Blob Service Client (used for distributed locks)
         services.AddSingleton(sp =>
         {
-            var connectionString = configuration["StorageConnectionString"]
-                ?? configuration["AzureWebJobsStorage"];
+            var connectionString = ResolveStorageConnectionString(configuration);
             return new BlobServiceClient(connectionString);
         });
 
@@ -66,3 +64,31 @@ var host = new HostBuilder()
     .Build();
 
 host.Run();
+
+/// <summary>
+/// Resolves the storage connection string, falling back to AzureWebJobsStorage if
+/// StorageConnectionString is missing or contains an unresolved Key Vault reference.
+/// Throws a clear error at startup if neither setting provides a usable value.
+/// </summary>
+static string ResolveStorageConnectionString(Microsoft.Extensions.Configuration.IConfiguration configuration)
+{
+    var connectionString = configuration["StorageConnectionString"];
+
+    // If the value is an unresolved Key Vault reference (e.g. firewall blocked resolution),
+    // the literal "@Microsoft.KeyVault(...)" string is returned instead of null.
+    // Detect this and fall back to AzureWebJobsStorage which is set as a plain value.
+    if (string.IsNullOrWhiteSpace(connectionString)
+        || connectionString.StartsWith("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
+    {
+        connectionString = configuration["AzureWebJobsStorage"];
+    }
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        throw new InvalidOperationException(
+            "No storage connection string available. Ensure either 'StorageConnectionString' "
+            + "(via Key Vault reference) or 'AzureWebJobsStorage' is configured in app settings.");
+    }
+
+    return connectionString;
+}

@@ -35,7 +35,14 @@ public abstract class DashboardFunctionBase
     protected readonly string? _tenantId;
     private readonly HashSet<string> _allowedAudiences;
     private readonly HashSet<string> _trustedSwaIssuers;
-    private readonly IConfigurationManager<OpenIdConnectConfiguration>? _oidcConfigurationManager;
+
+    /// <summary>
+    /// Static OIDC configuration manager shared across all transient function instances.
+    /// In the isolated worker model, function classes are recreated per invocation.
+    /// Making this static avoids an HTTP round-trip to the OIDC metadata endpoint on every request.
+    /// </summary>
+    private static IConfigurationManager<OpenIdConnectConfiguration>? _oidcConfigurationManager;
+    private static string? _oidcConfiguredForTenant;
 
     protected static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -111,13 +118,18 @@ public abstract class DashboardFunctionBase
             _trustedSwaIssuers.Add($"https://{swaDefaultHostname.TrimEnd('/')}/.auth");
         }
 
-        if (!string.IsNullOrWhiteSpace(_tenantId))
+        // Lazily initialize the shared static OIDC configuration manager once.
+        // This avoids re-creating (and re-fetching metadata for) a new ConfigurationManager
+        // on every request, since function classes are transient in the isolated worker model.
+        if (!string.IsNullOrWhiteSpace(_tenantId)
+            && !string.Equals(_oidcConfiguredForTenant, _tenantId, StringComparison.OrdinalIgnoreCase))
         {
             var metadataAddress = $"https://login.microsoftonline.com/{_tenantId}/v2.0/.well-known/openid-configuration";
             _oidcConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
                 metadataAddress,
                 new OpenIdConnectConfigurationRetriever(),
                 new HttpDocumentRetriever { RequireHttps = true });
+            _oidcConfiguredForTenant = _tenantId;
         }
     }
 

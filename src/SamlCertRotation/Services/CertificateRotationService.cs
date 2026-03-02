@@ -559,17 +559,33 @@ public class CertificateRotationService : ICertificateRotationService
             result.Action = "Error";
             result.ErrorMessage = ex.Message;
 
-            await _auditService.LogFailureAsync(
-                app.Id,
-                app.DisplayName,
-                AuditActionType.Error,
-                "Error during certificate rotation",
-                ex.Message,
-                performedBy);
+            // Wrap audit and notification calls in their own try/catch so that a secondary
+            // failure (e.g. Table Storage unavailable) doesn't mask the original error.
+            try
+            {
+                await _auditService.LogFailureAsync(
+                    app.Id,
+                    app.DisplayName,
+                    AuditActionType.Error,
+                    "Error during certificate rotation",
+                    ex.Message,
+                    performedBy);
+            }
+            catch (Exception auditEx)
+            {
+                _logger.LogError(auditEx, "Failed to write audit entry for error on {AppName}", app.DisplayName);
+            }
 
             if (!reportOnlyMode)
             {
-                await _notificationService.SendErrorNotificationAsync(app, ex.Message, "Rotation");
+                try
+                {
+                    await _notificationService.SendErrorNotificationAsync(app, ex.Message, "Rotation");
+                }
+                catch (Exception notifyEx)
+                {
+                    _logger.LogError(notifyEx, "Failed to send error notification for {AppName}", app.DisplayName);
+                }
             }
         }
 
@@ -744,6 +760,7 @@ public class CertificateRotationService : ICertificateRotationService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting dashboard stats");
+            throw;
         }
 
         return stats;

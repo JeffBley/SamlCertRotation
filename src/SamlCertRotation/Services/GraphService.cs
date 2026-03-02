@@ -335,9 +335,12 @@ public class GraphService : IGraphService
 
             // Get Logic App URL from configuration
             var logicAppUrl = _configuration["LogicAppEmailUrl"];
-            if (string.IsNullOrEmpty(logicAppUrl))
+            if (string.IsNullOrEmpty(logicAppUrl)
+                || logicAppUrl.StartsWith("@Microsoft.KeyVault", StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogWarning("LogicAppEmailUrl not configured - email notifications disabled");
+                _logger.LogError(
+                    "LogicAppEmailUrl is not available (missing or Key Vault reference unresolved). "
+                    + "All email notifications are disabled until this is fixed.");
                 return false;
             }
 
@@ -630,12 +633,25 @@ public class GraphService : IGraphService
                     }
                 }
 
+                // If EndDateTime is null, the certificate has no known expiry. Log a warning
+                // and use a near-future fallback so the cert is flagged for review rather than
+                // silently appearing valid forever (which DateTime.MaxValue would cause).
+                var endDateTime = keyCredential.EndDateTime?.UtcDateTime;
+                if (endDateTime == null)
+                {
+                    _logger.LogWarning(
+                        "Certificate keyId {KeyId} for service principal {SpId} has no EndDateTime. " +
+                        "Treating as expired so it is surfaced for review.",
+                        keyCredential.KeyId, sp.Id);
+                    endDateTime = DateTime.UtcNow.AddDays(-1); // treat as expired
+                }
+
                 var cert = new SamlCertificate
                 {
                     KeyId = keyCredential.KeyId?.ToString() ?? string.Empty,
                     Thumbprint = thumbprint,
                     StartDateTime = keyCredential.StartDateTime?.UtcDateTime ?? DateTime.MinValue,
-                    EndDateTime = keyCredential.EndDateTime?.UtcDateTime ?? DateTime.MaxValue,
+                    EndDateTime = endDateTime.Value,
                     Type = keyCredential.Type ?? string.Empty,
                     Usage = keyCredential.Usage ?? string.Empty,
                     IsActive = !string.IsNullOrEmpty(thumbprint) && 
