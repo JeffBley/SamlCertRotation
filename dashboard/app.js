@@ -10,8 +10,6 @@ let activateCertDaysThreshold = 30;
 let currentUserRoles = [];
 let currentUserUpn = '';
 let sessionTimeoutMinutes = 0;
-let idleTimer = null;
-let countdownTimer = null;
 let countdownSeconds = 120;
 
 // Cache flags — set to true after first successful load; cleared on force-refresh
@@ -128,10 +126,16 @@ function signOut() {
 }
 
 // Session idle timeout tracking
+// Uses absolute timestamps so the timer works even when the tab is backgrounded
+// (browsers throttle setTimeout/setInterval in inactive tabs).
+let idleDeadline = 0; // epoch ms when the idle timeout fires
+let countdownDeadline = 0; // epoch ms when auto-sign-out fires
+let idleCheckHandle = null;
+let countdownCheckHandle = null;
+
 function resetIdleTimer() {
     if (sessionTimeoutMinutes <= 0) return;
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(showTimeoutPrompt, sessionTimeoutMinutes * 60 * 1000);
+    idleDeadline = Date.now() + sessionTimeoutMinutes * 60 * 1000;
 }
 
 function startIdleTracking() {
@@ -139,30 +143,48 @@ function startIdleTracking() {
     const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
     events.forEach(evt => document.addEventListener(evt, resetIdleTimer, { passive: true }));
     resetIdleTimer();
+    // Check every second whether the idle deadline has been reached
+    if (idleCheckHandle) clearInterval(idleCheckHandle);
+    idleCheckHandle = setInterval(() => {
+        if (Date.now() >= idleDeadline) {
+            showTimeoutPrompt();
+        }
+    }, 1000);
 }
 
 function stopIdleTracking() {
-    clearTimeout(idleTimer);
-    clearInterval(countdownTimer);
+    if (idleCheckHandle) { clearInterval(idleCheckHandle); idleCheckHandle = null; }
+    if (countdownCheckHandle) { clearInterval(countdownCheckHandle); countdownCheckHandle = null; }
     const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
     events.forEach(evt => document.removeEventListener(evt, resetIdleTimer));
 }
 
 function showTimeoutPrompt() {
-    countdownSeconds = 120;
+    // Stop the idle checker so it doesn't re-trigger
+    if (idleCheckHandle) { clearInterval(idleCheckHandle); idleCheckHandle = null; }
+    countdownDeadline = Date.now() + 120 * 1000; // 2 minutes
     updateCountdownDisplay();
     document.getElementById('sessionTimeoutModal').classList.add('show');
-    countdownTimer = setInterval(() => {
-        countdownSeconds--;
+    if (countdownCheckHandle) clearInterval(countdownCheckHandle);
+    countdownCheckHandle = setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((countdownDeadline - Date.now()) / 1000));
+        countdownSeconds = remaining;
         updateCountdownDisplay();
-        if (countdownSeconds <= 0) {
-            clearInterval(countdownTimer);
+        if (remaining <= 0) {
+            clearInterval(countdownCheckHandle);
+            countdownCheckHandle = null;
             endAppSession();
         }
-    }, 1000);
+    }, 250); // check 4x/sec for snappy display even after tab re-focus
 }
 
 function updateCountdownDisplay() {
+    // Recalculate from absolute deadline so the display is always correct
+    // even after a backgrounded tab resumes
+    const remaining = countdownDeadline > 0
+        ? Math.max(0, Math.ceil((countdownDeadline - Date.now()) / 1000))
+        : countdownSeconds;
+    countdownSeconds = remaining;
     const mins = Math.floor(countdownSeconds / 60);
     const secs = countdownSeconds % 60;
     document.getElementById('timeout-countdown').textContent =
@@ -170,10 +192,35 @@ function updateCountdownDisplay() {
 }
 
 function renewSession() {
-    clearInterval(countdownTimer);
+    if (countdownCheckHandle) { clearInterval(countdownCheckHandle); countdownCheckHandle = null; }
     document.getElementById('sessionTimeoutModal').classList.remove('show');
-    resetIdleTimer();
+    // Restart idle tracking from scratch
+    startIdleTracking();
 }
+
+// When the browser tab becomes visible again, immediately re-check deadlines so the
+// UI catches up (browsers throttle timers in backgrounded tabs).
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+
+    // If the countdown modal is open, refresh the display instantly
+    if (countdownCheckHandle && countdownDeadline > 0) {
+        const remaining = Math.max(0, Math.ceil((countdownDeadline - Date.now()) / 1000));
+        countdownSeconds = remaining;
+        updateCountdownDisplay();
+        if (remaining <= 0) {
+            clearInterval(countdownCheckHandle);
+            countdownCheckHandle = null;
+            endAppSession();
+        }
+        return;
+    }
+
+    // If idle tracking is active, check whether we passed the idle deadline while away
+    if (idleCheckHandle && idleDeadline > 0 && Date.now() >= idleDeadline) {
+        showTimeoutPrompt();
+    }
+});
 
 function isAdminUser() {
     return currentUserRoles.includes('admin');
@@ -672,14 +719,22 @@ function editSponsor(appId, appName, currentSponsor) {
 
 function addSponsorRow(value) {
     const container = document.getElementById('sponsorEmailRows');
+    // Enforce 5-email limit when Entra sponsor source is enabled
+    if (cachedSettings?.useEntraNotificationEmailAsSponsor) {
+        const currentCount = container.querySelectorAll('.sponsor-email-input').length;
+        if (currentCount >= 5 && !value) {
+            const errorEl = document.getElementById('editSponsorError');
+            errorEl.textContent = 'Maximum of 5 sponsor emails allowed when "Use Entra ID Notification Email as Sponsor" is enabled.';
+            errorEl.style.display = 'block';
+            return;
+        }
+    }
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
     row.innerHTML = `
-        <input type="email" placeholder="sponsor@example.com" value="${escapeHtml(value || '')}" 
-               class="sponsor-email-input" 
-               style="flex:1;padding:6px 10px;border:1px solid #d2d0ce;border-radius:4px;font-size:13px;">
-        <button type="button" class="btn-remove-sponsor" title="Remove"
-                style="background:none;border:none;color:#d13438;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;">&#x2715;</button>
+        <input type="email" placeholder="sponsor@example.com" value="${escapeHtml(value || '')}"
+               class="sponsor-email-input sponsor-email-field">
+        <button type="button" class="btn-remove-sponsor" title="Remove">&#x2715;</button>
     `;
     row.querySelector('.btn-remove-sponsor').addEventListener('click', () => {
         row.remove();
@@ -711,6 +766,12 @@ async function saveSponsorModal() {
     const invalid = emails.filter(e => !emailPattern.test(e));
     if (invalid.length > 0) {
         errorEl.textContent = `Invalid email: ${invalid.join(', ')}`;
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (cachedSettings?.useEntraNotificationEmailAsSponsor && emails.length > 5) {
+        errorEl.textContent = 'Maximum of 5 sponsor emails allowed when "Use Entra ID Notification Email as Sponsor" is enabled.';
         errorEl.style.display = 'block';
         return;
     }
@@ -775,12 +836,14 @@ async function editPolicy(appId, appName) {
         if (result.isAppSpecific) {
             document.getElementById('editPolicyCreateDays').value = result.policy.createCertDaysBeforeExpiry ?? '';
             document.getElementById('editPolicyActivateDays').value = result.policy.activateCertDaysBeforeExpiry ?? '';
+            document.getElementById('editPolicyLifespanDays').value = result.policy.newCertLifespanDays ?? '';
             const override = result.policy.createCertsForNotifyOverride;
             document.getElementById('editPolicyNotifyOverride').value = override === true ? 'enabled' : override === false ? 'disabled' : 'default';
         } else {
             // No app-specific policy — leave blank (will use global)
             document.getElementById('editPolicyCreateDays').value = '';
             document.getElementById('editPolicyActivateDays').value = '';
+            document.getElementById('editPolicyLifespanDays').value = '';
             document.getElementById('editPolicyNotifyOverride').value = 'default';
         }
 
@@ -794,10 +857,12 @@ async function editPolicy(appId, appName) {
 async function saveAppPolicy() {
     const createDaysVal = document.getElementById('editPolicyCreateDays').value.trim();
     const activateDaysVal = document.getElementById('editPolicyActivateDays').value.trim();
+    const lifespanDaysVal = document.getElementById('editPolicyLifespanDays').value.trim();
     const errorEl = document.getElementById('editPolicyError');
 
     const createDays = createDaysVal === '' ? null : parseInt(createDaysVal, 10);
     const activateDays = activateDaysVal === '' ? null : parseInt(activateDaysVal, 10);
+    const lifespanDays = lifespanDaysVal === '' ? null : parseInt(lifespanDaysVal, 10);
 
     if (createDays !== null && (isNaN(createDays) || createDays < 1 || createDays > 365)) {
         errorEl.textContent = 'Create cert days must be between 1 and 365, or blank for global default.';
@@ -812,6 +877,12 @@ async function saveAppPolicy() {
 
     if (createDays !== null && activateDays !== null && activateDays >= createDays) {
         errorEl.textContent = 'Activate cert days must be less than Create cert days.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    if (lifespanDays !== null && (isNaN(lifespanDays) || lifespanDays < 1 || lifespanDays > 1095)) {
+        errorEl.textContent = 'Certificate lifespan must be between 1 and 1095 days, or blank for global default.';
         errorEl.style.display = 'block';
         return;
     }
@@ -834,6 +905,7 @@ async function saveAppPolicy() {
                 appDisplayName: appName,
                 createCertDaysBeforeExpiry: createDays,
                 activateCertDaysBeforeExpiry: activateDays,
+                newCertLifespanDays: lifespanDays,
                 createCertsForNotifyOverride: createCertsForNotifyOverride
             })
         });
@@ -1113,7 +1185,8 @@ async function loadData(force = true) {
 // ── My SAML Apps (Sponsor view) ──────────────────────────────────
 let myAppsData = [];
 let myAppsRawResult = null; // cached raw API response for reuse by My Stale Certs
-let myAppsSponsorCanRotate = false;
+let myAppsSponsorCanCreateCerts = false;
+let myAppsSponsorCanActivateCerts = false;
 let myAppsSponsorCanUpdatePolicy = false;
 let myAppsSponsorCanEditSponsors = false;
 
@@ -1136,7 +1209,8 @@ async function loadMyApps(force = true) {
 
         myAppsRawResult = result;
         myAppsData = result.apps || [];
-        myAppsSponsorCanRotate = result.sponsorsCanRotateCerts === true;
+        myAppsSponsorCanCreateCerts = result.sponsorsCanCreateCerts === true;
+        myAppsSponsorCanActivateCerts = result.sponsorsCanActivateCerts === true;
         myAppsSponsorCanUpdatePolicy = result.sponsorsCanUpdatePolicy === true;
         myAppsSponsorCanEditSponsors = result.sponsorsCanEditSponsors === true;
         applyMyAppsFilter();
@@ -1204,7 +1278,7 @@ function renderMyApps(apps) {
     if (!container) return;
 
     if (apps.length === 0) {
-        container.innerHTML = '<div style="text-align:center;padding:40px;color:#666;">No sponsored applications match the selected filters.</div>';
+        container.innerHTML = '<div class="empty-state">No sponsored applications match the selected filters.</div>';
         return;
     }
 
@@ -1213,14 +1287,15 @@ function renderMyApps(apps) {
         return status.charAt(0).toUpperCase() + status.slice(1);
     };
 
-    const canRotate = myAppsSponsorCanRotate || isAdminUser();
+    const canCreateCerts = myAppsSponsorCanCreateCerts || isAdminUser();
+    const canActivateCerts = myAppsSponsorCanActivateCerts || isAdminUser();
     const canUpdatePolicy = myAppsSponsorCanUpdatePolicy || isAdminUser();
     const canEditSponsors = myAppsSponsorCanEditSponsors || isAdminUser();
-    const hasAnyAction = canRotate || canUpdatePolicy || canEditSponsors;
+    const hasAnyAction = canCreateCerts || canActivateCerts || canUpdatePolicy || canEditSponsors;
     const adminMyApps = isAdminUser();
 
     const col = (key) => myAppsVisibleColumns[key];
-    const hide = (key) => col(key) ? '' : ' style="display:none;"';
+    const hide = (key) => col(key) ? '' : ' class="d-none"';
 
     const tableHtml = `
         <table>
@@ -1236,7 +1311,7 @@ function renderMyApps(apps) {
                     <th${hide('createCertDays')}>Create Cert (days)</th>
                     <th${hide('activateCertDays')}>Activate Cert (days)</th>
                     <th${hide('deeplink')}>View in Entra ID</th>
-                    ${hasAnyAction ? '<th style="width:90px;white-space:nowrap;">Actions</th>' : ''}
+                    ${hasAnyAction ? '<th class="actions-col">Actions</th>' : ''}
                 </tr>
             </thead>
             <tbody>
@@ -1250,14 +1325,14 @@ function renderMyApps(apps) {
                     return `
                     <tr>
                         <td${hide('application')}>${escapeHtml(app.displayName)}</td>
-                        <td${hide('applicationId')} style="${col('applicationId') ? '' : 'display:none;'}font-size:12px;">${escapeHtml(app.id)}</td>
+                        <td class="${col('applicationId') ? 'fs-sm' : 'd-none fs-sm'}">${escapeHtml(app.id)}</td>
                         <td${hide('autoRotate')}>
                             <span class="status-badge status-${autoRotateStatusClass}">
                                 ${((app.autoRotateStatus || '').toLowerCase() === 'notify') ? 'Notify' : (escapeHtml(app.autoRotateStatus) || 'Not Set')}
                             </span>
                         </td>
                         <td${hide('certExpiry')}>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
-                        <td${hide('daysRemaining')}>${app.daysUntilExpiry ?? 'N/A'}</td>
+                        <td${hide('daysRemaining')}>${escapeHtml(String(app.daysUntilExpiry ?? 'N/A'))}</td>
                         <td${hide('status')}>
                             <span class="expiry-badge expiry-${computedStatusClass}">
                                 ${formatComputedStatus(computedStatus)}
@@ -1266,8 +1341,8 @@ function renderMyApps(apps) {
                         <td${hide('policyType')}>
                             <span class="status-badge ${isAppSpecific ? 'status-on' : ''}">${escapeHtml(app.policyType || 'Global')}</span>
                         </td>
-                        <td${hide('createCertDays')}>${app.createCertDaysBeforeExpiry ?? 'N/A'}</td>
-                        <td${hide('activateCertDays')}>${app.activateCertDaysBeforeExpiry ?? 'N/A'}</td>
+                        <td${hide('createCertDays')}>${escapeHtml(String(app.createCertDaysBeforeExpiry ?? 'N/A'))}</td>
+                        <td${hide('activateCertDays')}>${escapeHtml(String(app.activateCertDaysBeforeExpiry ?? 'N/A'))}</td>
                         <td${hide('deeplink')}><a href="${escapeHtml(deeplink)}" target="_blank" rel="noopener noreferrer" title="Open in Entra admin center">Open in Entra ↗</a></td>
                         ${hasAnyAction ? `
                         <td class="actions-cell">
@@ -1290,10 +1365,12 @@ function renderMyApps(apps) {
                                     Resend Reminder Email
                                 </button>
                                 ` : `
-                                ${canRotate ? `
+                                ${canCreateCerts ? `
                                 <button class="dropdown-item" data-action="sponsor-create-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Create new SAML certificate
                                 </button>
+                                ` : ''}
+                                ${canActivateCerts ? `
                                 <button class="dropdown-item" data-action="sponsor-activate-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Make newest cert active
                                 </button>
@@ -1391,7 +1468,7 @@ function navigateFromOverviewTile(navigateValue) {
 function renderApps(apps) {
     if (apps.length === 0) {
         document.getElementById('apps-table-container').innerHTML = 
-            '<div style="text-align:center;padding:40px;color:#666;">No applications match the selected filters.</div>';
+            '<div class="empty-state">No applications match the selected filters.</div>';
         return;
     }
 
@@ -1401,7 +1478,7 @@ function renderApps(apps) {
     };
 
     const col = (key) => visibleColumns[key];
-    const hide = (key) => col(key) ? '' : ' style="display:none;"';
+    const hide = (key) => col(key) ? '' : ' class="d-none"';
 
     const tableHtml = `
         <table>
@@ -1417,7 +1494,7 @@ function renderApps(apps) {
                     <th${hide('policyType')}>Policy Type</th>
                     <th${hide('createCertDays')}>Create Cert (days)</th>
                     <th${hide('activateCertDays')}>Activate Cert (days)</th>
-                    <th style="width:90px;white-space:nowrap;">Actions</th>
+                    <th class="actions-col">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -1430,7 +1507,7 @@ function renderApps(apps) {
                     return `
                     <tr>
                         <td${hide('application')}>${escapeHtml(app.displayName)}</td>
-                        <td${hide('applicationId')} style="${col('applicationId') ? '' : 'display:none;'}font-size:12px;">${escapeHtml(app.id)}</td>
+                        <td class="${col('applicationId') ? 'fs-sm' : 'd-none fs-sm'}">${escapeHtml(app.id)}</td>
                         <td${hide('sponsor')}>${escapeHtml(app.sponsor) || 'Not Set'}</td>
                         <td${hide('autoRotate')}>
                             <span class="status-badge status-${autoRotateStatusClass}">
@@ -1438,7 +1515,7 @@ function renderApps(apps) {
                             </span>
                         </td>
                         <td${hide('certExpiry')}>${app.certExpiryDate ? new Date(app.certExpiryDate).toLocaleDateString() : 'N/A'}</td>
-                        <td${hide('daysRemaining')}>${app.daysUntilExpiry ?? 'N/A'}</td>
+                        <td${hide('daysRemaining')}>${escapeHtml(String(app.daysUntilExpiry ?? 'N/A'))}</td>
                         <td${hide('status')}>
                             <span class="expiry-badge expiry-${computedStatusClass}">
                                 ${formatComputedStatus(computedStatus)}
@@ -1447,24 +1524,24 @@ function renderApps(apps) {
                         <td${hide('policyType')}>
                             <span class="status-badge ${isAppSpecific ? 'status-on' : ''}">${escapeHtml(app.policyType || 'Global')}</span>
                         </td>
-                        <td${hide('createCertDays')}>${app.createCertDaysBeforeExpiry ?? 'N/A'}</td>
-                        <td${hide('activateCertDays')}>${app.activateCertDaysBeforeExpiry ?? 'N/A'}</td>
+                        <td${hide('createCertDays')}>${escapeHtml(String(app.createCertDaysBeforeExpiry ?? 'N/A'))}</td>
+                        <td${hide('activateCertDays')}>${escapeHtml(String(app.activateCertDaysBeforeExpiry ?? 'N/A'))}</td>
                         <td class="actions-cell">
                             <button class="actions-btn" data-action="toggle-menu" data-app-id-token="${appIdToken}">⋮</button>
                             <div id="actions-menu-${appIdToken}" class="dropdown-menu">
-                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} data-action="create-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled'} data-action="create-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Create new SAML certificate
                                 </button>
-                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} data-action="activate-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled'} data-action="activate-cert" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Make newest cert active
                                 </button>
-                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} data-action="edit-sponsor" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}" data-sponsor="${escapeHtml(app.sponsor || '')}">
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled'} data-action="edit-sponsor" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}" data-sponsor="${escapeHtml(app.sponsor || '')}">
                                     Edit Sponsor
                                 </button>
-                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'} data-action="edit-policy" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled'} data-action="edit-policy" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Edit Policy
                                 </button>
-                                <button class="dropdown-item ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''}" ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''} ${!isAdminUser() ? 'style="opacity:0.5;cursor:not-allowed;"' : ''} data-action="resend-reminder" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                <button class="dropdown-item ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''}" ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''} data-action="resend-reminder" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Resend Reminder Email
                                 </button>
                             </div>
@@ -1486,6 +1563,7 @@ async function loadPolicy(force = true) {
     if (!force && _cache.policy && cachedPolicy && cachedPolicySettings) {
         document.getElementById('createDays').value = cachedPolicy.createCertDaysBeforeExpiry;
         document.getElementById('activateDays').value = cachedPolicy.activateCertDaysBeforeExpiry;
+        document.getElementById('certLifespanDays').value = cachedPolicy.newCertLifespanDays ?? 1095;
         document.getElementById('createCertsForNotifyApps').value = cachedPolicySettings.createCertsForNotifyApps === false ? 'disabled' : 'enabled';
         return;
     }
@@ -1497,6 +1575,7 @@ async function loadPolicy(force = true) {
         cachedPolicy = policy;
         document.getElementById('createDays').value = policy.createCertDaysBeforeExpiry;
         document.getElementById('activateDays').value = policy.activateCertDaysBeforeExpiry;
+        document.getElementById('certLifespanDays').value = policy.newCertLifespanDays ?? 1095;
 
         cachedPolicySettings = settings;
         document.getElementById('createCertsForNotifyApps').value = settings.createCertsForNotifyApps === false ? 'disabled' : 'enabled';
@@ -1511,6 +1590,7 @@ async function savePolicy() {
     try {
         const createDays = parseInt(document.getElementById('createDays').value, 10);
         const activateDays = parseInt(document.getElementById('activateDays').value, 10);
+        const lifespanDays = parseInt(document.getElementById('certLifespanDays').value, 10);
 
         if (isNaN(createDays) || createDays < 1 || createDays > 365) {
             showError('Create cert days must be between 1 and 365.');
@@ -1524,10 +1604,15 @@ async function savePolicy() {
             showError('Activate cert days must be less than Create cert days.');
             return;
         }
+        if (isNaN(lifespanDays) || lifespanDays < 1 || lifespanDays > 1095) {
+            showError('Certificate lifespan must be between 1 and 1095 days.');
+            return;
+        }
 
         const policy = {
             createCertDaysBeforeExpiry: createDays,
             activateCertDaysBeforeExpiry: activateDays,
+            newCertLifespanDays: lifespanDays,
             isEnabled: true
         };
         await apiCall('policy', {
@@ -1563,13 +1648,16 @@ function applySettingsToForm(settings) {
     document.getElementById('sponsorSecondReminderDays').value = Number.isInteger(settings.sponsorSecondReminderDays) ? settings.sponsorSecondReminderDays : 7;
     document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
     document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
+    document.getElementById('useEntraNotificationEmailAsSponsor').value = settings.useEntraNotificationEmailAsSponsor === false ? 'disabled' : 'enabled';
     document.getElementById('staleCertCleanupReminders').value = settings.staleCertCleanupRemindersEnabled === false ? 'disabled' : 'enabled';
     document.getElementById('staleCertCleanupSchedule').value = formatCronSchedule(settings.staleCertCleanupSchedule || '0 0 6 1 * *');
     toggleStaleCertCleanupSchedule();
     document.getElementById('sessionTimeoutMinutes').value = typeof settings.sessionTimeoutMinutes === 'number' ? settings.sessionTimeoutMinutes : 0;
     document.getElementById('reportsRetentionPolicyDays').value = settings.reportsRetentionPolicyDays || 14;
-    const sponsorsCanRotateEl = document.getElementById('sponsorsCanRotateCerts');
-    if (sponsorsCanRotateEl) sponsorsCanRotateEl.value = settings.sponsorsCanRotateCerts === true ? 'enabled' : 'disabled';
+    const sponsorsCanCreateEl = document.getElementById('sponsorsCanCreateCerts');
+    if (sponsorsCanCreateEl) sponsorsCanCreateEl.value = settings.sponsorsCanCreateCerts === true ? 'enabled' : 'disabled';
+    const sponsorsCanActivateEl = document.getElementById('sponsorsCanActivateCerts');
+    if (sponsorsCanActivateEl) sponsorsCanActivateEl.value = settings.sponsorsCanActivateCerts === true ? 'enabled' : 'disabled';
     const sponsorsCanUpdatePolicyEl = document.getElementById('sponsorsCanUpdatePolicy');
     if (sponsorsCanUpdatePolicyEl) sponsorsCanUpdatePolicyEl.value = settings.sponsorsCanUpdatePolicy === true ? 'enabled' : 'disabled';
     const sponsorsCanEditSponsorsEl = document.getElementById('sponsorsCanEditSponsors');
@@ -1682,13 +1770,15 @@ async function saveSettings() {
             sponsorReminderCount,
             notifySponsorsOnExpiration: document.getElementById('notifySponsorsOnExpiration').value === 'enabled',
             staleCertCleanupRemindersEnabled: document.getElementById('staleCertCleanupReminders').value === 'enabled',
+            useEntraNotificationEmailAsSponsor: document.getElementById('useEntraNotificationEmailAsSponsor').value === 'enabled',
             sponsorFirstReminderDays,
             sponsorSecondReminderDays,
             sponsorThirdReminderDays,
             retentionPolicyDays,
             reportsRetentionPolicyDays,
             sessionTimeoutMinutes: parseInt(document.getElementById('sessionTimeoutMinutes').value, 10) || 0,
-            sponsorsCanRotateCerts: document.getElementById('sponsorsCanRotateCerts')?.value === 'enabled',
+            sponsorsCanCreateCerts: document.getElementById('sponsorsCanCreateCerts')?.value === 'enabled',
+            sponsorsCanActivateCerts: document.getElementById('sponsorsCanActivateCerts')?.value === 'enabled',
             sponsorsCanUpdatePolicy: document.getElementById('sponsorsCanUpdatePolicy')?.value === 'enabled',
             sponsorsCanEditSponsors: document.getElementById('sponsorsCanEditSponsors')?.value === 'enabled'
         };
@@ -1743,6 +1833,61 @@ function toggleSponsorReminderCount() {
     if (reminder3) reminder3.style.display = count >= 3 ? 'block' : 'none';
 }
 
+// ── Entra Sponsor confirmation dialog ────────────────────────────
+// When flipping "Use Entra ID Notification Email as Sponsor" from disabled → enabled
+// while Sponsor Reminders are also enabled, warn the user about potential duplicate
+// reminders and give them 3 choices: disable reminders, proceed anyway, or cancel.
+function handleEntraSponsorChange() {
+    const entraDropdown = document.getElementById('useEntraNotificationEmailAsSponsor');
+    const remindersDropdown = document.getElementById('sponsorRemindersEnabled');
+    if (!entraDropdown || !remindersDropdown) return;
+
+    // Only show dialog when toggling TO enabled while reminders are also enabled
+    if (entraDropdown.value === 'enabled' && remindersDropdown.value === 'enabled') {
+        document.getElementById('entraReminderConfirmModal').classList.add('show');
+    }
+}
+
+function entraReminderCancel() {
+    // Revert dropdown back to disabled
+    document.getElementById('useEntraNotificationEmailAsSponsor').value = 'disabled';
+    document.getElementById('entraReminderConfirmModal').classList.remove('show');
+}
+
+function entraReminderDisableReminders() {
+    // Flip sponsor reminders to disabled, keep the Entra setting as-is (enabled)
+    document.getElementById('sponsorRemindersEnabled').value = 'disabled';
+    toggleSponsorReminderSettings();
+    document.getElementById('entraReminderConfirmModal').classList.remove('show');
+}
+
+function entraReminderProceed() {
+    // Just close the modal, both settings stay enabled
+    document.getElementById('entraReminderConfirmModal').classList.remove('show');
+}
+
+// ── Reverse direction: enabling Sponsor Reminders while Entra Sponsor is on ──
+function handleSponsorRemindersChange() {
+    toggleSponsorReminderSettings();
+    const remindersDropdown = document.getElementById('sponsorRemindersEnabled');
+    const entraDropdown = document.getElementById('useEntraNotificationEmailAsSponsor');
+    if (!remindersDropdown || !entraDropdown) return;
+
+    if (remindersDropdown.value === 'enabled' && entraDropdown.value === 'enabled') {
+        document.getElementById('reminderEntraConfirmModal').classList.add('show');
+    }
+}
+
+function reminderEntraCancel() {
+    document.getElementById('sponsorRemindersEnabled').value = 'disabled';
+    toggleSponsorReminderSettings();
+    document.getElementById('reminderEntraConfirmModal').classList.remove('show');
+}
+
+function reminderEntraProceed() {
+    document.getElementById('reminderEntraConfirmModal').classList.remove('show');
+}
+
 // ── Reports tab ──────────────────────────────────────────────────
 let cachedReports = [];
 
@@ -1751,22 +1896,22 @@ function renderReportsTable(reports) {
     document.getElementById('reports-list-view').style.display = '';
     document.getElementById('reports-detail-view').style.display = 'none';
     if (!reports || reports.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">No reports found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center-muted">No reports found.</td></tr>';
         return;
     }
     tbody.innerHTML = '';
     reports.forEach(r => {
         const tr = document.createElement('tr');
-        const modeLabel = r.mode === 'prod' ? '<span style="color:#d83b01;font-weight:600;">Prod</span>' : '<span style="color:#0078d4;">Report-only</span>';
+        const modeLabel = r.mode === 'prod' ? '<span class="text-danger-bold">Prod</span>' : '<span class="text-info">Report-only</span>';
         tr.innerHTML = `
             <td>${new Date(r.runDate).toLocaleString()}</td>
             <td>${modeLabel}</td>
             <td>${escapeHtml(r.triggeredBy || 'Scheduled')}</td>
-            <td>${r.totalProcessed}</td>
-            <td>${r.successful}</td>
-            <td>${r.skipped}</td>
-            <td>${r.failed > 0 ? '<span style="color:#d83b01;font-weight:600;">' + r.failed + '</span>' : r.failed}</td>
-            <td><button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" data-action="view-report" data-report-id="${escapeHtml(r.id)}">View Report</button></td>
+            <td>${escapeHtml(String(r.totalProcessed))}</td>
+            <td>${escapeHtml(String(r.successful))}</td>
+            <td>${escapeHtml(String(r.skipped))}</td>
+            <td>${r.failed > 0 ? '<span class="text-danger-bold">' + escapeHtml(String(r.failed)) + '</span>' : escapeHtml(String(r.failed))}</td>
+            <td><button class="btn btn-secondary btn-xs" data-action="view-report" data-report-id="${escapeHtml(r.id)}">View Report</button></td>
         `;
         tbody.appendChild(tr);
     });
@@ -1775,7 +1920,7 @@ function renderReportsTable(reports) {
 async function loadReports(force = true) {
     if (!force && _cache.reports) { renderReportsTable(cachedReports); return; }
     const tbody = document.getElementById('reports-table-body');
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#888;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center-muted">Loading...</td></tr>';
     // Always show list view and hide detail view when loading
     document.getElementById('reports-list-view').style.display = '';
     document.getElementById('reports-detail-view').style.display = 'none';
@@ -1785,7 +1930,7 @@ async function loadReports(force = true) {
         renderReportsTable(cachedReports);
         _cache.reports = true;
     } catch (error) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#d83b01;">Failed to load reports.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center-danger">Failed to load reports.</td></tr>';
         console.error('Failed to load reports:', error);
     }
 }
@@ -1797,7 +1942,7 @@ async function viewReport(id) {
 
     const summaryDiv = document.getElementById('report-detail-summary');
     const tbody = document.getElementById('report-detail-table-body');
-    summaryDiv.innerHTML = '<span style="color:#888;">Loading...</span>';
+    summaryDiv.innerHTML = '<span class="text-muted">Loading...</span>';
     tbody.innerHTML = '';
 
     try {
@@ -1809,14 +1954,14 @@ async function viewReport(id) {
             <div><strong>Mode:</strong> ${modeLabel}</div>
             <div><strong>Triggered By:</strong> ${escapeHtml(report.triggeredBy || 'Scheduled')}</div>
             <div><strong>Date:</strong> ${new Date(report.runDate).toLocaleString()}</div>
-            <div><strong>Apps Evaluated:</strong> ${report.totalProcessed}</div>
-            <div><strong>Successful:</strong> ${report.successful}</div>
-            <div><strong>Apps Skipped (no action required):</strong> ${report.skipped}</div>
-            <div><strong>Failed:</strong> ${report.failed}</div>
+            <div><strong>Apps Evaluated:</strong> ${escapeHtml(String(report.totalProcessed))}</div>
+            <div><strong>Successful:</strong> ${escapeHtml(String(report.successful))}</div>
+            <div><strong>Apps Skipped (no action required):</strong> ${escapeHtml(String(report.skipped))}</div>
+            <div><strong>Failed:</strong> ${escapeHtml(String(report.failed))}</div>
         `;
 
         if (!report.results || report.results.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;">No actionable apps — all certificates are healthy.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center-muted">No actionable apps — all certificates are healthy.</td></tr>';
             return;
         }
 
@@ -1830,18 +1975,18 @@ async function viewReport(id) {
         sorted.forEach(r => {
             const tr = document.createElement('tr');
             const resultIcon = r.success ? '✅' : '❌';
-            const actionStyle = (r.action || 'None') === 'None' ? 'color:#888;' : '';
+            const actionClass = (r.action || 'None') === 'None' ? 'text-muted' : '';
             tr.innerHTML = `
                 <td>${escapeHtml(r.appDisplayName || '')}</td>
-                <td style="${actionStyle}">${escapeHtml(r.action || 'None')}</td>
+                <td class="${actionClass}">${escapeHtml(r.action || 'None')}</td>
                 <td>${resultIcon}</td>
-                <td style="font-size:12px;font-family:monospace;">${escapeHtml(r.newCertificateThumbprint || '—')}</td>
-                <td style="color:#d83b01;font-size:12px;">${escapeHtml(r.errorMessage || '')}</td>
+                <td class="font-mono-sm">${escapeHtml(r.newCertificateThumbprint || '—')}</td>
+                <td class="text-danger-sm">${escapeHtml(r.errorMessage || '')}</td>
             `;
             tbody.appendChild(tr);
         });
     } catch (error) {
-        summaryDiv.innerHTML = '<span style="color:#d83b01;">Failed to load report detail.</span>';
+        summaryDiv.innerHTML = '<span class="text-danger">Failed to load report detail.</span>';
         console.error('Failed to load report:', error);
     }
 }
@@ -2035,12 +2180,12 @@ function applyAuditFilters() {
 function renderAuditLogTable(entries) {
     if (!entries || entries.length === 0) {
         document.getElementById('audit-table-container').innerHTML =
-            '<div style="text-align:center;padding:40px;color:#666;">No audit entries match the selected filters.</div>';
+            '<div class="empty-state">No audit entries match the selected filters.</div>';
         return;
     }
 
     const ac = (key) => auditVisibleColumns[key];
-    const ahide = (key) => ac(key) ? '' : ' style="display:none;"';
+    const ahide = (key) => ac(key) ? '' : ' class="d-none"';
 
     const tableHtml = `
         <table>
@@ -2061,9 +2206,9 @@ function renderAuditLogTable(entries) {
                     const showId = spId && spId !== 'SYSTEM' ? spId : '-';
                     return `
                     <tr>
-                        <td${ahide('time')} style="white-space:nowrap;">${new Date(entry.timestamp).toLocaleDateString()}<br>${new Date(entry.timestamp).toLocaleTimeString()}</td>
+                        <td class="${ac('time') ? 'nowrap' : 'd-none'}">${new Date(entry.timestamp).toLocaleDateString()}<br>${new Date(entry.timestamp).toLocaleTimeString()}</td>
                         <td${ahide('application')}>${escapeHtml(entry.appDisplayName || '-')}</td>
-                        <td${ahide('applicationId')} style="${ac('applicationId') ? '' : 'display:none;'}font-size:12px;">${escapeHtml(showId)}</td>
+                        <td class="${ac('applicationId') ? 'fs-sm' : 'd-none fs-sm'}">${escapeHtml(showId)}</td>
                         <td${ahide('initiatedBy')}>${escapeHtml(entry.performedBy || 'System')}</td>
                         <td${ahide('action')}>${escapeHtml(entry.actionType)}</td>
                         <td${ahide('result')}>
@@ -2135,7 +2280,7 @@ async function loadCleanupData(force = true) {
 function renderCleanupTable(apps) {
     if (apps.length === 0) {
         document.getElementById('cleanup-table-container').innerHTML = 
-            '<div style="text-align:center;padding:40px;color:#666;">No applications have inactive expired certificates. Your tenant is clean!</div>';
+            '<div class="empty-state">No applications have inactive expired certificates. Your tenant is clean!</div>';
         return;
     }
 
@@ -2155,7 +2300,7 @@ function renderCleanupTable(apps) {
                     return `
                     <tr>
                         <td>${escapeHtml(app.displayName)}</td>
-                        <td style="font-family:monospace;font-size:12px;">${escapeHtml(app.appId)}</td>
+                        <td class="font-mono-sm">${escapeHtml(app.appId)}</td>
                         <td>${app.expiredInactiveCertCount}</td>
                         <td><a href="${escapeHtml(deeplink)}" target="_blank" rel="noopener noreferrer" title="Open in Entra admin center">Open in Entra ↗</a></td>
                     </tr>
@@ -2163,7 +2308,7 @@ function renderCleanupTable(apps) {
                 }).join('')}
             </tbody>
         </table>
-        <p style="margin-top:16px;color:#666;font-size:13px;">
+        <p class="help-note">
             Total: ${apps.length} application(s) with ${apps.reduce((sum, a) => sum + a.expiredInactiveCertCount, 0)} expired inactive certificate(s)
         </p>
     `;
@@ -2422,7 +2567,7 @@ function renderMyStaleCerts(apps) {
     if (!container) return;
 
     if (apps.length === 0) {
-        container.innerHTML = '<div style="text-align:center;padding:40px;color:#666;">None of your sponsored applications have inactive expired certificates. All clean!</div>';
+        container.innerHTML = '<div class="empty-state">None of your sponsored applications have inactive expired certificates. All clean!</div>';
         return;
     }
 
@@ -2442,7 +2587,7 @@ function renderMyStaleCerts(apps) {
                     return `
                     <tr>
                         <td>${escapeHtml(app.displayName)}</td>
-                        <td style="font-family:monospace;font-size:12px;">${escapeHtml(app.appId)}</td>
+                        <td class="font-mono-sm">${escapeHtml(app.appId)}</td>
                         <td>${app.expiredInactiveCertCount}</td>
                         <td><a href="${escapeHtml(deeplink)}" target="_blank" rel="noopener noreferrer" title="Open in Entra admin center">Open in Entra ↗</a></td>
                     </tr>
@@ -2450,7 +2595,7 @@ function renderMyStaleCerts(apps) {
                 }).join('')}
             </tbody>
         </table>
-        <p style="margin-top:16px;color:#666;font-size:13px;">
+        <p class="help-note">
             Total: ${apps.length} application(s) with ${apps.reduce((sum, a) => sum + a.expiredInactiveCertCount, 0)} expired inactive certificate(s)
         </p>
     `;
@@ -2893,15 +3038,30 @@ function previewBulkUpdates(csvData) {
             });
             clearCount++;
         } else {
-            // Email validation using standard pattern
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newSponsor)) {
+            // Validate each email in a semicolon-separated list
+            const emailParts = newSponsor.split(';').map(e => e.trim()).filter(e => e.length > 0);
+            const invalidEmail = emailParts.find(e => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+            if (invalidEmail) {
                 changes.push({
                     applicationId: row.applicationId,
                     displayName: app.displayName,
                     currentSponsor,
                     newSponsor,
                     action: 'skip',
-                    reason: 'Invalid email'
+                    reason: `Invalid email: ${invalidEmail}`
+                });
+                invalidEmailCount++;
+                return;
+            }
+            // When Entra sponsor source is enabled, limit to 5 emails per app
+            if (cachedSettings?.useEntraNotificationEmailAsSponsor && emailParts.length > 5) {
+                changes.push({
+                    applicationId: row.applicationId,
+                    displayName: app.displayName,
+                    currentSponsor,
+                    newSponsor,
+                    action: 'skip',
+                    reason: 'Max 5 emails (Entra sponsor)'
                 });
                 invalidEmailCount++;
                 return;
@@ -2936,13 +3096,13 @@ function previewBulkUpdates(csvData) {
 
     const tbody = document.getElementById('bulkSponsorPreviewBody');
     tbody.innerHTML = changes.map(c => {
-        const actionColor = c.action === 'update' ? '#0078d4' : c.action === 'clear' ? '#d83b01' : '#a19f9d';
+        const actionClass = c.action === 'update' ? 'text-info' : c.action === 'clear' ? 'text-danger' : 'text-placeholder';
         const actionLabel = c.action === 'update' ? 'Update' : c.action === 'clear' ? 'Clear' : `Skip (${c.reason})`;
         return `<tr>
-            <td style="padding:6px 10px;border-bottom:1px solid #edebe9;">${escapeHtml(c.displayName)}</td>
-            <td style="padding:6px 10px;border-bottom:1px solid #edebe9;">${escapeHtml(c.currentSponsor) || '<em style="color:#a19f9d;">Not Set</em>'}</td>
-            <td style="padding:6px 10px;border-bottom:1px solid #edebe9;">${c.action === 'clear' ? '<em style="color:#d83b01;">Clear</em>' : escapeHtml(c.newSponsor)}</td>
-            <td style="padding:6px 10px;border-bottom:1px solid #edebe9;color:${actionColor};font-weight:500;">${actionLabel}</td>
+            <td class="preview-cell">${escapeHtml(c.displayName)}</td>
+            <td class="preview-cell">${escapeHtml(c.currentSponsor) || '<em class="text-placeholder">Not Set</em>'}</td>
+            <td class="preview-cell">${c.action === 'clear' ? '<em class="text-danger">Clear</em>' : escapeHtml(c.newSponsor)}</td>
+            <td class="preview-cell fw-medium ${actionClass}">${actionLabel}</td>
         </tr>`;
     }).join('');
 
@@ -3144,9 +3304,19 @@ document.querySelectorAll('.audit-columns-filter-option-input').forEach(function
 
 // Settings tab
 document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
-document.getElementById('sponsorRemindersEnabled').addEventListener('change', toggleSponsorReminderSettings);
+document.getElementById('sponsorRemindersEnabled').addEventListener('change', handleSponsorRemindersChange);
 document.getElementById('sponsorReminderCount').addEventListener('change', toggleSponsorReminderCount);
 document.getElementById('staleCertCleanupReminders').addEventListener('change', toggleStaleCertCleanupSchedule);
+
+// Entra Sponsor setting + confirmation modal
+document.getElementById('useEntraNotificationEmailAsSponsor').addEventListener('change', handleEntraSponsorChange);
+document.getElementById('btn-entra-reminder-cancel').addEventListener('click', entraReminderCancel);
+document.getElementById('btn-entra-reminder-disable').addEventListener('click', entraReminderDisableReminders);
+document.getElementById('btn-entra-reminder-proceed').addEventListener('click', entraReminderProceed);
+
+// Reverse: enabling Sponsor Reminders while Entra Sponsor is on
+document.getElementById('btn-reminder-entra-cancel').addEventListener('click', reminderEntraCancel);
+document.getElementById('btn-reminder-entra-proceed').addEventListener('click', reminderEntraProceed);
 
 // Confirm modal
 document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
@@ -3290,7 +3460,7 @@ document.getElementById('testEmailTemplate').addEventListener('change', () => {
     const templateName = select.value;
     const info = testEmailExplanations[templateName];
     if (info) {
-        descEl.innerHTML = `<strong>${info.description}</strong><br><span style="color:#555;">${info.when}</span>`;
+        descEl.innerHTML = `<strong>${info.description}</strong><br><span class="text-muted-alt">${info.when}</span>`;
     } else {
         descEl.innerHTML = '';
     }

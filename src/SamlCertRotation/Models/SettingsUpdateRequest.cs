@@ -61,9 +61,19 @@ public class SettingsUpdateRequest
     public int? SessionTimeoutMinutes { get; set; }
 
     /// <summary>
-    /// Whether sponsors can create and rotate certificates from the portal
+    /// Whether sponsors can create and rotate certificates from the portal (legacy combined toggle)
     /// </summary>
     public bool? SponsorsCanRotateCerts { get; set; }
+
+    /// <summary>
+    /// Whether sponsors can create certificates from the portal
+    /// </summary>
+    public bool? SponsorsCanCreateCerts { get; set; }
+
+    /// <summary>
+    /// Whether sponsors can activate certificates from the portal
+    /// </summary>
+    public bool? SponsorsCanActivateCerts { get; set; }
 
     /// <summary>
     /// Whether sponsors can update policy for their apps
@@ -84,6 +94,13 @@ public class SettingsUpdateRequest
     /// Reports retention policy in days (default 14)
     /// </summary>
     public int? ReportsRetentionPolicyDays { get; set; }
+
+    /// <summary>
+    /// Whether to use the Entra ID notificationEmailAddresses field on service principals as the sponsor source.
+    /// When enabled (default), sponsors are read from/written to notificationEmailAddresses.
+    /// When disabled, sponsors are stored in the AppSponsor= tag.
+    /// </summary>
+    public bool? UseEntraNotificationEmailAsSponsor { get; set; }
 
     /// <summary>
     /// Whether to send monthly reminders to sponsors about expired inactive certificates that should be cleaned up

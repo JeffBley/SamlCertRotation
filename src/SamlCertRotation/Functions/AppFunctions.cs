@@ -98,7 +98,8 @@ public class AppFunctions : DashboardFunctionBase
 
         try
         {
-            var apps = await _graphService.GetSamlApplicationsAsync();
+            var useEntraSponsor = await GetUseEntraSponsorSettingAsync();
+            var apps = await _graphService.GetSamlApplicationsAsync(useEntraSponsor);
             return await CreateJsonResponse(req, apps);
         }
         catch (Exception ex)
@@ -111,7 +112,7 @@ public class AppFunctions : DashboardFunctionBase
     /// <summary>
     /// Get SAML applications where the current user is a sponsor.
     /// Accessible by users with the sponsor, reader, or admin role.
-    /// Also returns the sponsorsCanRotateCerts setting so the UI can render action buttons.
+    /// Also returns the sponsorsCanCreateCerts and sponsorsCanActivateCerts settings so the UI can render action buttons.
     /// </summary>
     [Function("GetMyApplications")]
     public async Task<HttpResponseData> GetMyApplications(
@@ -133,7 +134,8 @@ public class AppFunctions : DashboardFunctionBase
         try
         {
             // Fetch full apps once and reuse for both stats filtering and certificate data
-            var fullApps = await _graphService.GetSamlApplicationsAsync();
+            var useEntraSponsor = await GetUseEntraSponsorSettingAsync();
+            var fullApps = await _graphService.GetSamlApplicationsAsync(useEntraSponsor);
             var fullAppLookup = fullApps.ToDictionary(a => a.Id, a => a);
 
             var stats = await _rotationService.GetDashboardStatsAsync(fullApps);
@@ -172,12 +174,13 @@ public class AppFunctions : DashboardFunctionBase
                 };
             }).ToList();
 
-            var sponsorsCanRotateCertsTask = _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var sponsorsCanCreateCertsTask = _policyService.GetSponsorsCanCreateCertsEnabledAsync();
+            var sponsorsCanActivateCertsTask = _policyService.GetSponsorsCanActivateCertsEnabledAsync();
             var sponsorsCanUpdatePolicyTask = _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
             var sponsorsCanEditSponsorsTask = _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
             var globalPolicyTask = _policyService.GetGlobalPolicyAsync();
 
-            await Task.WhenAll(sponsorsCanRotateCertsTask, sponsorsCanUpdatePolicyTask, sponsorsCanEditSponsorsTask, globalPolicyTask);
+            await Task.WhenAll(sponsorsCanCreateCertsTask, sponsorsCanActivateCertsTask, sponsorsCanUpdatePolicyTask, sponsorsCanEditSponsorsTask, globalPolicyTask);
 
             var globalPolicy = globalPolicyTask.Result;
 
@@ -185,7 +188,8 @@ public class AppFunctions : DashboardFunctionBase
             return await CreateJsonResponse(req, new
             {
                 apps = appsWithCerts,
-                sponsorsCanRotateCerts = sponsorsCanRotateCertsTask.Result,
+                sponsorsCanCreateCerts = sponsorsCanCreateCertsTask.Result,
+                sponsorsCanActivateCerts = sponsorsCanActivateCertsTask.Result,
                 sponsorsCanUpdatePolicy = sponsorsCanUpdatePolicyTask.Result,
                 sponsorsCanEditSponsors = sponsorsCanEditSponsorsTask.Result,
                 globalCreateCertDaysBeforeExpiry = globalPolicy.CreateCertDaysBeforeExpiry,

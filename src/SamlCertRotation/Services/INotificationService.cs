@@ -25,7 +25,7 @@ public interface INotificationService
     /// <summary>
     /// Send daily summary report
     /// </summary>
-    Task<bool> SendDailySummaryAsync(DashboardStats stats, List<RotationResult> results);
+    Task<bool> SendDailySummaryAsync(DashboardStats stats, List<RotationResult> results, bool reportOnlyMode);
 
     /// <summary>
     /// Send reminder to app sponsor when a notify-app certificate is approaching expiry

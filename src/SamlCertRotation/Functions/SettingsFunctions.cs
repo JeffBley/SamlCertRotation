@@ -54,17 +54,21 @@ public class SettingsFunctions : DashboardFunctionBase
             var createCertsForNotifyAppsTask = _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
             var reportsRetentionPolicyDaysTask = _policyService.GetReportsRetentionPolicyDaysAsync();
             var sponsorsCanRotateCertsTask = _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var sponsorsCanCreateCertsTask = _policyService.GetSponsorsCanCreateCertsEnabledAsync();
+            var sponsorsCanActivateCertsTask = _policyService.GetSponsorsCanActivateCertsEnabledAsync();
             var sponsorsCanUpdatePolicyTask = _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
             var sponsorsCanEditSponsorsTask = _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
             var staleCertCleanupRemindersTask = _policyService.GetStaleCertCleanupRemindersEnabledAsync();
+            var useEntraNotificationEmailTask = _policyService.GetUseEntraNotificationEmailAsSponsorEnabledAsync();
 
             await Task.WhenAll(
                 notificationEmailsTask, reportOnlyModeEnabledTask, retentionPolicyDaysTask,
                 sponsorsReceiveNotificationsTask, notifySponsorsOnExpirationTask,
                 sponsorRemindersEnabledTask, sponsorReminderCountTask, sponsorReminderDaysTask,
                 sessionTimeoutMinutesTask, createCertsForNotifyAppsTask, reportsRetentionPolicyDaysTask,
-                sponsorsCanRotateCertsTask, sponsorsCanUpdatePolicyTask, sponsorsCanEditSponsorsTask,
-                staleCertCleanupRemindersTask);
+                sponsorsCanRotateCertsTask, sponsorsCanCreateCertsTask, sponsorsCanActivateCertsTask,
+                sponsorsCanUpdatePolicyTask, sponsorsCanEditSponsorsTask,
+                staleCertCleanupRemindersTask, useEntraNotificationEmailTask);
 
             var notificationEmails = notificationEmailsTask.Result;
             if (string.IsNullOrWhiteSpace(notificationEmails))
@@ -92,10 +96,13 @@ public class SettingsFunctions : DashboardFunctionBase
                 createCertsForNotifyApps = createCertsForNotifyAppsTask.Result,
                 reportsRetentionPolicyDays = reportsRetentionPolicyDaysTask.Result,
                 sponsorsCanRotateCerts = sponsorsCanRotateCertsTask.Result,
+                sponsorsCanCreateCerts = sponsorsCanCreateCertsTask.Result,
+                sponsorsCanActivateCerts = sponsorsCanActivateCertsTask.Result,
                 sponsorsCanUpdatePolicy = sponsorsCanUpdatePolicyTask.Result,
                 sponsorsCanEditSponsors = sponsorsCanEditSponsorsTask.Result,
                 staleCertCleanupRemindersEnabled = staleCertCleanupRemindersTask.Result,
-                staleCertCleanupSchedule = _configuration["StaleCertCleanupSchedule"] ?? "0 0 6 1 * *"
+                staleCertCleanupSchedule = _configuration["StaleCertCleanupSchedule"] ?? "0 0 6 1 * *",
+                useEntraNotificationEmailAsSponsor = useEntraNotificationEmailTask.Result
             };
             return await CreateJsonResponse(req, settings);
         }
@@ -195,17 +202,21 @@ public class SettingsFunctions : DashboardFunctionBase
             var beforeCreateCertsForNotifyTask = _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
             var beforeReportsRetentionTask = _policyService.GetReportsRetentionPolicyDaysAsync();
             var beforeSponsorsCanRotateCertsTask = _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var beforeSponsorsCanCreateCertsTask = _policyService.GetSponsorsCanCreateCertsEnabledAsync();
+            var beforeSponsorsCanActivateCertsTask = _policyService.GetSponsorsCanActivateCertsEnabledAsync();
             var beforeSponsorsCanUpdatePolicyTask = _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
             var beforeSponsorsCanEditSponsorsTask = _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
             var beforeStaleCertCleanupTask = _policyService.GetStaleCertCleanupRemindersEnabledAsync();
+            var beforeUseEntraNotificationEmailTask = _policyService.GetUseEntraNotificationEmailAsSponsorEnabledAsync();
 
             await Task.WhenAll(
                 beforeEmailsTask, beforeReportOnlyTask, beforeRetentionTask,
                 beforeSponsorsNotifyTask, beforeNotifyOnExpirationTask,
                 beforeRemindersEnabledTask, beforeReminderCountTask, beforeRemindersTask,
                 beforeTimeoutTask, beforeCreateCertsForNotifyTask, beforeReportsRetentionTask,
-                beforeSponsorsCanRotateCertsTask, beforeSponsorsCanUpdatePolicyTask, beforeSponsorsCanEditSponsorsTask,
-                beforeStaleCertCleanupTask);
+                beforeSponsorsCanRotateCertsTask, beforeSponsorsCanCreateCertsTask, beforeSponsorsCanActivateCertsTask,
+                beforeSponsorsCanUpdatePolicyTask, beforeSponsorsCanEditSponsorsTask,
+                beforeStaleCertCleanupTask, beforeUseEntraNotificationEmailTask);
 
             var beforeEmails = beforeEmailsTask.Result;
             var beforeReportOnly = beforeReportOnlyTask.Result;
@@ -219,9 +230,12 @@ public class SettingsFunctions : DashboardFunctionBase
             var beforeCreateCertsForNotify = beforeCreateCertsForNotifyTask.Result;
             var beforeReportsRetention = beforeReportsRetentionTask.Result;
             var beforeSponsorsCanRotateCerts = beforeSponsorsCanRotateCertsTask.Result;
+            var beforeSponsorsCanCreateCerts = beforeSponsorsCanCreateCertsTask.Result;
+            var beforeSponsorsCanActivateCerts = beforeSponsorsCanActivateCertsTask.Result;
             var beforeSponsorsCanUpdatePolicy = beforeSponsorsCanUpdatePolicyTask.Result;
             var beforeSponsorsCanEditSponsors = beforeSponsorsCanEditSponsorsTask.Result;
             var beforeStaleCertCleanup = beforeStaleCertCleanupTask.Result;
+            var beforeUseEntraNotificationEmail = beforeUseEntraNotificationEmailTask.Result;
 
             // ── All validation passed — now apply writes ──
             await _policyService.UpdateNotificationEmailsAsync(rawEmails);
@@ -284,6 +298,16 @@ public class SettingsFunctions : DashboardFunctionBase
                 await _policyService.UpdateSponsorsCanRotateCertsEnabledAsync(settings.SponsorsCanRotateCerts.Value);
             }
 
+            if (settings.SponsorsCanCreateCerts.HasValue)
+            {
+                await _policyService.UpdateSponsorsCanCreateCertsEnabledAsync(settings.SponsorsCanCreateCerts.Value);
+            }
+
+            if (settings.SponsorsCanActivateCerts.HasValue)
+            {
+                await _policyService.UpdateSponsorsCanActivateCertsEnabledAsync(settings.SponsorsCanActivateCerts.Value);
+            }
+
             if (settings.SponsorsCanUpdatePolicy.HasValue)
             {
                 await _policyService.UpdateSponsorsCanUpdatePolicyEnabledAsync(settings.SponsorsCanUpdatePolicy.Value);
@@ -299,6 +323,11 @@ public class SettingsFunctions : DashboardFunctionBase
                 await _policyService.UpdateStaleCertCleanupRemindersEnabledAsync(settings.StaleCertCleanupRemindersEnabled.Value);
             }
 
+            if (settings.UseEntraNotificationEmailAsSponsor.HasValue)
+            {
+                await _policyService.UpdateUseEntraNotificationEmailAsSponsorEnabledAsync(settings.UseEntraNotificationEmailAsSponsor.Value);
+            }
+
             // ── Read back updated values (parallel) ──
             var reportOnlyModeEnabledTask2 = _policyService.GetReportOnlyModeEnabledAsync();
             var retentionPolicyDaysTask2 = _policyService.GetRetentionPolicyDaysAsync();
@@ -311,17 +340,21 @@ public class SettingsFunctions : DashboardFunctionBase
             var createCertsForNotifyAppsTask2 = _policyService.GetCreateCertsForNotifyAppsEnabledAsync();
             var reportsRetentionPolicyDaysTask2 = _policyService.GetReportsRetentionPolicyDaysAsync();
             var sponsorsCanRotateCertsTask2 = _policyService.GetSponsorsCanRotateCertsEnabledAsync();
+            var sponsorsCanCreateCertsTask2 = _policyService.GetSponsorsCanCreateCertsEnabledAsync();
+            var sponsorsCanActivateCertsTask2 = _policyService.GetSponsorsCanActivateCertsEnabledAsync();
             var sponsorsCanUpdatePolicyTask2 = _policyService.GetSponsorsCanUpdatePolicyEnabledAsync();
             var sponsorsCanEditSponsorsTask2 = _policyService.GetSponsorsCanEditSponsorsEnabledAsync();
             var staleCertCleanupRemindersTask2 = _policyService.GetStaleCertCleanupRemindersEnabledAsync();
+            var useEntraNotificationEmailTask2 = _policyService.GetUseEntraNotificationEmailAsSponsorEnabledAsync();
 
             await Task.WhenAll(
                 reportOnlyModeEnabledTask2, retentionPolicyDaysTask2,
                 sponsorsReceiveNotificationsTask2, notifySponsorsOnExpirationTask2,
                 sponsorRemindersEnabledTask2, sponsorReminderCountTask2, sponsorReminderDaysTask2,
                 sessionTimeoutMinutesTask2, createCertsForNotifyAppsTask2, reportsRetentionPolicyDaysTask2,
-                sponsorsCanRotateCertsTask2, sponsorsCanUpdatePolicyTask2, sponsorsCanEditSponsorsTask2,
-                staleCertCleanupRemindersTask2);
+                sponsorsCanRotateCertsTask2, sponsorsCanCreateCertsTask2, sponsorsCanActivateCertsTask2,
+                sponsorsCanUpdatePolicyTask2, sponsorsCanEditSponsorsTask2,
+                staleCertCleanupRemindersTask2, useEntraNotificationEmailTask2);
 
             var reportOnlyModeEnabled = reportOnlyModeEnabledTask2.Result;
             var retentionPolicyDays = retentionPolicyDaysTask2.Result;
@@ -334,9 +367,12 @@ public class SettingsFunctions : DashboardFunctionBase
             var createCertsForNotifyApps = createCertsForNotifyAppsTask2.Result;
             var reportsRetentionPolicyDays = reportsRetentionPolicyDaysTask2.Result;
             var sponsorsCanRotateCerts = sponsorsCanRotateCertsTask2.Result;
+            var sponsorsCanCreateCerts = sponsorsCanCreateCertsTask2.Result;
+            var sponsorsCanActivateCerts = sponsorsCanActivateCertsTask2.Result;
             var sponsorsCanUpdatePolicy = sponsorsCanUpdatePolicyTask2.Result;
             var sponsorsCanEditSponsors = sponsorsCanEditSponsorsTask2.Result;
             var staleCertCleanupRemindersEnabled = staleCertCleanupRemindersTask2.Result;
+            var useEntraNotificationEmailAsSponsor = useEntraNotificationEmailTask2.Result;
 
             // Build list of changed fields
             var changes = new List<string>();
@@ -368,12 +404,18 @@ public class SettingsFunctions : DashboardFunctionBase
                 changes.Add($"ReportsRetentionPolicyDays: {beforeReportsRetention} → {settings.ReportsRetentionPolicyDays.Value}");
             if (settings.SponsorsCanRotateCerts.HasValue && settings.SponsorsCanRotateCerts.Value != beforeSponsorsCanRotateCerts)
                 changes.Add($"SponsorsCanRotateCerts: {beforeSponsorsCanRotateCerts} → {settings.SponsorsCanRotateCerts.Value}");
+            if (settings.SponsorsCanCreateCerts.HasValue && settings.SponsorsCanCreateCerts.Value != beforeSponsorsCanCreateCerts)
+                changes.Add($"SponsorsCanCreateCerts: {beforeSponsorsCanCreateCerts} → {settings.SponsorsCanCreateCerts.Value}");
+            if (settings.SponsorsCanActivateCerts.HasValue && settings.SponsorsCanActivateCerts.Value != beforeSponsorsCanActivateCerts)
+                changes.Add($"SponsorsCanActivateCerts: {beforeSponsorsCanActivateCerts} → {settings.SponsorsCanActivateCerts.Value}");
             if (settings.SponsorsCanUpdatePolicy.HasValue && settings.SponsorsCanUpdatePolicy.Value != beforeSponsorsCanUpdatePolicy)
                 changes.Add($"SponsorsCanUpdatePolicy: {beforeSponsorsCanUpdatePolicy} → {settings.SponsorsCanUpdatePolicy.Value}");
             if (settings.SponsorsCanEditSponsors.HasValue && settings.SponsorsCanEditSponsors.Value != beforeSponsorsCanEditSponsors)
                 changes.Add($"SponsorsCanEditSponsors: {beforeSponsorsCanEditSponsors} → {settings.SponsorsCanEditSponsors.Value}");
             if (settings.StaleCertCleanupRemindersEnabled.HasValue && settings.StaleCertCleanupRemindersEnabled.Value != beforeStaleCertCleanup)
                 changes.Add($"StaleCertCleanupReminders: {beforeStaleCertCleanup} → {settings.StaleCertCleanupRemindersEnabled.Value}");
+            if (settings.UseEntraNotificationEmailAsSponsor.HasValue && settings.UseEntraNotificationEmailAsSponsor.Value != beforeUseEntraNotificationEmail)
+                changes.Add($"UseEntraNotificationEmailAsSponsor: {beforeUseEntraNotificationEmail} → {settings.UseEntraNotificationEmailAsSponsor.Value}");
 
             if (changes.Count > 0)
             {
@@ -402,10 +444,13 @@ public class SettingsFunctions : DashboardFunctionBase
                 createCertsForNotifyApps,
                 reportsRetentionPolicyDays,
                 sponsorsCanRotateCerts,
+                sponsorsCanCreateCerts,
+                sponsorsCanActivateCerts,
                 sponsorsCanUpdatePolicy,
                 sponsorsCanEditSponsors,
                 staleCertCleanupRemindersEnabled,
-                staleCertCleanupSchedule = _configuration["StaleCertCleanupSchedule"] ?? "0 0 6 1 * *"
+                staleCertCleanupSchedule = _configuration["StaleCertCleanupSchedule"] ?? "0 0 6 1 * *",
+                useEntraNotificationEmailAsSponsor
             });
         }
         catch (Exception ex)

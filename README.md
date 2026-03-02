@@ -25,7 +25,7 @@ This project is hosted as a serverless Azure stack:
 - Logic App (email dispatch)
 - App Insights + Log Analytics (monitoring)
 
-Detailed diagrams and runtime flows: [docs/AZURE_ARCHITECTURE.md](docs/AZURE_ARCHITECTURE.md)
+Detailed diagrams and runtime flows: [AZURE_ARCHITECTURE.md](AZURE_ARCHITECTURE.md)
 
 ## Quick Start
 
@@ -46,8 +46,8 @@ Full deployment guide: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 ## Documentation Map
 
 - Deployment walkthrough: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
-- Azure architecture diagrams/sequences: [docs/AZURE_ARCHITECTURE.md](docs/AZURE_ARCHITECTURE.md)
-- API endpoints, settings, security notes, project structure: [docs/TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md)
+- Azure architecture diagrams/sequences: [AZURE_ARCHITECTURE.md](AZURE_ARCHITECTURE.md)
+- API endpoints, settings, security notes, project structure: [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md)
 - Dashboard screenshots: [Screenshots.md](Screenshots.md)
 
 ## Feedback

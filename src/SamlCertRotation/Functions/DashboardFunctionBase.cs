@@ -751,6 +751,12 @@ public abstract class DashboardFunctionBase
                 return "ActivateCertDaysBeforeExpiry must be less than CreateCertDaysBeforeExpiry.";
         }
 
+        if (policy.NewCertLifespanDays.HasValue)
+        {
+            if (policy.NewCertLifespanDays.Value < 1 || policy.NewCertLifespanDays.Value > 1095)
+                return "NewCertLifespanDays must be between 1 and 1095.";
+        }
+
         return null;
     }
 
@@ -786,6 +792,38 @@ public abstract class DashboardFunctionBase
     /// Returns the caller's UPN (or user ID) from a previously-parsed identity for audit trail attribution.
     /// </summary>
     protected static string? GetPerformedBy(RequestIdentity? identity) => identity?.UserPrincipalName ?? identity?.UserId;
+
+    /// <summary>
+    /// Reads the UseEntraNotificationEmailAsSponsor setting from policy storage.
+    /// </summary>
+    protected Task<bool> GetUseEntraSponsorSettingAsync() =>
+        _policyService.GetUseEntraNotificationEmailAsSponsorEnabledAsync();
+
+    /// <summary>
+    /// Updates the sponsor for an application using the correct method based on the current setting.
+    /// When UseEntraNotificationEmailAsSponsor is enabled, writes to notificationEmailAddresses;
+    /// otherwise writes to the AppSponsor tag.
+    /// </summary>
+    protected async Task<bool> UpdateSponsorAsync(string servicePrincipalId, string sponsorEmails, bool useEntraNotificationEmail)
+    {
+        if (useEntraNotificationEmail)
+        {
+            return await _graphService.UpdateNotificationEmailAddressesAsync(servicePrincipalId, sponsorEmails);
+        }
+        return await _graphService.UpdateAppSponsorTagAsync(servicePrincipalId, sponsorEmails);
+    }
+
+    /// <summary>
+    /// Clears the sponsor for an application using the correct method based on the current setting.
+    /// </summary>
+    protected async Task<bool> ClearSponsorAsync(string servicePrincipalId, bool useEntraNotificationEmail)
+    {
+        if (useEntraNotificationEmail)
+        {
+            return await _graphService.ClearNotificationEmailAddressesAsync(servicePrincipalId);
+        }
+        return await _graphService.ClearAppSponsorTagAsync(servicePrincipalId);
+    }
 
     protected async Task<HttpResponseData> CreateJsonResponse<T>(HttpRequestData req, T data, HttpStatusCode statusCode = HttpStatusCode.OK)
     {

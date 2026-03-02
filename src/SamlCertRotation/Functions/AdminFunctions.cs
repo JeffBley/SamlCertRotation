@@ -61,7 +61,8 @@ public class AdminFunctions : DashboardFunctionBase
                 return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
             }
 
-            var cert = await _graphService.CreateSamlCertificateAsync(id);
+            var effectivePolicy = await _policyService.GetEffectivePolicyAsync(id);
+            var cert = await _graphService.CreateSamlCertificateAsync(id, effectivePolicy.NewCertLifespanDays);
             if (cert == null)
             {
                 return await CreateErrorResponse(req, "Failed to create certificate");
@@ -71,7 +72,7 @@ public class AdminFunctions : DashboardFunctionBase
                 id,
                 app.DisplayName,
                 AuditActionType.CertificateCreated,
-                $"New certificate created via dashboard. KeyId: {cert.KeyId}",
+                $"New certificate created via dashboard (lifespan: {effectivePolicy.NewCertLifespanDays} days). KeyId: {cert.KeyId}",
                 performedBy: GetPerformedBy(identity));
 
             return await CreateJsonResponse(req, new
@@ -274,7 +275,15 @@ public class AdminFunctions : DashboardFunctionBase
             // Normalize: trim each part and rejoin
             sponsorEmail = string.Join(";", sponsorEmails);
 
-            app = await _graphService.GetSamlApplicationAsync(id);
+            var useEntraSponsor = await GetUseEntraSponsorSettingAsync();
+
+            // When Entra sponsor source is enabled, limit to 5 emails
+            if (useEntraSponsor && sponsorEmails.Length > 5)
+            {
+                return await CreateErrorResponse(req, "Maximum of 5 sponsor emails allowed when 'Use Entra ID Notification Email as Sponsor' is enabled.", HttpStatusCode.BadRequest);
+            }
+
+            app = await _graphService.GetSamlApplicationAsync(id, useEntraSponsor);
             if (app == null)
             {
                 return await CreateErrorResponse(req, "Application not found", HttpStatusCode.NotFound);
@@ -282,10 +291,10 @@ public class AdminFunctions : DashboardFunctionBase
 
             var previousSponsor = app.Sponsor?.Trim() ?? "(none)";
 
-            var updated = await _graphService.UpdateAppSponsorTagAsync(id, sponsorEmail);
+            var updated = await UpdateSponsorAsync(id, sponsorEmail, useEntraSponsor);
             if (!updated)
             {
-                return await CreateErrorResponse(req, "Failed to update sponsor tag");
+                return await CreateErrorResponse(req, "Failed to update sponsor");
             }
 
             await _auditService.LogSuccessAsync(
@@ -356,6 +365,9 @@ public class AdminFunctions : DashboardFunctionBase
             var skippedCount = 0;
             var performedBy = GetPerformedBy(identity);
 
+            // Read the sponsor source setting once (used for all items in this batch)
+            var useEntraSponsor = await GetUseEntraSponsorSettingAsync();
+
             // Pre-validate synchronously (fast) to separate invalid entries from valid ones
             var validUpdates = new List<BulkSponsorUpdate>();
             foreach (var update in updates)
@@ -379,6 +391,13 @@ public class AdminFunctions : DashboardFunctionBase
                         Interlocked.Increment(ref skippedCount);
                         continue;
                     }
+                    // When Entra sponsor source is enabled, limit to 5 emails per app
+                    if (useEntraSponsor && emailParts.Length > 5)
+                    {
+                        results.Add(new { applicationId = update.ApplicationId, status = "skipped", reason = "Maximum of 5 sponsor emails allowed when Entra sponsor is enabled" });
+                        Interlocked.Increment(ref skippedCount);
+                        continue;
+                    }
                     // Normalize: trim each part and rejoin
                     newSponsor = string.Join(";", emailParts);
                 }
@@ -391,7 +410,7 @@ public class AdminFunctions : DashboardFunctionBase
             {
                 try
                 {
-                    var app = await _graphService.GetSamlApplicationAsync(update.ApplicationId!);
+                    var app = await _graphService.GetSamlApplicationAsync(update.ApplicationId!, useEntraSponsor);
                     if (app == null)
                     {
                         results.Add(new { applicationId = update.ApplicationId, status = "skipped", reason = "Application not found" });
@@ -414,7 +433,7 @@ public class AdminFunctions : DashboardFunctionBase
                     if (string.IsNullOrWhiteSpace(newSponsor))
                     {
                         // Clear sponsor
-                        updated = await _graphService.ClearAppSponsorTagAsync(update.ApplicationId!);
+                        updated = await ClearSponsorAsync(update.ApplicationId!, useEntraSponsor);
                         if (updated)
                         {
                             await _auditService.LogSuccessAsync(
@@ -428,13 +447,13 @@ public class AdminFunctions : DashboardFunctionBase
                         }
                         else
                         {
-                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "failed", reason = "Failed to clear sponsor tag" });
+                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "failed", reason = "Failed to clear sponsor" });
                             Interlocked.Increment(ref failCount);
                         }
                     }
                     else
                     {
-                        updated = await _graphService.UpdateAppSponsorTagAsync(update.ApplicationId!, newSponsor);
+                        updated = await UpdateSponsorAsync(update.ApplicationId!, newSponsor, useEntraSponsor);
                         if (updated)
                         {
                             await _auditService.LogSuccessAsync(
@@ -448,7 +467,7 @@ public class AdminFunctions : DashboardFunctionBase
                         }
                         else
                         {
-                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "failed", reason = "Failed to update sponsor tag" });
+                            results.Add(new { applicationId = update.ApplicationId, displayName = app.DisplayName, status = "failed", reason = "Failed to update sponsor" });
                             Interlocked.Increment(ref failCount);
                         }
                     }

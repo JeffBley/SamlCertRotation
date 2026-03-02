@@ -82,7 +82,7 @@ public class NotificationService : INotificationService
     }
 
     /// <inheritdoc />
-    public async Task<bool> SendDailySummaryAsync(DashboardStats stats, List<RotationResult> results)
+    public async Task<bool> SendDailySummaryAsync(DashboardStats stats, List<RotationResult> results, bool reportOnlyMode)
     {
         var adminRecipients = await GetRunSummaryRecipientsAsync();
         if (!adminRecipients.Any())
@@ -92,7 +92,7 @@ public class NotificationService : INotificationService
         }
 
         var subject = $"[SAML Cert Rotation] Daily Summary - {DateTime.UtcNow:yyyy-MM-dd}";
-        var body = GenerateDailySummaryEmail(stats, results);
+        var body = GenerateDailySummaryEmail(stats, results, reportOnlyMode);
 
         return await _graphService.SendEmailAsync(adminRecipients, subject, body);
     }
@@ -181,7 +181,8 @@ public class NotificationService : INotificationService
     }
 
     /// <summary>
-    /// Parses a semicolon-separated sponsor string into a list of trimmed, non-empty email addresses.
+    /// Parses a semicolon-separated sponsor string into a list of trimmed, non-empty,
+    /// format-validated email addresses. Malformed entries are silently dropped.
     /// </summary>
     private static List<string> ParseSponsorEmails(string? sponsorField)
     {
@@ -192,10 +193,17 @@ public class NotificationService : INotificationService
 
         return sponsorField
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Where(e => !string.IsNullOrWhiteSpace(e) && IsBasicEmailFormat(e))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    /// <summary>
+    /// Lightweight email format check (not full RFC 5322 — just enough to reject obvious junk).
+    /// </summary>
+    private static bool IsBasicEmailFormat(string value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        System.Text.RegularExpressions.Regex.IsMatch(value.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
 
     private async Task<List<string>> GetRunSummaryRecipientsAsync()
     {
@@ -236,8 +244,10 @@ public class NotificationService : INotificationService
 
     /// <summary>
     /// HTML-encode a value so it is safe to interpolate into HTML templates.
+    /// WebUtility.HtmlEncode does not encode single quotes, so we add that explicitly
+    /// to protect values inside single-quoted HTML attributes.
     /// </summary>
-    private static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+    private static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty).Replace("'", "&#39;");
 
     /// <summary>
     /// Shared email shell that wraps content in the standard HTML structure (DOCTYPE, styles,
@@ -330,73 +340,131 @@ public class NotificationService : INotificationService
         return EmailShell("#d13438", "❌ Certificate Operation Failed", null, content);
     }
 
-    private string GenerateDailySummaryEmail(DashboardStats stats, List<RotationResult> results)
+    private string GenerateDailySummaryEmail(DashboardStats stats, List<RotationResult> results, bool reportOnlyMode)
     {
-        var successCount = results.Count(r => r.Success && SuccessActions.Contains(r.Action ?? string.Empty));
-        var failureCount = results.Count(r => !r.Success);
-        var skippedCount = Math.Max(0, results.Count - successCount - failureCount);
+        // ── Filter to only on/notify apps for the overview ──
+        var managedApps = stats.Apps.Where(a =>
+            string.Equals(a.AutoRotateStatus, "on", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(a.AutoRotateStatus, "notify", StringComparison.OrdinalIgnoreCase)).ToList();
+        var managedAppCount = managedApps.Count;
 
-        var resultsHtml = string.Join("", results.Select(r =>
+        // ── Compute overview counts from on/notify apps only ──
+        var okCount = managedApps.Count(a => string.Equals(a.ExpiryCategory, "OK", StringComparison.OrdinalIgnoreCase));
+        var warningCount = managedApps.Count(a => string.Equals(a.ExpiryCategory, "Warning", StringComparison.OrdinalIgnoreCase));
+        var criticalCount = managedApps.Count(a => string.Equals(a.ExpiryCategory, "Critical", StringComparison.OrdinalIgnoreCase));
+        var expiredCount = managedApps.Count(a => string.Equals(a.ExpiryCategory, "Expired", StringComparison.OrdinalIgnoreCase));
+
+        // ── Compute Today's Actions counts ──
+        var certsCreatedCount = results.Count(r => r.Success && (
+            string.Equals(r.Action, "Created", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(r.Action, "Would Create", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(r.Action, "Created (Notify)", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(r.Action, "Would Create (Notify)", StringComparison.OrdinalIgnoreCase)));
+
+        var certsActivatedCount = results.Count(r => r.Success && (
+            string.Equals(r.Action, "Activated", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(r.Action, "Would Activate", StringComparison.OrdinalIgnoreCase)));
+
+        var notificationsSentCount = results.Count(r => r.Success && (
+            string.Equals(r.Action, "Notified", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(r.Action, "Would Notify", StringComparison.OrdinalIgnoreCase)));
+
+        var failedCount = results.Count(r => !r.Success);
+
+        var skippedCount = results.Count(r =>
+            r.Success &&
+            (string.Equals(r.Action, "None", StringComparison.OrdinalIgnoreCase) ||
+             (r.Action ?? "").StartsWith("None ", StringComparison.OrdinalIgnoreCase)));
+
+        // ── Build actionable-only app table ──
+        var actionableResults = results.Where(r => r.IsActionable || !r.Success).ToList();
+
+        var resultsHtml = string.Join("", actionableResults.Select(r =>
         {
-            var isSuccess = r.Success && SuccessActions.Contains(r.Action ?? string.Empty);
-            var color = !r.Success ? "#d13438" : isSuccess ? "#107c10" : "#797775";
-            var label = !r.Success ? "✗ Failed" : isSuccess ? "✓ Success" : "↷ Skipped";
+            var actionLabel = GetFriendlyActionLabel(r.Action);
+            var resultColor = r.Success ? "#107c10" : "#d13438";
+            var resultLabel = r.Success ? "Success" : "Failed";
+            var errorDetail = !r.Success && !string.IsNullOrWhiteSpace(r.ErrorMessage)
+                ? $"<br/><span style='font-size:11px;color:#888;'>{H(r.ErrorMessage)}</span>"
+                : "";
             return $@"
             <tr>
-                <td style='padding: 8px; border-bottom: 1px solid #eee;'>{H(r.AppDisplayName)}</td>
-                <td style='padding: 8px; border-bottom: 1px solid #eee;'>{H(r.Action)}</td>
-                <td style='padding: 8px; border-bottom: 1px solid #eee;'>
-                    <span style='color: {color}'>{label}</span>
+                <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{H(r.AppDisplayName)}</td>
+                <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>{H(actionLabel)}</td>
+                <td style='padding: 8px 12px; border-bottom: 1px solid #eee;'>
+                    <span style='color: {resultColor}; font-weight: 600;'>{resultLabel}</span>{errorDetail}
                 </td>
             </tr>";
         }));
 
+        // ── Labels for report-only vs production ──
+        var certsCreatedLabel = reportOnlyMode ? "Certs Would Create" : "Certs Created";
+        var certsActivatedLabel = reportOnlyMode ? "Certs Would Activate" : "Certs Activated";
+
+        var modeTag = reportOnlyMode
+            ? "<span style='display:inline-block;background:#fff4ce;color:#8a6d3b;border:1px solid #f0dca0;border-radius:4px;padding:2px 10px;font-size:12px;margin-left:8px;'>Report-Only Mode</span>"
+            : "";
+
         var extraStyles = @"
-            .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
-            .stat-card { background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .overview-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 16px 0; }
+            .actions-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 16px 0; }
+            .stat-card { background: white; padding: 14px 8px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
             .stat-value { font-size: 28px; font-weight: bold; color: #0078d4; }
-            .stat-label { font-size: 12px; color: #666; }
+            .stat-label { font-size: 11px; color: #666; margin-top: 4px; }
             table { width: 100%; border-collapse: collapse; background: white; }
-            th { background: #f0f0f0; padding: 10px; text-align: left; }";
+            th { background: #f0f0f0; padding: 10px 12px; text-align: left; font-size: 13px; }";
 
         var content = $@"
-            <h3>Overview</h3>
-            <div class='stats-grid'>
+            <h3 style='margin-bottom:4px;'>Overview {modeTag}</h3>
+            <div class='overview-grid'>
                 <div class='stat-card'>
-                    <div class='stat-value'>{stats.TotalSamlApps}</div>
-                    <div class='stat-label'>Total SAML Apps</div>
+                    <div class='stat-value'>{managedAppCount}</div>
+                    <div class='stat-label'>Total SAML Apps (on/notify)</div>
                 </div>
                 <div class='stat-card'>
-                    <div class='stat-value' style='color: #107c10;'>{stats.AppsWithAutoRotateOn}</div>
-                    <div class='stat-label'>Auto-Rotate ON</div>
+                    <div class='stat-value' style='color: #107c10;'>{okCount}</div>
+                    <div class='stat-label'>OK</div>
                 </div>
                 <div class='stat-card'>
-                    <div class='stat-value' style='color: #d13438;'>{stats.AppsWithAutoRotateOff}</div>
-                    <div class='stat-label'>Auto-Rotate OFF</div>
-                </div>
-            </div>
-            <div class='stats-grid'>
-                <div class='stat-card'>
-                    <div class='stat-value' style='color: #0078d4;'>{stats.AppsWithAutoRotateNotify}</div>
-                    <div class='stat-label'>Notify</div>
+                    <div class='stat-value' style='color: #ffb900;'>{warningCount}</div>
+                    <div class='stat-label'>Warning</div>
                 </div>
                 <div class='stat-card'>
-                    <div class='stat-value' style='color: #797775;'>{stats.AppsWithAutoRotateNull}</div>
-                    <div class='stat-label'>Not Configured</div>
+                    <div class='stat-value' style='color: #d83b01;'>{criticalCount}</div>
+                    <div class='stat-label'>Critical</div>
                 </div>
                 <div class='stat-card'>
-                    <div class='stat-value' style='color: #ffb900;'>{stats.AppsExpiringSoon}</div>
-                    <div class='stat-label'>Expiring in {stats.ExpiringSoonThresholdDays} Days</div>
-                </div>
-                <div class='stat-card'>
-                    <div class='stat-value' style='color: #d13438;'>{stats.AppsWithExpiredCerts}</div>
+                    <div class='stat-value' style='color: #d13438;'>{expiredCount}</div>
                     <div class='stat-label'>Expired</div>
                 </div>
             </div>
 
-            <h3>Today's Actions ({results.Count} operations)</h3>
-            <p><strong>Success:</strong> {successCount} &nbsp; <strong>Skipped:</strong> {skippedCount} &nbsp; <strong>Failed:</strong> {failureCount}</p>
-            {(results.Any() ? $@"
+            <h3>Today's Actions</h3>
+            <div class='actions-grid'>
+                <div class='stat-card'>
+                    <div class='stat-value' style='color: #0078d4;'>{certsCreatedCount}</div>
+                    <div class='stat-label'>{certsCreatedLabel}</div>
+                </div>
+                <div class='stat-card'>
+                    <div class='stat-value' style='color: #0078d4;'>{certsActivatedCount}</div>
+                    <div class='stat-label'>{certsActivatedLabel}</div>
+                </div>
+                <div class='stat-card'>
+                    <div class='stat-value' style='color: #0078d4;'>{notificationsSentCount}</div>
+                    <div class='stat-label'>Notifications Sent</div>
+                </div>
+                <div class='stat-card'>
+                    <div class='stat-value' style='color: #797775;'>{skippedCount}</div>
+                    <div class='stat-label'>Apps with No Action</div>
+                </div>
+                <div class='stat-card'>
+                    <div class='stat-value' style='color: #d13438;'>{failedCount}</div>
+                    <div class='stat-label'>Failed</div>
+                </div>
+            </div>
+
+            {(actionableResults.Any() ? $@"
+            <h3>Application Details</h3>
             <table>
                 <tr>
                     <th>Application</th>
@@ -404,9 +472,31 @@ public class NotificationService : INotificationService
                     <th>Result</th>
                 </tr>
                 {resultsHtml}
-            </table>" : "<p>No rotation actions were performed today.</p>")}";
+            </table>" : "<p style='color:#797775;margin-top:16px;'>No actions were performed today — all applications were up to date.</p>")}";
 
         return EmailShell("#0078d4", "📊 Daily SAML Certificate Rotation Summary", $"{DateTime.UtcNow:dddd, MMMM d, yyyy}", content, extraStyles, maxWidth: 700);
+    }
+
+    /// <summary>
+    /// Maps internal action strings to user-friendly labels for the daily summary email.
+    /// </summary>
+    private static string GetFriendlyActionLabel(string? action)
+    {
+        return (action ?? "").Trim() switch
+        {
+            "Created" => "Cert Created",
+            "Would Create" => "Cert Would Create",
+            "Created (Notify)" => "Cert Created (Notify App)",
+            "Would Create (Notify)" => "Cert Would Create (Notify App)",
+            "Activated" => "Cert Activated",
+            "Would Activate" => "Cert Would Activate",
+            "Notified" => "Sponsor Reminder Sent",
+            "Would Notify" => "Sponsor Reminder (Report-Only)",
+            "Create Failed" => "Cert Create Failed",
+            "Activate Failed" => "Cert Activate Failed",
+            "Error" => "Error",
+            _ => action ?? "Unknown"
+        };
     }
 
     private string GenerateSponsorExpirationStatusEmail(SamlApplication app, SamlCertificate cert, int daysUntilExpiry, string appPortalUrl, string status, bool manualSend, string? milestoneLabel = null)
@@ -452,7 +542,14 @@ public class NotificationService : INotificationService
         detailsBuilder.AppendLine($"                <p><span class='label'>{dateLabel}:</span> {H(dateText)}</p>");
         if (!isNotify)
         {
-            detailsBuilder.AppendLine($"                <p><span class='label'>Days Remaining:</span> {daysUntilExpiry}</p>");
+            if (daysUntilExpiry < 0)
+            {
+                detailsBuilder.AppendLine($"                <p><span class='label'>Days Expired:</span> {Math.Abs(daysUntilExpiry)}</p>");
+            }
+            else
+            {
+                detailsBuilder.AppendLine($"                <p><span class='label'>Days Remaining:</span> {daysUntilExpiry}</p>");
+            }
             var modeText = manualSend ? "Manual resend requested from dashboard." : "Automatically generated notification.";
             detailsBuilder.AppendLine($"                <p><span class='label'>Notification:</span> {H(modeText)}</p>");
         }
@@ -640,7 +737,7 @@ public class NotificationService : INotificationService
                     KeyId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                     Thumbprint = "AB12CD34EF56789012345678901234567890ABCD",
                     StartDateTime = DateTime.UtcNow.AddYears(-2),
-                    EndDateTime = DateTime.UtcNow.AddDays(25),
+                    EndDateTime = DateTime.UtcNow.AddDays(30),
                     Type = "AsymmetricX509Cert",
                     Usage = "Sign",
                     IsActive = true
@@ -691,22 +788,31 @@ public class NotificationService : INotificationService
                     AppsWithAutoRotateNotify = 6,
                     AppsWithAutoRotateNull = 3,
                     AppsExpiringSoon = 4,
-                    AppsWithExpiredCerts = 1
+                    AppsWithExpiredCerts = 1,
+                    Apps = new List<SamlAppSummary>
+                    {
+                        new SamlAppSummary { DisplayName = "OK App 1", ExpiryCategory = "OK", AutoRotateStatus = "on" },
+                        new SamlAppSummary { DisplayName = "OK App 2", ExpiryCategory = "OK", AutoRotateStatus = "on" },
+                        new SamlAppSummary { DisplayName = "Warning App", ExpiryCategory = "Warning", AutoRotateStatus = "on" },
+                        new SamlAppSummary { DisplayName = "Critical App", ExpiryCategory = "Critical", AutoRotateStatus = "notify" },
+                        new SamlAppSummary { DisplayName = "Expired App", ExpiryCategory = "Expired", AutoRotateStatus = "on" }
+                    }
                 };
                 var sampleResults = new List<RotationResult>
                 {
                     new RotationResult { AppDisplayName = "Contoso SAML App A", Success = true, Action = "Created" },
                     new RotationResult { AppDisplayName = "Contoso SAML App B", Success = true, Action = "Activated" },
-                    new RotationResult { AppDisplayName = "Contoso SAML App C", Success = true, Action = "None" },
-                    new RotationResult { AppDisplayName = "Contoso SAML App D", Success = false, Action = "Create Failed", ErrorMessage = "Insufficient permissions" }
+                    new RotationResult { AppDisplayName = "Contoso SAML App C", Success = true, Action = "Notified" },
+                    new RotationResult { AppDisplayName = "Contoso SAML App D", Success = false, Action = "Create Failed", ErrorMessage = "Insufficient permissions" },
+                    new RotationResult { AppDisplayName = "Contoso SAML App E", Success = true, Action = "None" }
                 };
                 subject = $"[TEST] [SAML Cert Rotation] Daily Summary - {DateTime.UtcNow:yyyy-MM-dd}";
-                body = GenerateDailySummaryEmail(sampleStats, sampleResults);
+                body = GenerateDailySummaryEmail(sampleStats, sampleResults, reportOnlyMode: false);
                 break;
 
             case "NotifyReminder":
-                subject = $"[TEST] [SAML Cert Rotation] [Notify] Certificate Expiring in 25 day(s) - {sampleApp.DisplayName}";
-                body = GenerateSponsorExpirationStatusEmail(sampleApp, activeCert, 25, appUrl, "Notify", manualSend: false, milestoneLabel: "30-day reminder");
+                subject = $"[TEST] [SAML Cert Rotation] [Notify] Certificate Expiring in 30 day(s) - {sampleApp.DisplayName}";
+                body = GenerateSponsorExpirationStatusEmail(sampleApp, activeCert, 30, appUrl, "Notify", manualSend: false, milestoneLabel: "30-day reminder");
                 break;
 
             case "SponsorExpirationExpired":

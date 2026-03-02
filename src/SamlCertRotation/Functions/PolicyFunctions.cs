@@ -88,6 +88,8 @@ public class PolicyFunctions : DashboardFunctionBase
                     changes.Add($"CreateCertDaysBeforeExpiry: {beforePolicy.CreateCertDaysBeforeExpiry} → {policy.CreateCertDaysBeforeExpiry}");
                 if (policy.ActivateCertDaysBeforeExpiry != beforePolicy.ActivateCertDaysBeforeExpiry)
                     changes.Add($"ActivateCertDaysBeforeExpiry: {beforePolicy.ActivateCertDaysBeforeExpiry} → {policy.ActivateCertDaysBeforeExpiry}");
+                if (policy.NewCertLifespanDays != beforePolicy.NewCertLifespanDays)
+                    changes.Add($"NewCertLifespanDays: {beforePolicy.NewCertLifespanDays} → {policy.NewCertLifespanDays}");
                 if (policy.IsEnabled != beforePolicy.IsEnabled)
                     changes.Add($"IsEnabled: {beforePolicy.IsEnabled} → {policy.IsEnabled}");
 
@@ -209,6 +211,7 @@ public class PolicyFunctions : DashboardFunctionBase
                 var changes = new List<string>();
                 var beforeCreate = beforePolicy?.CreateCertDaysBeforeExpiry;
                 var beforeActivate = beforePolicy?.ActivateCertDaysBeforeExpiry;
+                var beforeLifespan = beforePolicy?.NewCertLifespanDays;
                 var beforeAdditionalEmails = beforePolicy?.AdditionalNotificationEmails ?? "";
                 var beforeNotifyOverride = beforePolicy?.CreateCertsForNotifyOverride;
 
@@ -216,6 +219,8 @@ public class PolicyFunctions : DashboardFunctionBase
                     changes.Add($"CreateCertDaysBeforeExpiry: {beforeCreate?.ToString() ?? "global default"} → {policy.CreateCertDaysBeforeExpiry?.ToString() ?? "global default"}");
                 if (policy.ActivateCertDaysBeforeExpiry != beforeActivate)
                     changes.Add($"ActivateCertDaysBeforeExpiry: {beforeActivate?.ToString() ?? "global default"} → {policy.ActivateCertDaysBeforeExpiry?.ToString() ?? "global default"}");
+                if (policy.NewCertLifespanDays != beforeLifespan)
+                    changes.Add($"NewCertLifespanDays: {beforeLifespan?.ToString() ?? "global default"} → {policy.NewCertLifespanDays?.ToString() ?? "global default"}");
                 if ((policy.AdditionalNotificationEmails ?? "") != beforeAdditionalEmails)
                     changes.Add($"AdditionalNotificationEmails: \"{beforeAdditionalEmails}\" → \"{policy.AdditionalNotificationEmails ?? ""}\"");
                 if (policy.CreateCertsForNotifyOverride != beforeNotifyOverride)
