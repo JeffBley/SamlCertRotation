@@ -42,6 +42,9 @@ param swaLocation string = 'eastus2'
 @description('Set to true to recover a soft-deleted Key Vault with the same name (e.g., after deleting and recreating the resource group). Leave false for first-time deployments.')
 param recoverKeyVault bool = false
 
+@description('Set to true to lock down the Key Vault firewall (defaultAction: Deny). Deploy with false first so you can store secrets from Cloud Shell, then redeploy with true after all secrets are configured.')
+param lockDownKeyVault bool = false
+
 // Variables
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var shortSuffix = substring(uniqueSuffix, 0, 8)
@@ -86,7 +89,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enablePurgeProtection: true
     publicNetworkAccess: 'Enabled'
     networkAcls: {
-      defaultAction: 'Deny'
+      defaultAction: lockDownKeyVault ? 'Deny' : 'Allow'
       bypass: 'AzureServices'
     }
   }

@@ -200,18 +200,6 @@ az deployment group create `
 Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 ```
 
-> **Key Vault conflict?** If you see `A vault with the same name already exists in deleted state`, this means a previous deployment created a Key Vault with the same name and it's still in soft-deleted state (purge protection enforces a 90-day retention). Re-run the deployment with `recoverKeyVault=true`:
-> ```powershell
-> az deployment group create `
->     --resource-group $RESOURCE_GROUP `
->     --template-file main.bicep `
->     --parameters main.parameters.json `
->     --parameters recoverKeyVault=true `
->     --query "properties.outputs" `
->     -o json | Out-File -FilePath deployment-outputs.json -Encoding utf8
-> ```
-> This recovers the soft-deleted vault and continues the deployment. Only use this flag when you see the conflict error — omit it for first-time deployments.
-
 ### 3.3 Save Output Values as Variables (Re-runnable)
 
 ```powershell
@@ -737,6 +725,31 @@ $accessControlConfig = @{
 Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.json" -Value $accessControlConfig
 ```
 
+### 6.13 Lock Down the Key Vault Firewall
+
+Now that all secrets are stored, lock down the Key Vault firewall by redeploying the Bicep template with the `lockDownKeyVault` parameter set to `true`. This switches the Key Vault firewall from **Allow** (open during initial setup) to **Deny** (only Azure trusted services can access it).
+
+```powershell
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+
+# Restore session variables
+if (Test-Path "./session-vars.ps1") { . "./session-vars.ps1" }
+if (-not $RESOURCE_GROUP) { $RESOURCE_GROUP = "rg-saml-cert-rotation" }
+
+# Redeploy with Key Vault firewall locked down
+az deployment group create `
+    --resource-group $RESOURCE_GROUP `
+    --template-file main.bicep `
+    --parameters main.parameters.json `
+    --parameters lockDownKeyVault=true `
+    --query "properties.outputs" `
+    -o json | Out-File -FilePath deployment-outputs.json -Encoding utf8
+
+Write-Host "Key Vault firewall locked down (defaultAction: Deny)" -ForegroundColor Green
+```
+
+> **Note**: After this step, only Azure trusted services (Function App, Static Web App via managed identity) can access the Key Vault. To store or rotate secrets manually in the future, you will need to temporarily open the firewall first. See [Temporarily Open Key Vault for Secret Management](#temporarily-open-key-vault-for-secret-management) in Post-Deployment Steps.
+
 ### Summary of Access Control Settings
 
 | Setting | Location | Value |
@@ -948,13 +961,19 @@ During deployment, your user account was granted **Key Vault Secrets Officer** o
 
 **Action**: Consider removing or downgrading your personal Key Vault role assignment after deployment is complete. See [Remove Deployer Key Vault Access](#remove-deployer-key-vault-access) below for instructions.
 
-### 5. Logic App Email Sender
+### 5. Key Vault Firewall
+
+Step 6.13 locked down the Key Vault firewall (`defaultAction: Deny`). If you need to store or rotate secrets manually in the future, you must temporarily open the firewall first.
+
+**Action**: When rotating the dashboard client secret (Consideration #3 above), follow the [Temporarily Open Key Vault for Secret Management](#temporarily-open-key-vault-for-secret-management) runbook to open and re-lock the firewall around your secret operations.
+
+### 6. Logic App Email Sender
 
 The Logic App sends emails from whichever account was authorized in Step 8.2. If you used a personal account, consider switching to a shared mailbox.
 
 **Action**: Re-authorize the Logic App email connector with a shared mailbox (e.g., `saml-notifications@yourdomain.com`). This can be changed at any time via the Logic App designer without redeployment. 
 
-### 6. Update Application Branding
+### 7. Update Application Branding
 
 Users who launch the dashboard from **MyApps** (https://myapps.microsoft.com) will see a generic icon unless you add a logo.
 
@@ -1250,3 +1269,32 @@ az role assignment delete `
 ```
 
 > **Note**: You will need to re-grant this role if you later need to rotate the dashboard client secret manually.
+
+---
+
+### Temporarily Open Key Vault for Secret Management
+
+If the Key Vault firewall is locked down (Step 6.13) and you need to store or rotate secrets manually (e.g., rotating the dashboard client secret), temporarily open the firewall first:
+
+```powershell
+# Restore session variables (clone repo first if this is a fresh shell)
+if (-not (Test-Path "$HOME/SamlCertRotation")) {
+    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
+}
+Set-Location "$HOME/SamlCertRotation/infrastructure"
+. ./session-vars.ps1
+
+# Open the Key Vault firewall temporarily
+az keyvault update --name $KEY_VAULT_NAME --default-action Allow
+Write-Host "Key Vault firewall opened. Perform your secret operations now." -ForegroundColor Yellow
+```
+
+After completing your secret operations, re-lock the firewall:
+
+```powershell
+# Lock down the Key Vault firewall again
+az keyvault update --name $KEY_VAULT_NAME --default-action Deny
+Write-Host "Key Vault firewall locked down." -ForegroundColor Green
+```
+
+> **Important**: Always re-lock the Key Vault firewall after completing secret management operations. Do not leave it in the `Allow` state.
