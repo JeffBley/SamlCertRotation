@@ -21,6 +21,7 @@ This project is hosted as a serverless Azure stack:
 - Azure Functions (.NET 8 API + timers)
 - Microsoft Graph (SAML app/certificate operations)
 - Table Storage (policy/audit/report persistence)
+- Blob Storage (distributed rotation locking)
 - Key Vault (secrets)
 - Logic App (email dispatch)
 - App Insights + Log Analytics (monitoring)

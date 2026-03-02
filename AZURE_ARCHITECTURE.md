@@ -7,7 +7,7 @@ This document summarizes how the SAML Certificate Rotation Tool runs in Azure.
 - **Frontend**: Azure Static Web App (Standard) hosts the dashboard SPA and enforces login via Entra ID using `dashboard/staticwebapp.config.json`.
 - **API/compute**: .NET 8 isolated Azure Functions on Consumption plan (`Y1`) hosts all HTTP APIs and timer jobs, deployed by `infrastructure/main.bicep`.
 - **Identity for backend**: A User-Assigned Managed Identity is attached to the Function App and used with `DefaultAzureCredential` for Microsoft Graph in `src/SamlCertRotation/Program.cs`.
-- **Data/config persistence**: Azure Table Storage stores policies (`RotationPolicies`), audit logs (`AuditLog`), and run reports (`RunReports`) via services under `src/SamlCertRotation/Services`.
+- **Data/config persistence**: Azure Table Storage stores policies (`RotationPolicies`), audit logs (`AuditLog`), and run reports (`RunReports`) via services under `src/SamlCertRotation/Services`. Azure Blob Storage provides distributed lease-based locking to prevent concurrent rotation runs.
 - **Secrets**: Key Vault stores the storage connection string, Logic App callback URL, and SWA client secret references.
 - **Notifications**: Logic App (HTTP trigger) + Office 365 connector sends email notifications; Functions call it through `LogicAppEmailUrl`.
 - **Monitoring**: Application Insights is wired to Log Analytics workspace.
@@ -25,6 +25,8 @@ flowchart LR
   FUNC -->|Managed Identity token| GRAPH[Microsoft Graph API\nService Principals / SAML Certs]
 
   FUNC -->|Table SDK| STG[(Azure Table Storage\nRotationPolicies\nAuditLog\nRunReports)]
+
+  FUNC -->|Blob lease| BLOB[(Azure Blob Storage\nDistributed rotation lock)]
 
   FUNC -->|Key Vault references| KV[Azure Key Vault\nStorageConnectionString\nLogicAppEmailUrl\nSWA client secret reference]
 
@@ -121,14 +123,14 @@ sequenceDiagram
 - API uses Azure Functions Consumption plan with a user-assigned managed identity (`infrastructure/main.bicep`).
 - Function App uses Key Vault references for non-platform secrets; platform storage settings remain direct connection strings (required by Consumption mounting behavior).
 - App RBAC is role-based (`Admin`, `Reader`, `Sponsor`) and mapped by `GetRoles`.
-- Data persistence is Azure Table Storage only (no SQL dependency).
+- Data persistence is Azure Table Storage (no SQL dependency). Blob Storage is used only for distributed rotation locking.
 - Email delivery is decoupled through Logic App + Office 365 connector.
 - Observability uses App Insights connected to a Log Analytics workspace.
 
 ## 5) Operational Characteristics (Natural Language)
 
 - Security boundary is Entra Enterprise App assignment + SWA auth + API role checks.
-- Secrets are not hardcoded; sensitive values are retrieved through Key Vault references.
+- Secrets are not hardcoded; sensitive values are retrieved through Key Vault references. The exceptions are `AzureWebJobsStorage` and `WEBSITE_CONTENTAZUREFILECONNECTIONSTRING`, which must be inline connection strings on Consumption plan (see Technical Reference for details). The Key Vault firewall is open (`defaultAction: Allow`) because Consumption-plan outbound IPs are dynamic and SWA requires open access for KV reference resolution.
 - CORS is limited to SWA hostname from Bicep configuration.
 - Easy Auth on Function App is intentionally disabled after SWA backend linking; SWA is the auth front door (per deployment guide).
 - Architecture is serverless and cost-efficient, but depends on external Microsoft Graph / Logic App / Office 365 availability.

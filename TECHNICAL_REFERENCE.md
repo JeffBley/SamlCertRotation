@@ -71,6 +71,12 @@ Create in Microsoft Entra Admin Center:
 | `DefaultActivateCertDaysBeforeExpiry` | No | Initial activate-cert threshold (default: `30`) |
 | `SWA_DEFAULT_HOSTNAME` | Auto | Static Web App default hostname (set by Bicep) |
 | `SWA_HOSTNAME` | No | Custom domain hostname (if configured) |
+| `SWA_ADMIN_APP_ROLE` | No | Entra app-role value mapped to Admin (default: `SamlCertRotation.Admin`, set in Step 6.9) |
+| `SWA_READER_APP_ROLE` | No | Entra app-role value mapped to Reader (default: `SamlCertRotation.Reader`, set in Step 6.9) |
+| `SWA_SPONSOR_APP_ROLE` | No | Entra app-role value mapped to Sponsor (default: `SamlCertRotation.Sponsor`, set in Step 6.9) |
+| `SWA_ADMIN_GROUP_ID` | No | Entra group object ID mapped to Admin (alternative to app-role mapping) |
+| `SWA_READER_GROUP_ID` | No | Entra group object ID mapped to Reader (alternative to app-role mapping) |
+| `SWA_SPONSOR_GROUP_ID` | No | Entra group object ID mapped to Sponsor (alternative to app-role mapping) |
 
 ### Policy Settings
 
@@ -130,6 +136,8 @@ Create in Microsoft Entra Admin Center:
 ├── dashboard/
 │   ├── index.html                               # Single-page dashboard
 │   ├── app.js                                   # Dashboard JavaScript
+│   ├── styles.css                               # Dashboard stylesheet
+│   ├── favicon.png                              # Browser tab icon
 │   ├── unauthorized.html                        # Access denied page
 │   ├── staticwebapp.config.json                 # SWA auth/routes configuration
 │   ├── package.json                             # Node.js dependencies
@@ -137,9 +145,14 @@ Create in Microsoft Entra Admin Center:
 ├── infrastructure/
 │   ├── main.bicep                               # Azure infrastructure (IaC)
 │   └── main.parameters.json                     # Deployment parameters
+├── docs/
+│   └── images/                                  # Documentation images
 ├── scripts/
 │   └── redeploy-functions.ps1                   # Cloud Shell redeploy helper
+├── AZURE_ARCHITECTURE.md                        # Architecture diagrams and flows
 ├── DEPLOYMENT_GUIDE.md                          # Step-by-step deployment
+├── Screenshots.md                               # Dashboard screenshots
+├── TECHNICAL_REFERENCE.md                       # API, settings, security reference
 └── README.md                                    # Landing page
 ```
 
@@ -165,3 +178,9 @@ The Function App runs on a **Consumption plan**. The `AzureWebJobsStorage` and `
 These two settings use inline connection strings in `main.bicep`. All other secrets (e.g., `StorageConnectionString` used by application code, `LogicAppEmailUrl`) continue to use Key Vault references.
 
 The fully secure alternative is [identity-based connections](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#configure-an-identity-based-connection) using `AzureWebJobsStorage__accountName` with managed identity RBAC, but this has [limitations on Consumption plan](https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#connecting-to-host-storage-with-an-identity) and is not currently implemented.
+
+### Key Vault Network Security
+
+The Key Vault is deployed with its firewall open (`defaultAction: Allow`). Both the Consumption-plan Function App (dynamic outbound IPs) and the Static Web App (runtime Key Vault reference resolution) require open network access to resolve `@Microsoft.KeyVault(...)` references. Setting `defaultAction: Deny` causes Function App 500 errors and SWA auth 404s.
+
+Secrets remain protected by RBAC authorization, Entra ID authentication, soft-delete, and purge protection. See the Deployment Guide's [Key Vault Network Security](DEPLOYMENT_GUIDE.md#key-vault-network-security) section for mitigation options (Private Endpoints, Dedicated plan + VNet, etc.).
