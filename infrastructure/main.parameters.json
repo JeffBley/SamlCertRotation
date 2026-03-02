@@ -28,9 +28,6 @@
     },
     "swaLocation": {
       "value": "eastus2"
-    },
-    "lockDownKeyVault": {
-      "value": false
     }
   }
 }

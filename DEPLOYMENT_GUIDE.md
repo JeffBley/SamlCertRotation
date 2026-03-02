@@ -725,31 +725,6 @@ $accessControlConfig = @{
 Set-Content -Path "$HOME/SamlCertRotation/infrastructure/access-control-config.json" -Value $accessControlConfig
 ```
 
-### 6.13 Lock Down the Key Vault Firewall
-
-Now that all secrets are stored, lock down the Key Vault firewall by redeploying the Bicep template with the `lockDownKeyVault` parameter set to `true`. This switches the Key Vault firewall from **Allow** (open during initial setup) to **Deny** (only Azure trusted services can access it).
-
-```powershell
-Set-Location "$HOME/SamlCertRotation/infrastructure"
-
-# Restore session variables
-if (Test-Path "./session-vars.ps1") { . "./session-vars.ps1" }
-if (-not $RESOURCE_GROUP) { $RESOURCE_GROUP = "rg-saml-cert-rotation" }
-
-# Redeploy with Key Vault firewall locked down
-az deployment group create `
-    --resource-group $RESOURCE_GROUP `
-    --template-file main.bicep `
-    --parameters main.parameters.json `
-    --parameters lockDownKeyVault=true `
-    --query "properties.outputs" `
-    -o json | Out-File -FilePath deployment-outputs.json -Encoding utf8
-
-Write-Host "Key Vault firewall locked down (defaultAction: Deny)" -ForegroundColor Green
-```
-
-> **Note**: After this step, only Azure trusted services (Function App, Static Web App via managed identity) can access the Key Vault. To store or rotate secrets manually in the future, you will need to temporarily open the firewall first. See [Temporarily Open Key Vault for Secret Management](#temporarily-open-key-vault-for-secret-management) in Post-Deployment Steps.
-
 ### Summary of Access Control Settings
 
 | Setting | Location | Value |
@@ -815,6 +790,7 @@ if ([string]::IsNullOrWhiteSpace($TENANT_ID) -or $TENANT_ID -like "<insert*") {
 New-Item -ItemType Directory -Path dist -Force
 Copy-Item index.html dist/
 Copy-Item app.js dist/
+Copy-Item styles.css dist/
 Copy-Item unauthorized.html dist/
 Copy-Item favicon.png dist/
 Copy-Item staticwebapp.config.json dist/
@@ -884,7 +860,7 @@ The Logic App was deployed with a **Send an email (V2)** action pre-configured. 
 4. Sign in with the account whose email address will send the notifications (e.g., a shared mailbox or service account)
 5. Click **Save** at the top of the designer
 
-> **Note**: If you want to use a Shared mailbox to send the notifications, you can replace **Send an email (V2)** with **Send an email from a shared mailbox (V2)**. Enter the email of the shared mailbox in the **Original Mailbox Address** field. Connect with a user that has **Send As** permissions on that mailbox. Readd the To, Subject, and Body dynamic content to their respective fields.
+> **Note**: If you want to use a Shared mailbox to send the notifications, you can replace **Send an email (V2)** with **Send an email from a shared mailbox (V2)**. Enter the email of the shared mailbox in the **Original Mailbox Address** field. Connect with a user that has **Send As** permissions on that mailbox. Re-add the To, Subject, and Body dynamic content to their respective fields.
 
 ![Shared mailbox config in Logic Apps](docs/images/SharedMailbox.png)
 
@@ -961,19 +937,13 @@ During deployment, your user account was granted **Key Vault Secrets Officer** o
 
 **Action**: Consider removing or downgrading your personal Key Vault role assignment after deployment is complete. See [Remove Deployer Key Vault Access](#remove-deployer-key-vault-access) below for instructions.
 
-### 5. Key Vault Firewall
-
-Step 6.13 locked down the Key Vault firewall (`defaultAction: Deny`). If you need to store or rotate secrets manually in the future, you must temporarily open the firewall first.
-
-**Action**: When rotating the dashboard client secret (Consideration #3 above), follow the [Temporarily Open Key Vault for Secret Management](#temporarily-open-key-vault-for-secret-management) runbook to open and re-lock the firewall around your secret operations.
-
-### 6. Logic App Email Sender
+### 5. Logic App Email Sender
 
 The Logic App sends emails from whichever account was authorized in Step 8.2. If you used a personal account, consider switching to a shared mailbox.
 
 **Action**: Re-authorize the Logic App email connector with a shared mailbox (e.g., `saml-notifications@yourdomain.com`). This can be changed at any time via the Logic App designer without redeployment. 
 
-### 7. Update Application Branding
+### 6. Update Application Branding
 
 Users who launch the dashboard from **MyApps** (https://myapps.microsoft.com) will see a generic icon unless you add a logo.
 
@@ -1272,29 +1242,25 @@ az role assignment delete `
 
 ---
 
-### Temporarily Open Key Vault for Secret Management
+### Key Vault Network Security
 
-If the Key Vault firewall is locked down (Step 6.13) and you need to store or rotate secrets manually (e.g., rotating the dashboard client secret), temporarily open the firewall first:
+The Key Vault is deployed with its firewall **open** (`defaultAction: Allow`). This is required because:
 
-```powershell
-# Restore session variables (clone repo first if this is a fresh shell)
-if (-not (Test-Path "$HOME/SamlCertRotation")) {
-    git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
-}
-Set-Location "$HOME/SamlCertRotation/infrastructure"
-. ./session-vars.ps1
+1. **Function App (Consumption plan)**: Uses dynamic, shared outbound IP addresses that change frequently. Key Vault IP-based firewall rules cannot reliably allowlist these IPs. The `bypass: AzureServices` flag does **not** cover Key Vault reference resolution from Consumption-plan Function Apps.
+2. **Static Web App**: Resolves the `AAD_CLIENT_SECRET` Key Vault reference at runtime from Azure infrastructure IPs that are not predictable or allowlistable. A `Deny` firewall causes the AAD identity provider to fail entirely (the login endpoint returns 404).
 
-# Open the Key Vault firewall temporarily
-az keyvault update --name $KEY_VAULT_NAME --default-action Allow
-Write-Host "Key Vault firewall opened. Perform your secret operations now." -ForegroundColor Yellow
-```
+Secrets are still protected by:
+- **RBAC authorization** — only principals with explicit Key Vault role assignments (e.g., Secrets Officer, Secrets User) can read or write secrets
+- **Entra ID authentication** — anonymous network access does not grant secret access; a valid Entra token with the correct role is always required
+- **Soft-delete and purge protection** — deleted secrets are recoverable; accidental or malicious purges are blocked for 90 days
 
-After completing your secret operations, re-lock the firewall:
+#### Mitigation Options
 
-```powershell
-# Lock down the Key Vault firewall again
-az keyvault update --name $KEY_VAULT_NAME --default-action Deny
-Write-Host "Key Vault firewall locked down." -ForegroundColor Green
-```
+If your organization requires Key Vault network restrictions, consider these alternatives:
 
-> **Important**: Always re-lock the Key Vault firewall after completing secret management operations. Do not leave it in the `Allow` state.
+| Approach | Trade-off |
+|----------|----------|
+| **Upgrade to App Service Dedicated plan** (Basic or higher) + **VNet Integration** | Gives the Function App a static outbound IP range. Add those IPs to the Key Vault firewall allowlist. Higher cost than Consumption plan. |
+| **Private Endpoints** for Key Vault | Function App and SWA access Key Vault over a private link. Requires VNet integration for both services and a Private DNS Zone. Most secure, but adds networking complexity. |
+| **Azure Front Door / Application Gateway** in front of SWA | Moves the auth boundary so SWA no longer needs a KV-stored client secret. Significant architectural change. |
+| **Store the SWA client secret directly in SWA app settings** (not via KV reference) | Eliminates SWA's KV dependency. Less secure — the secret is visible in the SWA settings blade — but simplifies networking. The Function App KV references would still need the firewall open on Consumption plan. |
