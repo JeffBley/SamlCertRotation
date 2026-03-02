@@ -39,6 +39,9 @@ param defaultActivateCertDays int = 30
 @description('The Azure region for the Static Web App. SWA has limited region availability (centralus, eastus2, eastasia, westeurope, westus2).')
 param swaLocation string = 'eastus2'
 
+@description('Set to true to recover a soft-deleted Key Vault with the same name (e.g., after deleting and recreating the resource group). Leave false for first-time deployments.')
+param recoverKeyVault bool = false
+
 // Variables
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var shortSuffix = substring(uniqueSuffix, 0, 8)
@@ -71,6 +74,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
   location: location
   properties: {
+    createMode: recoverKeyVault ? 'recover' : 'default'
     sku: {
       family: 'A'
       name: 'standard'

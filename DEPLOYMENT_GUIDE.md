@@ -200,6 +200,18 @@ az deployment group create `
 Get-Content deployment-outputs.json | ConvertFrom-Json | Format-List
 ```
 
+> **Key Vault conflict?** If you see `A vault with the same name already exists in deleted state`, this means a previous deployment created a Key Vault with the same name and it's still in soft-deleted state (purge protection enforces a 90-day retention). Re-run the deployment with `recoverKeyVault=true`:
+> ```powershell
+> az deployment group create `
+>     --resource-group $RESOURCE_GROUP `
+>     --template-file main.bicep `
+>     --parameters main.parameters.json `
+>     --parameters recoverKeyVault=true `
+>     --query "properties.outputs" `
+>     -o json | Out-File -FilePath deployment-outputs.json -Encoding utf8
+> ```
+> This recovers the soft-deleted vault and continues the deployment. Only use this flag when you see the conflict error — omit it for first-time deployments.
+
 ### 3.3 Save Output Values as Variables (Re-runnable)
 
 ```powershell
