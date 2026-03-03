@@ -973,7 +973,7 @@ By default, Entra ID sets `preferred_username` to the user's **UPN** (e.g., `jdo
 - Audit log entries (the "performed by" field)
 - Sponsor matching (comparing the logged-in user against sponsor email addresses)
 
-**If a user's UPN differs from their email address** (e.g., UPN is `jdoe@contoso.onmicrosoft.com` but email is `jdoe@contoso.com`), sponsor matching may fail and audit entries will show the UPN rather than the email.
+**If a user's UPN differs from their email address** (e.g., UPN is `jdoe@contoso.onmicrosoft.com` but email is `jdoe@contoso.com`), sponsor matching may fail and audit entries will show the UPN rather than the email. The user will also not see their apps in the Sponsor portal.
 
 **Action**: If your organization has UPN/email mismatches, configure a **claims mapping policy** in Entra ID to emit the `email` claim as `preferred_username`, or adjust the Enterprise Application's **Token configuration** to include the `email` optional claim. No code changes are required — the fallback chain in the app already handles this.
 
@@ -1015,15 +1015,15 @@ You may keep the original `azurestaticapps.net` redirect URI as a fallback or de
 The Function App must trust the custom domain as an additional SWA token issuer, and the domain must be added to CORS. Run the following in **Cloud Shell**:
 
 ```powershell
-# Set your custom domain
-$CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>" # Example: "samldashboard.contoso.com"
+# Set your variables
+$CUSTOM_DOMAIN = "<saml-dashboard.yourcompany.com>"   # Example: "samldashboard.contoso.com"
+$RESOURCE_GROUP = "<your-resource-group>"               # Example: "rg-saml-cert-rotation"
+$FUNCTION_APP_NAME = "<your-function-app-name>"         # Example: "func-samlcertrotation-xxxx"
 
-# Restore session variables (clone repo first if this is a fresh shell)
+# Clone repo if this is a fresh shell
 if (-not (Test-Path "$HOME/SamlCertRotation")) {
     git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
-Set-Location "$HOME/SamlCertRotation/infrastructure"
-. ./session-vars.ps1
 
 Write-Host "Function App: $FUNCTION_APP_NAME"
 
@@ -1075,12 +1075,14 @@ The automatic certificate rotation check runs daily at 6:00 AM UTC by default. T
 Or via CLI:
 
 ```powershell
-# Restore session variables (clone repo first if this is a fresh shell)
+# Set your variables
+$RESOURCE_GROUP = "<your-resource-group>"         # Example: "rg-saml-cert-rotation"
+$FUNCTION_APP_NAME = "<your-function-app-name>"   # Example: "func-samlcertrotation-xxxx"
+
+# Clone repo if this is a fresh shell
 if (-not (Test-Path "$HOME/SamlCertRotation")) {
     git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
-Set-Location "$HOME/SamlCertRotation/infrastructure"
-. ./session-vars.ps1
 
 az functionapp config appsettings set `
     --resource-group $RESOURCE_GROUP `
@@ -1105,6 +1107,10 @@ The stale cert cleanup reminder sends consolidated emails to sponsors listing th
 Or via CLI:
 
 ```powershell
+# Set your variables
+$RESOURCE_GROUP = "<your-resource-group>"         # Example: "rg-saml-cert-rotation"
+$FUNCTION_APP_NAME = "<your-function-app-name>"   # Example: "func-samlcertrotation-xxxx"
+
 az functionapp config appsettings set `
     --resource-group $RESOURCE_GROUP `
     --name $FUNCTION_APP_NAME `
@@ -1124,12 +1130,16 @@ az functionapp restart --resource-group $RESOURCE_GROUP --name $FUNCTION_APP_NAM
 The dashboard client secret (`SamlDashboardClientSecret`) does not auto-rotate. Use this runbook to rotate it. This script is self-contained and works from a fresh Cloud Shell session.
 
 ```powershell
-# Restore session variables (clone repo first if this is a fresh shell)
+# Set your variables
+$RESOURCE_GROUP = "<your-resource-group>"             # Example: "rg-saml-cert-rotation"
+$FUNCTION_APP_NAME = "<your-function-app-name>"       # Example: "func-samlcertrotation-xxxx"
+$STATIC_WEB_APP_NAME = "<your-static-web-app-name>"   # Example: "swa-samlcertrotation-xxxx"
+$KEY_VAULT_NAME = "<your-key-vault-name>"              # Example: "kv-samlcertrot-xxxx"
+
+# Clone repo if this is a fresh shell
 if (-not (Test-Path "$HOME/SamlCertRotation")) {
     git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
-Set-Location "$HOME/SamlCertRotation/infrastructure"
-. ./session-vars.ps1
 
 Write-Host "Function App:   $FUNCTION_APP_NAME"
 Write-Host "Static Web App: $STATIC_WEB_APP_NAME"
@@ -1207,6 +1217,11 @@ Recommended cadence:
 If the new secret causes authentication issues, you can restore the previous Key Vault secret version:
 
 ```powershell
+# Set your variables
+$RESOURCE_GROUP = "<your-resource-group>"             # Example: "rg-saml-cert-rotation"
+$STATIC_WEB_APP_NAME = "<your-static-web-app-name>"   # Example: "swa-samlcertrotation-xxxx"
+$KEY_VAULT_NAME = "<your-key-vault-name>"              # Example: "kv-samlcertrot-xxxx"
+
 # List recent versions of the secret
 az keyvault secret list-versions `
     --vault-name $KEY_VAULT_NAME `
@@ -1245,12 +1260,14 @@ Write-Host "Rollback complete. Verify sign-in works before removing the newer cr
 During Step 6.7, the deploying user was granted **Key Vault Secrets Officer**. To remove it after deployment:
 
 ```powershell
-# Restore session variables (clone repo first if this is a fresh shell)
+# Set your variables
+$RESOURCE_GROUP = "<your-resource-group>"       # Example: "rg-saml-cert-rotation"
+$KEY_VAULT_NAME = "<your-key-vault-name>"        # Example: "kv-samlcertrot-xxxx"
+
+# Clone repo if this is a fresh shell
 if (-not (Test-Path "$HOME/SamlCertRotation")) {
     git clone https://github.com/JeffBley/SamlCertRotation.git "$HOME/SamlCertRotation"
 }
-Set-Location "$HOME/SamlCertRotation/infrastructure"
-. ./session-vars.ps1
 
 $USER_OBJECT_ID = az ad signed-in-user show --query id -o tsv
 
