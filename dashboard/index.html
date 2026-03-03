@@ -351,12 +351,14 @@
                 </div>
                 <div class="policy-form">
                     <div class="form-group">
-                        <label for="createDays">Create new certificate (days before expiry)</label>
+                        <label for="createDays">Create Certificate Threshold (days)</label>
                         <input type="number" id="createDays" min="1" max="365" value="60">
+                        <p class="form-hint">A new certificate is automatically created when the active certificate expires within this many days (1–365). This value must be greater than the activate threshold.</p>
                     </div>
                     <div class="form-group">
-                        <label for="activateDays">Activate new certificate (days before expiry)</label>
+                        <label for="activateDays">Activate Certificate Threshold (days)</label>
                         <input type="number" id="activateDays" min="1" max="365" value="30">
+                        <p class="form-hint">The newest certificate is automatically activated when the active certificate expires within this many days (1–365). This value must be less than the create threshold.</p>
                     </div>
                     <div class="form-group">
                         <label for="certLifespanDays">New certificate lifespan (days)</label>
@@ -364,12 +366,12 @@
                         <p class="form-hint">How long newly created certificates are valid for (1–1095 days). Default is 1095 (~3 years).</p>
                     </div>
                     <div class="form-group">
-                        <label for="createCertsForNotifyApps">Create new certs for apps marked as Notify</label>
+                        <label for="createCertsForNotifyApps">Auto-Create Certificates for Notify Apps</label>
                         <select id="createCertsForNotifyApps" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p class="form-hint">When enabled, Notify apps will have new certificates automatically created (but not activated) before expiry. When disabled, Notify apps receive reminders only.</p>
+                        <p class="form-hint">When enabled, apps with auto-rotation set to Notify will have new certificates created automatically (but not activated) before expiry. When disabled, these apps only receive reminder emails.</p>
                     </div>
                     <button class="btn btn-primary" id="btn-save-policy">Save Policy</button>
                 </div>
@@ -566,69 +568,71 @@
                 <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
             </div>
             <div class="section">
-                <div class="section-header">
+                <div class="section-header collapsible" data-collapse="settings-notifications" onclick="toggleSettingsSection(this)">
                     <h2>Notification Settings</h2>
+                    <span class="chevron">&#9654;</span>
                 </div>
+                <div class="collapsible-body" id="settings-notifications">
                 <div class="policy-form">
                     <div class="form-group">
-                        <label for="notificationEmails">Receive Daily Summaries</label>
-                        <p class="form-desc">Enter email addresses that should receive email notifications summarizing the <em>automated</em> daily runs. Separate multiple addresses with commas.</p>
+                        <label for="notificationEmails">Daily Summary Recipients</label>
                         <textarea id="notificationEmails" rows="3" class="form-textarea" placeholder="admin@example.com, security@example.com"></textarea>
+                        <p class="form-hint">Email addresses that receive a summary after each automated daily rotation run. Separate multiple addresses with commas.</p>
                     </div>
                     <div class="form-group">
-                        <label for="sponsorsReceiveNotifications">Automation Notifications for Sponsors</label>
+                        <label for="sponsorsReceiveNotifications">Notify Sponsors on Certificate Changes</label>
                         <select id="sponsorsReceiveNotifications" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p class="form-hint">Sponsors will receive notifications when this app manually or automatically creates or activates SAML certificates. This only applies to apps with auto-rotation set to on or notify.</p>
+                        <p class="form-hint">When enabled, sponsors receive an email each time a certificate is created or activated for their apps — whether by automation or manually by an admin. Applies to apps with auto-rotation set to On or Notify.</p>
                     </div>
                     <div class="form-group">
-                        <label for="sponsorRemindersEnabled">Sponsor Reminders for Apps Marked <strong>Notify</strong></label>
+                        <label for="sponsorRemindersEnabled">Pre-Expiry Reminders (Notify Apps)</label>
                         <select id="sponsorRemindersEnabled" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p class="form-hint">This only applies to apps marked as "notify". You can configure up to 3 reminder emails informing the sponsor that their app's certificate is about to expire.</p>
+                        <p class="form-hint">Send up to 3 reminder emails to sponsors before their app's certificate expires. Only applies to apps with auto-rotation set to Notify.</p>
                     </div>
                     <div id="sponsor-reminder-settings" class="form-group d-none">
-                        <label for="sponsorReminderCount">Number of reminders</label>
+                        <label for="sponsorReminderCount">Number of Reminders</label>
                         <select id="sponsorReminderCount" class="form-select-full">
                             <option value="1">1</option>
                             <option value="2">2</option>
                             <option value="3" selected>3</option>
                         </select>
-                        <p class="form-hint-mb">Enter the number of days before expiration to notify sponsors (whole numbers, 1-180).</p>
+                        <p class="form-hint-mb">How many reminder emails to send before certificate expiry. Configure the timing for each below (1–180 days).</p>
                         <div id="sponsorReminderDaysContainer">
                             <div id="reminder1-group">
-                                <label for="sponsorFirstReminderDays">1st reminder</label>
+                                <label for="sponsorFirstReminderDays">1st reminder (days before expiry)</label>
                                 <input type="number" id="sponsorFirstReminderDays" min="1" max="180" step="1" value="30" class="form-select-full">
                             </div>
                             <div id="reminder2-group" class="mt-10">
-                                <label for="sponsorSecondReminderDays">2nd reminder</label>
+                                <label for="sponsorSecondReminderDays">2nd reminder (days before expiry)</label>
                                 <input type="number" id="sponsorSecondReminderDays" min="1" max="180" step="1" value="7" class="form-select-full">
                             </div>
                             <div id="reminder3-group" class="mt-10">
-                                <label for="sponsorThirdReminderDays">3rd reminder</label>
+                                <label for="sponsorThirdReminderDays">3rd reminder (days before expiry)</label>
                                 <input type="number" id="sponsorThirdReminderDays" min="1" max="180" step="1" value="1" class="form-select-full">
                             </div>
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="notifySponsorsOnExpiration">Notify Sponsors on Expiration</label>
+                        <label for="notifySponsorsOnExpiration">Notify Sponsors After Certificate Expiry</label>
                         <select id="notifySponsorsOnExpiration" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p class="form-hint">If enabled, App Sponsors will be notified after their SAML app certificates have expired. This only applies to apps with auto-rotation set to on or notify.</p>
+                        <p class="form-hint">When enabled, sponsors receive a notification after their app's certificate has already expired. Applies to apps with auto-rotation set to On or Notify.</p>
                     </div>
                     <div class="form-group">
-                        <label for="staleCertCleanupReminders">Send Notifications to Delete Expired Inactive Certs</label>
+                        <label for="staleCertCleanupReminders">Stale Certificate Cleanup Reminders</label>
                         <select id="staleCertCleanupReminders" class="form-select-full">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p class="form-hint">When enabled, a consolidated email is sent to each sponsor listing all their applications that have expired inactive certificates which should be deleted.</p>
+                        <p class="form-hint">When enabled, sponsors periodically receive a consolidated email listing their apps that have expired inactive certificates which should be cleaned up.</p>
                     </div>
                     <div id="staleCertCleanupScheduleGroup" class="form-group d-none">
                         <label class="label-inline">
@@ -639,100 +643,110 @@
                         <p class="form-hint">Schedule for the expired-certificate cleanup reminder emails. Managed via the StaleCertCleanupSchedule environment variable.</p>
                     </div>
                 </div>
+                </div>
             </div>
 
             <div class="section mt-24">
-                <div class="section-header">
+                <div class="section-header collapsible" data-collapse="settings-automation" onclick="toggleSettingsSection(this)">
                     <h2>Automation Schedule</h2>
+                    <span class="chevron">&#9654;</span>
                 </div>
+                <div class="collapsible-body" id="settings-automation">
                 <div class="policy-form">
                     <div class="form-group">
                         <label class="label-inline">
-                            Rotation Check Schedule
+                            Certificate Rotation Schedule
                             <span class="info-icon" title="To change the schedule, navigate to the Function App (e.g., 'samlcert-func-...') → Settings → Environment variables → RotationSchedule. Use CRON format (e.g., '0 0 6 * * *' for 6 AM UTC daily). The Function App must be restarted for changes to take effect.">ℹ️</span>
                         </label>
                         <input type="text" id="rotationSchedule" readonly class="bg-muted" value="Loading...">
-                        <p class="form-hint">Automatic certificate rotation runs on this schedule. Currently set to run daily at 6:00 AM UTC.</p>
+                        <p class="form-hint">The automated rotation job runs on this schedule. To change it, update the RotationSchedule environment variable in the Function App and restart.</p>
                     </div>
                     <div class="form-group">
-                        <label for="retentionPolicyDays">Audit Log Retention policy (days)</label>
+                        <label for="retentionPolicyDays">Audit Log Retention (days)</label>
                         <input type="number" id="retentionPolicyDays" min="1" value="180" class="form-select-full">
-                        <p class="form-hint">Daily purge deletes audit logs older than this many days.</p>
+                        <p class="form-hint">Audit log entries older than this value are automatically deleted during each daily run.</p>
                     </div>
                     <div class="form-group">
-                        <label for="reportsRetentionPolicyDays">Reports Retention policy (days)</label>
+                        <label for="reportsRetentionPolicyDays">Run Reports Retention (days)</label>
                         <input type="number" id="reportsRetentionPolicyDays" min="1" value="14" class="form-select-full">
-                        <p class="form-hint">Daily purge deletes run reports older than this many days. Default: 14 days.</p>
+                        <p class="form-hint">Run report records older than this value are automatically deleted during each daily run.</p>
                     </div>
+                </div>
                 </div>
             </div>
 
             <div class="section mt-24">
-                <div class="section-header">
+                <div class="section-header collapsible" data-collapse="settings-run" onclick="toggleSettingsSection(this)">
                     <h2>Run Settings</h2>
+                    <span class="chevron">&#9654;</span>
                 </div>
+                <div class="collapsible-body" id="settings-run">
                 <div class="policy-form">
                     <div class="form-group">
-                        <label for="reportOnlyMode">Report-only mode</label>
+                        <label for="reportOnlyMode">Run Mode</label>
                         <select id="reportOnlyMode" class="form-select-full">
-                            <option value="enabled">Enabled</option>
-                            <option value="disabled">Disabled</option>
+                            <option value="report-only">Report-only</option>
+                            <option value="production">Production</option>
                         </select>
-                        <p class="form-hint">Enabled (default) runs evaluation only and logs what would happen. Disabled runs production automation and can create or activate certificates.</p>
+                        <p class="form-hint">Report-only (default) evaluates all apps and logs what actions would be taken without making changes. Production mode allows the automation to create and activate certificates.</p>
                     </div>
                     <div class="form-group">
-                        <label for="useEntraNotificationEmailAsSponsor">Use Entra ID Notification Email as Sponsor</label>
+                        <label for="useEntraNotificationEmailAsSponsor">Sponsor Source</label>
                         <select id="useEntraNotificationEmailAsSponsor" class="form-select-full">
-                            <option value="enabled">Enabled</option>
-                            <option value="disabled">Disabled</option>
+                            <option value="entra">Entra ID built-in notification email</option>
+                            <option value="tags">Custom App Tags</option>
                         </select>
-                        <p class="form-hint">When enabled, the Sponsor field is read from and written to the Entra ID <em>Notification Email Addresses</em> field on each service principal. When disabled, sponsors are stored in the application's <code>AppSponsor</code> tag.</p>
+                        <p class="form-hint">Determines where sponsor email addresses are stored and read from. <strong>Entra ID built-in notification email</strong> uses the Notification Email Addresses field on each service principal. <strong>Custom App Tags</strong> stores sponsors in the application's <code>AppSponsor</code> tag.</p>
                     </div>
+                </div>
                 </div>
             </div>
 
             <div class="section mt-24">
-                <div class="section-header">
+                <div class="section-header collapsible" data-collapse="settings-security" onclick="toggleSettingsSection(this)">
                     <h2>Security</h2>
+                    <span class="chevron">&#9654;</span>
                 </div>
+                <div class="collapsible-body" id="settings-security">
                 <div class="policy-form">
                     <div class="form-group">
-                        <label for="sessionTimeoutMinutes">Session timeout (minutes)</label>
+                        <label for="sessionTimeoutMinutes">Idle Session Timeout (minutes)</label>
                         <input type="number" id="sessionTimeoutMinutes" min="0" max="480" step="1" value="15" class="form-select-full">
-                        <p class="form-hint">Idle time before the user is prompted to stay signed in. Set to 0 to disable session timeout.</p>
+                        <p class="form-hint">Minutes of inactivity before users are prompted to stay signed in. Set to 0 to disable.</p>
                     </div>
                     <div class="form-group">
-                        <label for="sponsorsCanCreateCerts">Sponsors can create certificates</label>
+                        <label for="sponsorsCanCreateCerts">Allow Sponsors to Create Certificates</label>
                         <select id="sponsorsCanCreateCerts" class="form-select-full-bg">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p class="form-hint">When enabled, users with the Sponsor role can create new certificates for applications they sponsor. Disabled by default.</p>
+                        <p class="form-hint">When enabled, sponsors can create new SAML certificates for their sponsored applications from the dashboard.</p>
                     </div>
                     <div class="form-group">
-                        <label for="sponsorsCanActivateCerts">Sponsors can activate certificates</label>
+                        <label for="sponsorsCanActivateCerts">Allow Sponsors to Activate Certificates</label>
                         <select id="sponsorsCanActivateCerts" class="form-select-full-bg">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p class="form-hint">When enabled, users with the Sponsor role can activate the newest certificate for applications they sponsor. Disabled by default.</p>
+                        <p class="form-hint">When enabled, sponsors can activate the newest certificate for their sponsored applications from the dashboard.</p>
                     </div>
                     <div class="form-group">
-                        <label for="sponsorsCanUpdatePolicy">Sponsors can update policy for their apps</label>
+                        <label for="sponsorsCanUpdatePolicy">Allow Sponsors to Edit Rotation Policy</label>
                         <select id="sponsorsCanUpdatePolicy" class="form-select-full-bg">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p class="form-hint">When enabled, users with the Sponsor role can edit the rotation policy for applications they sponsor. Disabled by default.</p>
+                        <p class="form-hint">When enabled, sponsors can modify rotation policy settings (create/activate thresholds, lifespan) for their sponsored applications.</p>
                     </div>
                     <div class="form-group">
-                        <label for="sponsorsCanEditSponsors">Sponsors can add/remove sponsors for their apps</label>
+                        <label for="sponsorsCanEditSponsors">Allow Sponsors to Manage Sponsors</label>
                         <select id="sponsorsCanEditSponsors" class="form-select-full-bg">
                             <option value="enabled">Enabled</option>
                             <option value="disabled">Disabled</option>
                         </select>
-                        <p class="form-hint">When enabled, users with the Sponsor role can add or remove sponsors for applications they sponsor. Enabled by default.</p>
+                        <p class="form-hint">When enabled, sponsors can add or remove other sponsors for their sponsored applications.</p>
                     </div>
+                </div>
                 </div>
             </div>
 
@@ -752,11 +766,11 @@
     <div id="entraReminderConfirmModal" class="modal-overlay">
         <div class="modal modal-md">
             <h3>Confirm Sponsor Source Change</h3>
-            <p>Enabling <strong>Use Entra ID Notification Email as Sponsor</strong> while <strong>Sponsor Reminders for Apps Marked Notify</strong> is also enabled may cause duplicate reminder emails. It is recommended to disable Sponsor Reminders. What would you like to do?</p>
+            <p>Switching <strong>Sponsor Source</strong> to <strong>Entra ID</strong> while <strong>Pre-Expiry Reminders</strong> is also enabled may cause duplicate reminder emails. It is recommended to disable Pre-Expiry Reminders. What would you like to do?</p>
             <div class="modal-buttons modal-buttons-wrap">
                 <button class="btn-cancel" id="btn-entra-reminder-cancel">Cancel</button>
-                <button class="btn btn-primary" id="btn-entra-reminder-disable">Proceed and disable Sponsor Reminders</button>
-                <button class="btn btn-primary btn-warning-danger" id="btn-entra-reminder-proceed">Proceed and leave Sponsor Reminders enabled</button>
+                <button class="btn btn-primary" id="btn-entra-reminder-disable">Proceed and disable Pre-Expiry Reminders</button>
+                <button class="btn btn-primary btn-warning-danger" id="btn-entra-reminder-proceed">Proceed and leave Pre-Expiry Reminders enabled</button>
             </div>
         </div>
     </div>
@@ -764,8 +778,8 @@
     <!-- Sponsor Reminders + Entra Sponsor Confirmation Modal -->
     <div id="reminderEntraConfirmModal" class="modal-overlay">
         <div class="modal modal-md">
-            <h3>Confirm Sponsor Reminders</h3>
-            <p><strong>Use Entra ID Notification Email as Sponsor</strong> is set to enabled. Entra ID already sends notifications to these emails 60, 30, and 7 days before expiry. Are you sure you want to enable additional notification emails?</p>
+            <h3>Confirm Pre-Expiry Reminders</h3>
+            <p><strong>Sponsor Source</strong> is set to <strong>Entra ID</strong>. Entra ID already sends notifications to these emails 60, 30, and 7 days before expiry. Are you sure you want to enable additional notification emails?</p>
             <div class="modal-buttons modal-buttons-wrap">
                 <button class="btn-cancel" id="btn-reminder-entra-cancel">Cancel</button>
                 <button class="btn btn-primary btn-warning-danger" id="btn-reminder-entra-proceed">Proceed</button>
@@ -778,12 +792,12 @@
         <div class="modal modal-sm">
             <h3 id="editPolicyTitle">Edit App Policy</h3>
             <div class="mb-12">
-                <label class="form-label-sm">Create cert (days before expiry)</label>
+                <label class="form-label-sm">Create certificate threshold (days)</label>
                 <input type="number" id="editPolicyCreateDays" min="1" max="365" class="form-control-full">
                 <p class="form-hint-tight">Leave blank to use the global default.</p>
             </div>
             <div class="mb-12">
-                <label class="form-label-sm">Activate cert (days before expiry)</label>
+                <label class="form-label-sm">Activate certificate threshold (days)</label>
                 <input type="number" id="editPolicyActivateDays" min="1" max="365" class="form-control-full">
                 <p class="form-hint-tight">Leave blank to use the global default.</p>
             </div>
@@ -794,13 +808,13 @@
             </div>
             <div id="editPolicyError" class="form-error"></div>
             <div class="mb-12">
-                <label class="form-label-sm">Create certs for apps marked as Notify</label>
+                <label class="form-label-sm">Auto-create certificate for Notify</label>
                 <select id="editPolicyNotifyOverride" class="form-control-full">
                     <option value="default">Default (Global Policy)</option>
                     <option value="enabled">Enabled</option>
                     <option value="disabled">Disabled</option>
                 </select>
-                <p class="form-hint-tight">Override the global setting for this app.</p>
+                <p class="form-hint-tight">Override the global policy for this app. When enabled, a new certificate is created (but not activated) before expiry.</p>
             </div>
             <div class="modal-buttons">
                 <button class="btn-cancel" id="btn-edit-policy-cancel">Cancel</button>

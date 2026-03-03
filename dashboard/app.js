@@ -724,7 +724,7 @@ function addSponsorRow(value) {
         const currentCount = container.querySelectorAll('.sponsor-email-input').length;
         if (currentCount >= 5 && !value) {
             const errorEl = document.getElementById('editSponsorError');
-            errorEl.textContent = 'Maximum of 5 sponsor emails allowed when "Use Entra ID Notification Email as Sponsor" is enabled.';
+            errorEl.textContent = 'Maximum of 5 sponsor emails allowed when Sponsor Source is set to Entra ID.';
             errorEl.style.display = 'block';
             return;
         }
@@ -771,7 +771,7 @@ async function saveSponsorModal() {
     }
 
     if (cachedSettings?.useEntraNotificationEmailAsSponsor && emails.length > 5) {
-        errorEl.textContent = 'Maximum of 5 sponsor emails allowed when "Use Entra ID Notification Email as Sponsor" is enabled.';
+        errorEl.textContent = 'Maximum of 5 sponsor emails allowed when Sponsor Source is set to Entra ID.';
         errorEl.style.display = 'block';
         return;
     }
@@ -1639,7 +1639,7 @@ let cachedSettings = null;
 function applySettingsToForm(settings) {
     document.getElementById('notificationEmails').value = settings.notificationEmails || '';
     document.getElementById('rotationSchedule').value = formatCronSchedule(settings.rotationSchedule || '0 0 6 * * *');
-    document.getElementById('reportOnlyMode').value = settings.reportOnlyModeEnabled === false ? 'disabled' : 'enabled';
+    document.getElementById('reportOnlyMode').value = settings.reportOnlyModeEnabled === false ? 'production' : 'report-only';
     document.getElementById('retentionPolicyDays').value = settings.retentionPolicyDays || 180;
     document.getElementById('sponsorsReceiveNotifications').value = settings.sponsorsReceiveNotifications === false ? 'disabled' : 'enabled';
     document.getElementById('sponsorRemindersEnabled').value = settings.sponsorRemindersEnabled === false ? 'disabled' : 'enabled';
@@ -1648,7 +1648,7 @@ function applySettingsToForm(settings) {
     document.getElementById('sponsorSecondReminderDays').value = Number.isInteger(settings.sponsorSecondReminderDays) ? settings.sponsorSecondReminderDays : 7;
     document.getElementById('sponsorThirdReminderDays').value = Number.isInteger(settings.sponsorThirdReminderDays) ? settings.sponsorThirdReminderDays : 1;
     document.getElementById('notifySponsorsOnExpiration').value = settings.notifySponsorsOnExpiration === true ? 'enabled' : 'disabled';
-    document.getElementById('useEntraNotificationEmailAsSponsor').value = settings.useEntraNotificationEmailAsSponsor === false ? 'disabled' : 'enabled';
+    document.getElementById('useEntraNotificationEmailAsSponsor').value = settings.useEntraNotificationEmailAsSponsor === false ? 'tags' : 'entra';
     document.getElementById('staleCertCleanupReminders').value = settings.staleCertCleanupRemindersEnabled === false ? 'disabled' : 'enabled';
     document.getElementById('staleCertCleanupSchedule').value = formatCronSchedule(settings.staleCertCleanupSchedule || '0 0 6 1 * *');
     toggleStaleCertCleanupSchedule();
@@ -1742,7 +1742,7 @@ async function saveSettings() {
         const reportsRetentionPolicyDays = parseInt(document.getElementById('reportsRetentionPolicyDays').value, 10);
 
         if (Number.isNaN(reportsRetentionPolicyDays) || reportsRetentionPolicyDays < 1) {
-            showError('Reports retention policy must be at least 1 day.');
+            showError('Run Reports Retention must be at least 1 day.');
             return;
         }
 
@@ -1764,13 +1764,13 @@ async function saveSettings() {
 
         const settings = {
             notificationEmails: document.getElementById('notificationEmails').value.trim(),
-            reportOnlyModeEnabled: document.getElementById('reportOnlyMode').value === 'enabled',
+            reportOnlyModeEnabled: document.getElementById('reportOnlyMode').value === 'report-only',
             sponsorsReceiveNotifications: document.getElementById('sponsorsReceiveNotifications').value === 'enabled',
             sponsorRemindersEnabled,
             sponsorReminderCount,
             notifySponsorsOnExpiration: document.getElementById('notifySponsorsOnExpiration').value === 'enabled',
             staleCertCleanupRemindersEnabled: document.getElementById('staleCertCleanupReminders').value === 'enabled',
-            useEntraNotificationEmailAsSponsor: document.getElementById('useEntraNotificationEmailAsSponsor').value === 'enabled',
+            useEntraNotificationEmailAsSponsor: document.getElementById('useEntraNotificationEmailAsSponsor').value === 'entra',
             sponsorFirstReminderDays,
             sponsorSecondReminderDays,
             sponsorThirdReminderDays,
@@ -1794,6 +1794,21 @@ async function saveSettings() {
         invalidateAllCaches();
     } catch (error) {
         showError('Failed to save settings: ' + error.message);
+    }
+}
+
+// Toggle collapsible settings sections
+function toggleSettingsSection(header) {
+    const targetId = header.getAttribute('data-collapse');
+    const body = document.getElementById(targetId);
+    if (!body) return;
+    const isExpanded = body.classList.contains('expanded');
+    if (isExpanded) {
+        body.classList.remove('expanded');
+        header.classList.remove('expanded');
+    } else {
+        body.classList.add('expanded');
+        header.classList.add('expanded');
     }
 }
 
@@ -1842,15 +1857,15 @@ function handleEntraSponsorChange() {
     const remindersDropdown = document.getElementById('sponsorRemindersEnabled');
     if (!entraDropdown || !remindersDropdown) return;
 
-    // Only show dialog when toggling TO enabled while reminders are also enabled
-    if (entraDropdown.value === 'enabled' && remindersDropdown.value === 'enabled') {
+    // Only show dialog when toggling TO entra while reminders are also enabled
+    if (entraDropdown.value === 'entra' && remindersDropdown.value === 'enabled') {
         document.getElementById('entraReminderConfirmModal').classList.add('show');
     }
 }
 
 function entraReminderCancel() {
-    // Revert dropdown back to disabled
-    document.getElementById('useEntraNotificationEmailAsSponsor').value = 'disabled';
+    // Revert dropdown back to tags
+    document.getElementById('useEntraNotificationEmailAsSponsor').value = 'tags';
     document.getElementById('entraReminderConfirmModal').classList.remove('show');
 }
 
@@ -1873,7 +1888,7 @@ function handleSponsorRemindersChange() {
     const entraDropdown = document.getElementById('useEntraNotificationEmailAsSponsor');
     if (!remindersDropdown || !entraDropdown) return;
 
-    if (remindersDropdown.value === 'enabled' && entraDropdown.value === 'enabled') {
+    if (remindersDropdown.value === 'enabled' && entraDropdown.value === 'entra') {
         document.getElementById('reminderEntraConfirmModal').classList.add('show');
     }
 }

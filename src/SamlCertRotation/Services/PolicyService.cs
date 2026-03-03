@@ -659,7 +659,7 @@ public class PolicyService : IPolicyService
     {
         if (minutes < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(minutes), "Session timeout must be 0 (disabled) or a positive number.");
+            throw new ArgumentOutOfRangeException(nameof(minutes), "Idle Session Timeout must be 0 (disabled) or a positive number.");
         }
 
         try
@@ -756,7 +756,7 @@ public class PolicyService : IPolicyService
     {
         if (days < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(days), "Reports retention policy must be at least 1 day.");
+            throw new ArgumentOutOfRangeException(nameof(days), "Run Reports Retention must be at least 1 day.");
         }
 
         try

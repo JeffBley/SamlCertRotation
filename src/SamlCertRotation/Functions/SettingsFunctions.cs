@@ -181,12 +181,12 @@ public class SettingsFunctions : DashboardFunctionBase
 
             if (settings.SessionTimeoutMinutes.HasValue && settings.SessionTimeoutMinutes.Value < 0)
             {
-                return await CreateErrorResponse(req, "Session timeout must be 0 (disabled) or a positive number", HttpStatusCode.BadRequest);
+                return await CreateErrorResponse(req, "Idle Session Timeout must be 0 (disabled) or a positive number", HttpStatusCode.BadRequest);
             }
 
             if (settings.ReportsRetentionPolicyDays.HasValue && settings.ReportsRetentionPolicyDays.Value < 1)
             {
-                return await CreateErrorResponse(req, "Reports retention policy must be at least 1 day", HttpStatusCode.BadRequest);
+                return await CreateErrorResponse(req, "Run Reports Retention must be at least 1 day", HttpStatusCode.BadRequest);
             }
 
             // ── Snapshot current values before applying changes (parallel) ──

@@ -394,7 +394,7 @@ public class SponsorFunctions : DashboardFunctionBase
             // When Entra sponsor source is enabled, limit to 5 emails
             if (useEntraSponsor && sponsorEmails.Length > 5)
             {
-                return await CreateErrorResponse(req, "Maximum of 5 sponsor emails allowed when 'Use Entra ID Notification Email as Sponsor' is enabled.", HttpStatusCode.BadRequest);
+                return await CreateErrorResponse(req, "Maximum of 5 sponsor emails allowed when Sponsor Source is set to Entra ID.", HttpStatusCode.BadRequest);
             }
 
             var previousSponsor = app.Sponsor?.Trim() ?? "(none)";

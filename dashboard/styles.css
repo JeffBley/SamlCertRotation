@@ -189,6 +189,49 @@ header p {
     font-weight: 600;
 }
 
+/* Collapsible settings sections */
+.section-header.collapsible {
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #edebe9;
+    transition: margin-bottom 0.2s ease;
+}
+
+.section-header.collapsible:hover {
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 4px;
+    margin: -8px;
+    padding: 8px;
+    padding-bottom: 12px;
+}
+
+.section-header.collapsible.expanded {
+    margin-bottom: 16px;
+}
+
+.section-header.collapsible .chevron {
+    font-size: 14px;
+    color: #605e5c;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.section-header.collapsible.expanded .chevron {
+    transform: rotate(90deg);
+}
+
+.collapsible-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.collapsible-body.expanded {
+    max-height: 2000px;
+}
+
 .btn {
     padding: 8px 16px;
     border: none;

@@ -87,12 +87,12 @@ Create in Microsoft Entra Admin Center:
 | Notification Emails | — | Comma-separated admin emails for daily summary |
 | Sponsors Receive Notifications | Enabled | Whether sponsors receive cert-created/activated/reminder emails |
 | 1st/2nd/3rd Sponsor Reminder Days | 30/7/1 | Milestone days for notify app reminders |
-| Notify Sponsors on Expiration | Enabled | Send one-time email to sponsor when cert expires |
-| Report-Only Mode | Enabled | Log what would happen without making changes |
+| Notify Sponsors After Certificate Expiry | Enabled | Send one-time email to sponsor when cert expires |
+| Run Mode | Report-only | Log what would happen without making changes |
 | Create Certs for Notify Apps | Disabled | Create certificates for AutoRotate=notify apps (without activating) |
 | Retention Policy Days | 180 | Days to retain audit log entries before purging |
-| Reports Retention Policy Days | 14 | Days to retain run reports before purging |
-| Session Timeout Minutes | 15 | Idle timeout for dashboard sessions (0 = disabled) |
+| Run Reports Retention (days) | 14 | Days to retain run reports before purging |
+| Idle Session Timeout (minutes) | 15 | Idle timeout for dashboard sessions (0 = disabled) |
 | Stale Cert Cleanup Reminders | Enabled | Send monthly reminder emails to sponsors about expired inactive certs |
 | Rotation Schedule | `0 0 6 * * *` | CRON schedule for cert rotation (configured in Function App settings) |
 | Stale Cert Cleanup Schedule | `0 0 6 1 * *` | CRON schedule for cleanup reminders (configured in Function App settings) |
