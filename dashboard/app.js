@@ -1812,6 +1812,11 @@ function toggleSettingsSection(header) {
     }
 }
 
+// Attach click listeners to all collapsible section headers (inline onclick blocked by CSP)
+document.querySelectorAll('.section-header.collapsible').forEach(header => {
+    header.addEventListener('click', () => toggleSettingsSection(header));
+});
+
 function toggleStaleCertCleanupSchedule() {
     const select = document.getElementById('staleCertCleanupReminders');
     const scheduleGroup = document.getElementById('staleCertCleanupScheduleGroup');
