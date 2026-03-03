@@ -2,6 +2,8 @@
 
 This guide walks you through deploying the SAML Certificate Rotation Tool using **PowerShell**. All commands are written for **Azure Cloud Shell** (recommended) but work in any local environment with the prerequisites installed.
 
+After deployment, continue with the operations runbook: [Operationalize the SAML Dashboard.md](Operationalize%20the%20SAML%20Dashboard.md).
+
 ## Table of Contents
 
 [Prerequisites](#prerequisites) <br />
@@ -985,7 +987,7 @@ By default, your dashboard URL is auto-generated (e.g., `happy-island-01f529a0f.
 
 #### 1. Add the custom domain to the Static Web App
 
-**1.1. Validate domain ownership (TXT record)**
+**1.1. Validate domain ownership (CNAME record)**
 
 1. Navigate to Azure Portal → Static Web App → **Settings** → **Custom domains** 
 2. Click **Add**.

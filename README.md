@@ -31,6 +31,7 @@ Detailed diagrams and runtime flows: [AZURE_ARCHITECTURE.md](AZURE_ARCHITECTURE.
 ## Quick Start
 
 Full deployment guide: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+Operational runbook: [Operationalize the SAML Dashboard.md](Operationalize%20the%20SAML%20Dashboard.md)
 
 ### Prerequisites
 
@@ -47,6 +48,7 @@ Full deployment guide: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 ## Documentation Map
 
 - Deployment walkthrough: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+- Operations runbook: [Operationalize the SAML Dashboard.md](Operationalize%20the%20SAML%20Dashboard.md)
 - Azure architecture diagrams/sequences: [AZURE_ARCHITECTURE.md](AZURE_ARCHITECTURE.md)
 - API endpoints, settings, security notes, project structure: [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md)
 - Dashboard screenshots: [Screenshots.md](Screenshots.md)
