@@ -149,4 +149,13 @@ Because path 2 and path 3 rely on SWA acting as the trusted ingress, deployment 
 - `SWA_DEFAULT_HOSTNAME` / `SWA_HOSTNAME` are correctly configured in Function App settings.
 - Direct end-user access to the Function App `*.azurewebsites.net` URL is not part of normal access flow.
 
-Defense in depth recommendation: use Function App access restrictions to limit direct inbound paths where operationally feasible.
+### Optional Hardening (Defense in Depth)
+
+| Approach | What it protects | Effort |
+|---|---|---|
+| **Conditional Access policy** (trusted location / compliant device) | Blocks token issuance from untrusted origins — no valid token means no API access regardless of URL | Low — Entra admin portal, no code or infra changes |
+| **Enterprise App assignment required** (already deployed) | Only assigned users/groups can obtain tokens for the SWA app registration | Already in place |
+| **Function App access restrictions** (service tag or IP allowlist) | Blocks direct network access to `*.azurewebsites.net`, forcing traffic through SWA | Medium — Consumption plan outbound IPs are dynamic, requires careful configuration |
+| **Private Endpoint + VNet integration** | Full network isolation of the Function App | High — requires Premium plan (not Consumption) |
+
+Conditional Access is the highest-value, lowest-effort addition. It prevents unauthorized tokens at the identity layer regardless of which URL is targeted, with no code or infrastructure changes required.
