@@ -956,6 +956,27 @@ Users who launch the dashboard from **MyApps** (https://myapps.microsoft.com) wi
 
 A ready-to-use logo is included in this repository: [`SamlRotatorLogo.png`](SamlRotatorLogo.png)
 
+### 7. User Identity: UPN vs Email Mismatch
+
+The dashboard identifies users via the Entra ID token claims passed through SWA. Both the frontend and backend resolve the displayed user identity using this fallback chain:
+
+| Priority | Claim / Field | Source |
+|----------|---------------|--------|
+| 1 | `userDetails` | SWA `clientPrincipal` JSON field (set by SWA from the Entra ID token) |
+| 2 | `preferred_username` | Entra ID v2.0 token claim |
+| 3 | `upn` | Entra ID token claim |
+| 4 | `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn` | SAML/WS-Fed URI form |
+| 5 | `email` / `emailaddress` | Fallback email claim |
+
+By default, Entra ID sets `preferred_username` to the user's **UPN** (e.g., `jdoe@contoso.onmicrosoft.com`), and SWA surfaces this as `userDetails`. This value is used for:
+- The username shown in the dashboard header
+- Audit log entries (the "performed by" field)
+- Sponsor matching (comparing the logged-in user against sponsor email addresses)
+
+**If a user's UPN differs from their email address** (e.g., UPN is `jdoe@contoso.onmicrosoft.com` but email is `jdoe@contoso.com`), sponsor matching may fail and audit entries will show the UPN rather than the email.
+
+**Action**: If your organization has UPN/email mismatches, configure a **claims mapping policy** in Entra ID to emit the `email` claim as `preferred_username`, or adjust the Enterprise Application's **Token configuration** to include the `email` optional claim. No code changes are required — the fallback chain in the app already handles this.
+
 ---
 
 ### Configure a Custom Domain
