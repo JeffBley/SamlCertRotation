@@ -16,26 +16,26 @@ This document summarizes how the SAML Certificate Rotation Tool runs in Azure.
 
 ```mermaid
 flowchart LR
-  U[End User\nAdmin / Reader / Sponsor] --> SWA[Azure Static Web App\nDashboard SPA + Auth Gateway]
+  U["End User<br/>Admin / Reader / Sponsor"] --> SWA["Azure Static Web App<br/>Dashboard SPA + Auth Gateway"]
 
-  SWA -->|/api/* via linked backend| FUNC[Azure Function App (.NET 8 Isolated)\nHTTP APIs + Timer Jobs]
+  SWA -->|"/api/* via linked backend"| FUNC["Azure Function App<br/>.NET 8 Isolated<br/>HTTP APIs + Timer Jobs"]
 
-  SWA -->|OIDC login| AAD[Microsoft Entra ID\nApp Registration + Enterprise App]
+  SWA -->|"OIDC login"| AAD["Microsoft Entra ID<br/>App Registration + Enterprise App"]
 
-  FUNC -->|Managed Identity token| GRAPH[Microsoft Graph API\nService Principals / SAML Certs]
+  FUNC -->|"Managed Identity token"| GRAPH["Microsoft Graph API<br/>Service Principals / SAML Certs"]
 
-  FUNC -->|Table SDK| STG[(Azure Table Storage\nRotationPolicies\nAuditLog\nRunReports)]
+  FUNC -->|"Table SDK"| STG[("Azure Table Storage<br/>RotationPolicies<br/>AuditLog<br/>RunReports")]
 
-  FUNC -->|Blob lease| BLOB[(Azure Blob Storage\nDistributed rotation lock)]
+  FUNC -->|"Blob lease"| BLOB[("Azure Blob Storage<br/>Distributed rotation lock")]
 
-  FUNC -->|Key Vault references| KV[Azure Key Vault\nStorageConnectionString\nLogicAppEmailUrl\nSWA client secret reference]
+  FUNC -->|"Key Vault references"| KV["Azure Key Vault<br/>StorageConnectionString<br/>LogicAppEmailUrl<br/>SWA client secret reference"]
 
-  FUNC -->|HTTP POST| LA[Azure Logic App\nHTTP Trigger]
-  LA --> O365[Office 365 Outlook Connector]
-  O365 --> MAIL[Email Notifications\nSponsors + Admins]
+  FUNC -->|"HTTP POST"| LA["Azure Logic App<br/>HTTP Trigger"]
+  LA --> O365["Office 365 Outlook Connector"]
+  O365 --> MAIL["Email Notifications<br/>Sponsors + Admins"]
 
-  FUNC --> AI[Application Insights]
-  AI --> LAW[Log Analytics Workspace]
+  FUNC --> AI["Application Insights"]
+  AI --> LAW["Log Analytics Workspace"]
 ```
 
 ## 2) Request & Authorization Sequence
