@@ -29,5 +29,8 @@ infrastructure/deployment-outputs.json
 infrastructure/session-vars.ps1
 infrastructure/access-control-config.json
 
+# Scripts (local deployment helpers)
+scripts/
+
 # Logs
 *.log
