@@ -1913,8 +1913,12 @@ let cachedReports = [];
 
 function renderReportsTable(reports) {
     const tbody = document.getElementById('reports-table-body');
-    document.getElementById('reports-list-view').style.display = '';
-    document.getElementById('reports-detail-view').style.display = 'none';
+    const listView = document.getElementById('reports-list-view');
+    const detailView = document.getElementById('reports-detail-view');
+    listView.style.display = '';
+    listView.classList.remove('d-none');
+    detailView.style.display = 'none';
+    detailView.classList.add('d-none');
     if (!reports || reports.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="text-center-muted">No reports found.</td></tr>';
         return;
@@ -1942,8 +1946,12 @@ async function loadReports(force = true) {
     const tbody = document.getElementById('reports-table-body');
     tbody.innerHTML = '<tr><td colspan="8" class="text-center-muted">Loading...</td></tr>';
     // Always show list view and hide detail view when loading
-    document.getElementById('reports-list-view').style.display = '';
-    document.getElementById('reports-detail-view').style.display = 'none';
+    const listView = document.getElementById('reports-list-view');
+    const detailView = document.getElementById('reports-detail-view');
+    listView.style.display = '';
+    listView.classList.remove('d-none');
+    detailView.style.display = 'none';
+    detailView.classList.add('d-none');
     try {
         const reports = await apiCall('reports');
         cachedReports = reports || [];
@@ -1956,9 +1964,12 @@ async function loadReports(force = true) {
 }
 
 async function viewReport(id) {
-    document.getElementById('reports-list-view').style.display = 'none';
+    const listView = document.getElementById('reports-list-view');
+    listView.style.display = 'none';
+    listView.classList.add('d-none');
     const detailView = document.getElementById('reports-detail-view');
     detailView.style.display = '';
+    detailView.classList.remove('d-none');
 
     const summaryDiv = document.getElementById('report-detail-summary');
     const tbody = document.getElementById('report-detail-table-body');
@@ -2012,8 +2023,12 @@ async function viewReport(id) {
 }
 
 function backToReportList() {
-    document.getElementById('reports-detail-view').style.display = 'none';
-    document.getElementById('reports-list-view').style.display = '';
+    const detailView = document.getElementById('reports-detail-view');
+    const listView = document.getElementById('reports-list-view');
+    detailView.style.display = 'none';
+    detailView.classList.add('d-none');
+    listView.style.display = '';
+    listView.classList.remove('d-none');
 }
 
 // Audit log filters and rendering
