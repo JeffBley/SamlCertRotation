@@ -67,6 +67,9 @@ Navigate to **Settings** → **Automation Schedule**.
 | **Audit Log Retention (days)** | How long audit entries are kept | `180` | Increase for stricter compliance needs; validate storage impact. |
 | **Run Reports Retention (days)** | How long run report payloads are kept | `14` | Increase if teams need longer troubleshooting history. |
 
+<br />
+<br />
+
 Navigate to **Settings** → **Run Settings**.
 | Field | What it controls | Recommended value | Considerations |
 |---|---|---|---|
@@ -87,7 +90,7 @@ Navigate to **Settings** → **Security**.
 
 ---
 
-## 3) Populate Sponsors at Scale (in Tandem with Step 4)
+## 3) Populate Sponsors (in Tandem with Step 4)
 
 In order to properly notify sponsors, you must ensure you have identified and stored the person's email address in Entra ID on the appropriate application.
 
@@ -113,7 +116,7 @@ Review and classify your SAML apps using your configured Custom Security Attribu
 
 ### Practical approach
 
-- Start broad with **Notify** to establish ownership and communications
+- Start broad with **Notify** on most or all SAML apps to establish ownership and communications
 - Promote to **On** app-by-app after validation with sponsors and app teams
 - Track remaining **Not Set** and **Off** apps as explicit backlog/governance items
 
@@ -126,7 +129,7 @@ When sponsor coverage and CSA tagging are complete:
 1. Navigate to **Settings** → **Run Settings**
 2. Change **Run Mode** from **Report-only** to **Production**
 3. Save settings
-4. Trigger one controlled **Run - Prod**
+4. Trigger one **Run - Report-only** then one **Run - Prod**
 5. Review **Reports** and **Audit Log** for any failed actions
 
 ### Production readiness checklist
