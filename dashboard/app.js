@@ -78,6 +78,14 @@ const auditVisibleColumns = {
 let editPolicyAppId = null;
 let editPolicyAppName = null;
 
+// Edit app API config modal state
+let editAppConfigAppId = null;
+let editAppConfigAppName = null;
+
+// View app remote keys modal state
+let viewAppKeysAppId = null;
+let viewAppKeysAppName = null;
+
 // HTML escape function to prevent XSS
 function escapeHtml(text) {
     if (text == null) return '';
@@ -934,6 +942,277 @@ function closeEditPolicyModal() {
     sponsorEditPolicyState = { appId: null, appName: null };
 }
 
+// ── Edit App API Config modal ────────────────────────────────────────────────
+
+/** Shows/hides the OAuth-specific fields based on selected auth type. */
+function onEditAppConfigAuthTypeChange() {
+    const authType = parseInt(document.getElementById('editAppConfigAuthType').value, 10);
+    const isOAuth = authType === 2 || authType === 3;
+    document.getElementById('editAppConfigApiKeySection').classList.toggle('d-none', isOAuth);
+    document.getElementById('editAppConfigOAuthSection').classList.toggle('d-none', !isOAuth);
+
+    const secretLabel = document.getElementById('editAppConfigSecretLabel');
+    const secretHint = document.getElementById('editAppConfigSecretHint');
+    if (authType === 1 || authType === 4) {
+        secretLabel.textContent = 'API Key / Bearer Token';
+        secretHint.textContent = 'Stored encrypted in Key Vault. Leave blank to keep existing value.';
+    } else if (authType === 2) {
+        secretLabel.textContent = 'OAuth Client Secret';
+        secretHint.textContent = 'Stored encrypted in Key Vault. Leave blank to keep existing value.';
+    } else if (authType === 3) {
+        secretLabel.textContent = 'SAML Assertion (base64)';
+        secretHint.textContent = 'Base64-encoded SAML assertion. Stored encrypted in Key Vault. Leave blank to keep existing value.';
+    }
+}
+
+async function openEditAppConfig(appId, appName) {
+    closeAllDropdowns();
+    editAppConfigAppId = appId;
+    editAppConfigAppName = appName;
+    document.getElementById('editAppConfigTitle').textContent = `Edit API Configuration — ${appName}`;
+    document.getElementById('editAppConfigSubtitle').textContent = appId;
+    document.getElementById('editAppConfigError').style.display = 'none';
+
+    // Clear all fields to safe defaults before populating.
+    document.getElementById('editAppConfigBaseUrl').value = '';
+    document.getElementById('editAppConfigConnectionId').value = '';
+    document.getElementById('editAppConfigAuthType').value = '1';
+    document.getElementById('editAppConfigHeaderName').value = '';
+    document.getElementById('editAppConfigHeaderPrefix').value = '';
+    document.getElementById('editAppConfigTokenEndpoint').value = '';
+    document.getElementById('editAppConfigClientId').value = '';
+    document.getElementById('editAppConfigScope').value = '';
+    document.getElementById('editAppConfigSecret').value = '';
+    document.getElementById('editAppConfigGetKeysRoute').value = '';
+    document.getElementById('editAppConfigActivateRoute').value = '';
+    onEditAppConfigAuthTypeChange();
+
+    try {
+        showLoading('Loading API configuration…');
+        let config = null;
+        try {
+            config = await apiCall(`applications/${appId}/api-config`);
+        } catch (err) {
+            // 404 = no config yet — open in blank state.
+            if (!err.message || !err.message.includes('404')) throw err;
+        }
+        clearStatusBanner();
+
+        if (config) {
+            document.getElementById('editAppConfigBaseUrl').value = config.apiBaseUrl ?? '';
+            document.getElementById('editAppConfigConnectionId').value = config.connectionId ?? '';
+            document.getElementById('editAppConfigAuthType').value = String(config.authTypeCode ?? 1);
+            document.getElementById('editAppConfigHeaderName').value = config.apiKeyHeaderName ?? '';
+            document.getElementById('editAppConfigHeaderPrefix').value = config.apiKeyHeaderPrefix ?? '';
+            document.getElementById('editAppConfigTokenEndpoint').value = config.oauthTokenEndpoint ?? '';
+            document.getElementById('editAppConfigClientId').value = config.oauthClientId ?? '';
+            document.getElementById('editAppConfigScope').value = config.oauthScope ?? '';
+            document.getElementById('editAppConfigGetKeysRoute').value = config.getKeysRoute ?? '';
+            document.getElementById('editAppConfigActivateRoute').value = config.activateKeyRoute ?? '';
+            onEditAppConfigAuthTypeChange();
+        }
+    } catch (err) {
+        showError(`Failed to load API configuration: ${err.message}`);
+    }
+
+    document.getElementById('editAppConfigModal').classList.add('show');
+}
+
+async function saveEditAppConfig() {
+    const errorEl = document.getElementById('editAppConfigError');
+    errorEl.style.display = 'none';
+
+    const baseUrl = document.getElementById('editAppConfigBaseUrl').value.trim();
+    const authType = parseInt(document.getElementById('editAppConfigAuthType').value, 10);
+    const connectionId = document.getElementById('editAppConfigConnectionId').value.trim();
+    const secret = document.getElementById('editAppConfigSecret').value;
+    const tokenEndpoint = document.getElementById('editAppConfigTokenEndpoint').value.trim();
+
+    // Client-side validation.
+    if (!baseUrl) {
+        errorEl.textContent = 'API Base URL is required.';
+        errorEl.style.display = 'block';
+        return;
+    }
+    try {
+        const url = new URL(baseUrl);
+        if (url.protocol !== 'https:') throw new Error();
+    } catch {
+        errorEl.textContent = 'API Base URL must be a valid HTTPS URL.';
+        errorEl.style.display = 'block';
+        return;
+    }
+    if ((authType === 2 || authType === 3) && !tokenEndpoint) {
+        errorEl.textContent = 'Token Endpoint URL is required for the selected auth type.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    const body = {
+        apiBaseUrl: baseUrl,
+        authTypeCode: authType,
+        connectionId: connectionId || null,
+        apiKeyHeaderName: document.getElementById('editAppConfigHeaderName').value.trim() || null,
+        apiKeyHeaderPrefix: document.getElementById('editAppConfigHeaderPrefix').value || null,
+        oauthTokenEndpoint: tokenEndpoint || null,
+        oauthClientId: document.getElementById('editAppConfigClientId').value.trim() || null,
+        oauthScope: document.getElementById('editAppConfigScope').value.trim() || null,
+        getKeysRoute: document.getElementById('editAppConfigGetKeysRoute').value.trim() || null,
+        activateKeyRoute: document.getElementById('editAppConfigActivateRoute').value.trim() || null,
+        // Only include secret if the user typed something — null means "keep existing".
+        secret: secret.length > 0 ? secret : null
+    };
+
+    try {
+        showLoading('Saving API configuration…');
+        document.getElementById('editAppConfigModal').classList.remove('show');
+        await apiCall(`applications/${editAppConfigAppId}/api-config`, {
+            method: 'PUT',
+            body: JSON.stringify(body)
+        });
+        showSuccess(`API configuration saved for ${editAppConfigAppName}`);
+    } catch (err) {
+        showError(`Failed to save API configuration: ${err.message}`);
+    }
+}
+
+async function deleteEditAppConfig() {
+    if (!editAppConfigAppId) return;
+    const confirmed = window.confirm(
+        `Remove API configuration for "${editAppConfigAppName}"?\n\nThis will also delete the stored secret from Key Vault.`);
+    if (!confirmed) return;
+
+    try {
+        showLoading('Removing API configuration…');
+        document.getElementById('editAppConfigModal').classList.remove('show');
+        await apiCall(`applications/${editAppConfigAppId}/api-config`, { method: 'DELETE' });
+        showSuccess(`API configuration removed for ${editAppConfigAppName}`);
+    } catch (err) {
+        showError(`Failed to remove API configuration: ${err.message}`);
+    }
+}
+
+function closeEditAppConfigModal() {
+    document.getElementById('editAppConfigModal').classList.remove('show');
+    editAppConfigAppId = null;
+    editAppConfigAppName = null;
+}
+
+// ── View App Remote Keys modal ────────────────────────────────────────────────
+
+async function openViewAppKeys(appId, appName) {
+    closeAllDropdowns();
+    viewAppKeysAppId = appId;
+    viewAppKeysAppName = appName;
+    document.getElementById('viewAppKeysTitle').textContent = `SAML Keys on App — ${appName}`;
+    document.getElementById('viewAppKeysError').style.display = 'none';
+    document.getElementById('viewAppKeysBody').innerHTML = '<div class="empty-state">Loading keys…</div>';
+    document.getElementById('viewAppKeysModal').classList.add('show');
+    await loadRemoteAppKeys(appId);
+}
+
+async function refreshViewAppKeys() {
+    if (!viewAppKeysAppId) return;
+    document.getElementById('viewAppKeysBody').innerHTML = '<div class="empty-state">Loading keys…</div>';
+    document.getElementById('viewAppKeysError').style.display = 'none';
+    await loadRemoteAppKeys(viewAppKeysAppId);
+}
+
+async function loadRemoteAppKeys(appId) {
+    try {
+        const result = await apiCall(`applications/${appId}/api-config/keys`);
+        renderRemoteKeys(result);
+    } catch (err) {
+        const errEl = document.getElementById('viewAppKeysError');
+        errEl.textContent = err.message.includes('No API configuration')
+            ? 'No API configuration found for this app. Use "Edit App Config" to set one up first.'
+            : `Failed to fetch keys: ${err.message}`;
+        errEl.style.display = 'block';
+        document.getElementById('viewAppKeysBody').innerHTML = '';
+    }
+}
+
+function renderRemoteKeys(result) {
+    const keys = result.keys ?? [];
+    if (keys.length === 0) {
+        document.getElementById('viewAppKeysBody').innerHTML =
+            '<div class="empty-state">No certificates found on the application.</div>';
+        return;
+    }
+
+    const rows = keys.map(k => {
+        const expiry = k.notAfterUtc ? new Date(k.notAfterUtc).toLocaleDateString() : 'N/A';
+        const statusClass = k.isActive ? 'status-on' : 'status-off';
+        const stateLabel = k.isActive ? 'Active' : (k.state ?? 'Staged');
+        const daysClass = k.daysUntilExpiry < 0 ? 'expiry-expired'
+            : k.daysUntilExpiry <= 30 ? 'expiry-critical'
+            : k.daysUntilExpiry <= 60 ? 'expiry-warning' : 'expiry-ok';
+
+        return `
+            <tr>
+                <td class="fs-sm">${escapeHtml(k.thumbprint)}</td>
+                <td>${escapeHtml(k.subject)}</td>
+                <td>${expiry}</td>
+                <td><span class="expiry-badge ${daysClass}">${escapeHtml(String(k.daysUntilExpiry))}</span></td>
+                <td><span class="status-badge ${statusClass}">${stateLabel}</span></td>
+                <td>
+                    <button
+                        class="btn btn-primary btn-xs ${k.isActive ? 'disabled' : ''}"
+                        ${k.isActive ? 'disabled title="Already active"' : ''}
+                        data-action="activate-remote-key"
+                        data-cert-id="${escapeHtml(k.certId)}"
+                        data-app-id="${escapeHtml(result.appId)}">
+                        Activate
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+
+    const retrievedAt = result.retrievedUtc
+        ? `Retrieved: ${new Date(result.retrievedUtc).toLocaleTimeString()}`
+        : '';
+
+    document.getElementById('viewAppKeysBody').innerHTML = `
+        <p class="form-hint-tight">${escapeHtml(retrievedAt)}</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Thumbprint</th>
+                    <th>Subject</th>
+                    <th>Expires</th>
+                    <th>Days Left</th>
+                    <th>State</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+async function activateRemoteKey(appId, certId) {
+    const reason = window.prompt('Optional reason for activation (shown in audit log):', '') ?? '';
+    if (reason === null) return; // user cancelled
+
+    try {
+        showLoading('Activating key on app…');
+        await apiCall(`applications/${appId}/api-config/activate`, {
+            method: 'POST',
+            body: JSON.stringify({ certId, reason: reason.trim() || null })
+        });
+        showSuccess('Key activated on application successfully.');
+        // Refresh key list.
+        await loadRemoteAppKeys(appId);
+    } catch (err) {
+        showError(`Failed to activate key: ${err.message}`);
+    }
+}
+
+function closeViewAppKeysModal() {
+    document.getElementById('viewAppKeysModal').classList.remove('show');
+    viewAppKeysAppId = null;
+    viewAppKeysAppName = null;
+}
+
 // Update column visibility from checkboxes and re-render
 function updateColumnVisibility() {
     document.querySelectorAll('.app-columns-filter-option-input').forEach(cb => {
@@ -1540,6 +1819,12 @@ function renderApps(apps) {
                                 </button>
                                 <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled'} data-action="edit-policy" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Edit Policy
+                                </button>
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled'} data-action="edit-app-config" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    Edit App Config
+                                </button>
+                                <button class="dropdown-item ${isAdminUser() ? '' : 'disabled'}" ${isAdminUser() ? '' : 'disabled'} data-action="view-app-keys" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
+                                    View App Keys
                                 </button>
                                 <button class="dropdown-item ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''}" ${(computedStatus === 'ok' || !isAdminUser()) ? 'disabled' : ''} data-action="resend-reminder" data-app-id="${escapeHtml(app.id)}" data-app-name="${escapeHtml(app.displayName)}">
                                     Resend Reminder Email
@@ -3262,6 +3547,16 @@ document.querySelectorAll('.app-columns-filter-option-input').forEach(function (
 document.getElementById('btn-edit-policy-cancel').addEventListener('click', closeEditPolicyModal);
 document.getElementById('btn-edit-policy-save').addEventListener('click', saveAppPolicy);
 
+// Edit app API config modal
+document.getElementById('btn-edit-app-config-cancel').addEventListener('click', closeEditAppConfigModal);
+document.getElementById('btn-edit-app-config-save').addEventListener('click', saveEditAppConfig);
+document.getElementById('btn-edit-app-config-delete').addEventListener('click', deleteEditAppConfig);
+document.getElementById('editAppConfigAuthType').addEventListener('change', onEditAppConfigAuthTypeChange);
+
+// View app keys modal
+document.getElementById('btn-view-app-keys-close').addEventListener('click', closeViewAppKeysModal);
+document.getElementById('btn-view-app-keys-refresh').addEventListener('click', refreshViewAppKeys);
+
 // Cleanup tab buttons
 document.getElementById('btn-export-cleanup').addEventListener('click', function(e) { toggleExportCleanupDropdown(e); });
 document.getElementById('btn-export-cleanup-csv').addEventListener('click', function() { document.getElementById('export-cleanup-dropdown').classList.remove('show'); exportCleanupListCsv(); });
@@ -3528,6 +3823,15 @@ document.addEventListener('click', function (e) {
             break;
         case 'edit-policy':
             editPolicy(appId, appName);
+            break;
+        case 'edit-app-config':
+            openEditAppConfig(appId, appName);
+            break;
+        case 'view-app-keys':
+            openViewAppKeys(appId, appName);
+            break;
+        case 'activate-remote-key':
+            activateRemoteKey(btn.dataset.appId, btn.dataset.certId);
             break;
         case 'resend-reminder':
             resendReminderEmail(appId, appName);

@@ -1,6 +1,7 @@
 using Azure.Data.Tables;
 using Azure.Core;
 using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,6 +53,16 @@ var host = new HostBuilder()
             return new BlobServiceClient(connectionString);
         });
 
+        // Register Key Vault Secret Client (used for per-app API credentials storage)
+        services.AddSingleton(sp =>
+        {
+            var kvUri = configuration["KeyVaultUri"]
+                ?? throw new InvalidOperationException(
+                    "KeyVaultUri is not configured. Ensure the app setting is set.");
+            var credential = sp.GetRequiredService<TokenCredential>();
+            return new SecretClient(new Uri(kvUri), credential);
+        });
+
         // Register application services
         services.AddSingleton<IGraphService, GraphService>();
         services.AddSingleton<IPolicyService, PolicyService>();
@@ -59,6 +70,8 @@ var host = new HostBuilder()
         services.AddSingleton<IAuditService, AuditService>();
         services.AddSingleton<IReportService, ReportService>();
         services.AddSingleton<ICertificateRotationService, CertificateRotationService>();
+        services.AddSingleton<IAppApiConfigService, AppApiConfigService>();
+        services.AddSingleton<IAppApiClient, AppApiClientService>();
 
         // Register HttpClient for any external calls
         services.AddHttpClient();

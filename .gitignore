@@ -31,3 +31,6 @@ infrastructure/access-control-config.json
 
 # Logs
 *.log
+
+# Internal tracking (never commit — contains security risk notes)
+.internal/

@@ -865,6 +865,119 @@
         SAML Certificate Rotation Tool &copy; 2026 &middot; MIT License
     </footer>
 
+    <!-- Edit App API Config Modal -->
+    <div id="editAppConfigModal" class="modal-overlay">
+        <div class="modal modal-lg">
+            <h3 id="editAppConfigTitle">Edit API Configuration</h3>
+            <p class="modal-subtitle" id="editAppConfigSubtitle"></p>
+
+            <div class="mb-12">
+                <label class="form-label-sm">API Base URL <span class="required-star">*</span></label>
+                <input type="url" id="editAppConfigBaseUrl" class="form-control-full" placeholder="https://myapp.example.com" autocomplete="off">
+                <p class="form-hint-tight">Must be HTTPS. All API calls are made relative to this URL.</p>
+            </div>
+
+            <div class="mb-12">
+                <label class="form-label-sm">Connection / Tenant ID</label>
+                <input type="text" id="editAppConfigConnectionId" class="form-control-full" placeholder="e.g., GUID from app's admin panel" autocomplete="off">
+                <p class="form-hint-tight">Identifier used in API route templates (the <code>{connectionId}</code> placeholder).</p>
+            </div>
+
+            <div class="mb-12">
+                <label class="form-label-sm">Auth Type <span class="required-star">*</span></label>
+                <select id="editAppConfigAuthType" class="form-control-full">
+                    <option value="1">1 — API Key / Long-lived Bearer Token</option>
+                    <option value="2">2 — OAuth 2.0 Client Credentials Flow</option>
+                    <option value="3">3 — OAuth 2.0 with SAML Assertion Grant (RFC 7522)</option>
+                    <option value="4">4 — Service Account / Static Token (legacy)</option>
+                </select>
+                <p class="form-hint-tight">
+                    <strong>Option 1/4:</strong> static token in a custom header (most common). &nbsp;
+                    <strong>Option 2:</strong> app registers an OAuth client for machine-to-machine access. &nbsp;
+                    <strong>Option 3:</strong> bridges SAML identity into OAuth-protected APIs.
+                </p>
+            </div>
+
+            <!-- Auth type 1 / 4 fields -->
+            <div id="editAppConfigApiKeySection">
+                <div class="mb-12">
+                    <label class="form-label-sm">Header Name</label>
+                    <input type="text" id="editAppConfigHeaderName" class="form-control-full" placeholder="X-API-Key" autocomplete="off">
+                    <p class="form-hint-tight">The HTTP header to set, e.g. <code>X-API-Key</code> or <code>Authorization</code>.</p>
+                </div>
+                <div class="mb-12">
+                    <label class="form-label-sm">Header Value Prefix</label>
+                    <input type="text" id="editAppConfigHeaderPrefix" class="form-control-full" placeholder="Bearer " autocomplete="off">
+                    <p class="form-hint-tight">Optional prefix prepended to the secret, e.g. <code>Bearer </code> (include trailing space).</p>
+                </div>
+            </div>
+
+            <!-- Auth type 2 / 3 fields -->
+            <div id="editAppConfigOAuthSection" class="d-none">
+                <div class="mb-12">
+                    <label class="form-label-sm">Token Endpoint URL <span class="required-star">*</span></label>
+                    <input type="url" id="editAppConfigTokenEndpoint" class="form-control-full" placeholder="https://myapp.example.com/oauth/token" autocomplete="off">
+                </div>
+                <div class="mb-12">
+                    <label class="form-label-sm">Client ID</label>
+                    <input type="text" id="editAppConfigClientId" class="form-control-full" placeholder="client-id" autocomplete="off">
+                    <p class="form-hint-tight">OAuth <code>client_id</code>. Not a secret — safe to display here.</p>
+                </div>
+                <div class="mb-12">
+                    <label class="form-label-sm">Scope</label>
+                    <input type="text" id="editAppConfigScope" class="form-control-full" placeholder="api://myapp/.default" autocomplete="off">
+                    <p class="form-hint-tight">Space-separated OAuth scope(s). Leave blank if not required.</p>
+                </div>
+            </div>
+
+            <div class="mb-12">
+                <label class="form-label-sm" id="editAppConfigSecretLabel">Secret / API Key</label>
+                <input type="password" id="editAppConfigSecret" class="form-control-full" placeholder="Stored in Key Vault — leave blank to keep existing" autocomplete="new-password">
+                <p class="form-hint-tight" id="editAppConfigSecretHint">Stored encrypted in Key Vault. Leave blank to keep the current value unchanged.</p>
+            </div>
+
+            <!-- Advanced: custom route overrides -->
+            <details class="mb-12">
+                <summary class="form-label-sm" style="cursor:pointer;">Advanced — Custom API Routes</summary>
+                <div class="mt-8">
+                    <div class="mb-12">
+                        <label class="form-label-sm">Read Keys Route</label>
+                        <input type="text" id="editAppConfigGetKeysRoute" class="form-control-full" placeholder="/v1/idp-connections/{connectionId}" autocomplete="off">
+                        <p class="form-hint-tight">GET route to list the app's SAML certificates. Defaults to the SAML Sample App convention.</p>
+                    </div>
+                    <div class="mb-12">
+                        <label class="form-label-sm">Activate Key Route</label>
+                        <input type="text" id="editAppConfigActivateRoute" class="form-control-full" placeholder="/v1/idp-connections/{connectionId}/rotation/activate" autocomplete="off">
+                        <p class="form-hint-tight">POST route to activate a certificate. Must include <code>{connectionId}</code>.</p>
+                    </div>
+                </div>
+            </details>
+
+            <div id="editAppConfigError" class="form-error"></div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" id="btn-edit-app-config-cancel">Cancel</button>
+                <button class="btn btn-secondary" id="btn-edit-app-config-delete" style="margin-right:auto; color: var(--danger, #c0392b);">Remove Config</button>
+                <button class="btn btn-primary" id="btn-edit-app-config-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- View App Remote Keys Modal -->
+    <div id="viewAppKeysModal" class="modal-overlay">
+        <div class="modal modal-lg">
+            <h3 id="viewAppKeysTitle">SAML Keys on App</h3>
+            <p class="modal-subtitle">Keys currently registered in the application. Use <strong>Activate</strong> to promote a key to active.</p>
+            <div id="viewAppKeysBody">
+                <div class="empty-state">Loading keys…</div>
+            </div>
+            <div id="viewAppKeysError" class="form-error" style="display:none;"></div>
+            <div class="modal-buttons mt-12">
+                <button class="btn-cancel" id="btn-view-app-keys-close">Close</button>
+                <button class="btn btn-secondary" id="btn-view-app-keys-refresh" title="Refresh keys from app">&#8635; Refresh</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

@@ -845,7 +845,7 @@ public abstract class DashboardFunctionBase
         return response;
     }
 
-    private static string SanitizeErrorMessage(string message)
+    protected static string SanitizeErrorMessage(string message)
     {
         if (string.IsNullOrEmpty(message)) return "An error occurred";
 
