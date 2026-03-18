@@ -158,6 +158,9 @@ public class AppApiConfigFunctions : DashboardFunctionBase
             OAuthScope = body.OAuthScope,
             GetKeysRoute = body.GetKeysRoute,
             ActivateKeyRoute = body.ActivateKeyRoute,
+            ActivateHttpMethod = body.ActivateHttpMethod,
+            ActivateCertIdLocation = body.ActivateCertIdLocation,
+            ActivateBodyTemplate = body.ActivateBodyTemplate,
             ConnectionId = body.ConnectionId,
             UpdatedBy = identity?.UserId ?? identity?.UserPrincipalName ?? "admin"
         };
@@ -389,10 +392,13 @@ public class AppApiConfigFunctions : DashboardFunctionBase
         OAuthScope = c.OAuthScope,
         GetKeysRoute = c.GetKeysRoute,
         ActivateKeyRoute = c.ActivateKeyRoute,
+        ActivateHttpMethod = c.ActivateHttpMethod,
+        ActivateCertIdLocation = c.ActivateCertIdLocation,
+        ActivateBodyTemplate = c.ActivateBodyTemplate,
         ConnectionId = c.ConnectionId,
         UpdatedUtc = c.UpdatedUtc,
         UpdatedBy = c.UpdatedBy,
-        HasSecret = true  // We can't verify without a round-trip to KV; callers can test via /keys.
+        HasSecret = true
     };
 }
 
@@ -419,6 +425,12 @@ public sealed class AppApiConfigRequest
     // Routing
     public string? GetKeysRoute { get; set; }
     public string? ActivateKeyRoute { get; set; }
+    /// <summary>HTTP method for the activate call: POST (default), PUT, or PATCH.</summary>
+    public string? ActivateHttpMethod { get; set; }
+    /// <summary>Where the cert ID goes: "body" (default) or "path".</summary>
+    public string? ActivateCertIdLocation { get; set; }
+    /// <summary>JSON body template with {certId} and {reason} placeholders. Null = use default.</summary>
+    public string? ActivateBodyTemplate { get; set; }
     public string? ConnectionId { get; set; }
 
     /// <summary>
@@ -450,6 +462,9 @@ public sealed class AppApiConfigDto
     public string? OAuthScope { get; set; }
     public string? GetKeysRoute { get; set; }
     public string? ActivateKeyRoute { get; set; }
+    public string? ActivateHttpMethod { get; set; }
+    public string? ActivateCertIdLocation { get; set; }
+    public string? ActivateBodyTemplate { get; set; }
     public string? ConnectionId { get; set; }
     public DateTimeOffset UpdatedUtc { get; set; }
     public string? UpdatedBy { get; set; }

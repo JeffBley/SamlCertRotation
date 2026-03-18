@@ -938,17 +938,44 @@
 
             <!-- Advanced: custom route overrides -->
             <details class="mb-12">
-                <summary class="form-label-sm" style="cursor:pointer;">Advanced — Custom API Routes</summary>
+                <summary class="form-label-sm" style="cursor:pointer;">Advanced — API Behaviour</summary>
                 <div class="mt-8">
                     <div class="mb-12">
                         <label class="form-label-sm">Read Keys Route</label>
                         <input type="text" id="editAppConfigGetKeysRoute" class="form-control-full" placeholder="/v1/idp-connections/{connectionId}" autocomplete="off">
-                        <p class="form-hint-tight">GET route to list the app's SAML certificates. Defaults to the SAML Sample App convention.</p>
+                        <p class="form-hint-tight">GET route to list the app's SAML certificates. Use <code>{connectionId}</code> as a placeholder for the Route Identifier above.</p>
                     </div>
                     <div class="mb-12">
                         <label class="form-label-sm">Activate Key Route</label>
                         <input type="text" id="editAppConfigActivateRoute" class="form-control-full" placeholder="/v1/idp-connections/{connectionId}/rotation/activate" autocomplete="off">
-                        <p class="form-hint-tight">POST route to activate a certificate. Must include <code>{connectionId}</code>.</p>
+                        <p class="form-hint-tight">Route to activate a certificate. Use <code>{connectionId}</code> and/or <code>{certId}</code> as placeholders.</p>
+                    </div>
+                    <div class="mb-12">
+                        <label class="form-label-sm">Activate HTTP Method</label>
+                        <select id="editAppConfigActivateMethod" class="form-control-full">
+                            <option value="">POST (default)</option>
+                            <option value="PUT">PUT</option>
+                            <option value="PATCH">PATCH</option>
+                        </select>
+                    </div>
+                    <div class="mb-12">
+                        <label class="form-label-sm">Certificate ID Location</label>
+                        <select id="editAppConfigCertIdLocation" class="form-control-full">
+                            <option value="">In request body (default)</option>
+                            <option value="path">In URL path via <code>{certId}</code></option>
+                        </select>
+                        <p class="form-hint-tight">
+                            <strong>In request body:</strong> cert ID is embedded in the JSON body. &nbsp;
+                            <strong>In URL path:</strong> cert ID is substituted into <code>{certId}</code> in the route above; no body is sent.
+                        </p>
+                    </div>
+                    <div class="mb-12" id="editAppConfigBodyTemplateSection">
+                        <label class="form-label-sm">Request Body Template</label>
+                        <textarea id="editAppConfigBodyTemplate" class="form-control-full" rows="4" placeholder='{"targetCertIds":["{certId}"],"reason":"{reason}"}' autocomplete="off" spellcheck="false" style="font-family:monospace;font-size:13px;"></textarea>
+                        <p class="form-hint-tight">
+                            JSON template for the activation request body. Use <code>{certId}</code> and <code>{reason}</code> as placeholders — they are safely substituted at runtime.
+                            Leave blank to use the default body matching the SAML Sample App API.
+                        </p>
                     </div>
                 </div>
             </details>

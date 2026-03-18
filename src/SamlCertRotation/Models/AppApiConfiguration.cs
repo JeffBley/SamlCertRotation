@@ -122,11 +122,34 @@ public class AppApiConfiguration : ITableEntity
     public string? GetKeysRoute { get; set; }
 
     /// <summary>
-    /// Route template to POST an activation request, relative to <see cref="ApiBaseUrl"/>.
-    /// Must include a <c>{connectionId}</c> placeholder.
+    /// Route template to call when activating a certificate, relative to <see cref="ApiBaseUrl"/>.
+    /// May include <c>{connectionId}</c> and/or <c>{certId}</c> placeholders.
     /// Defaults to <c>/v1/idp-connections/{connectionId}/rotation/activate</c>.
     /// </summary>
     public string? ActivateKeyRoute { get; set; }
+
+    /// <summary>
+    /// HTTP method used for the activation call. One of: POST, PUT, PATCH.
+    /// Defaults to POST.
+    /// </summary>
+    public string? ActivateHttpMethod { get; set; }
+
+    /// <summary>
+    /// Where the certificate ID is placed in the activation request.
+    /// <list type="bullet">
+    ///   <item><term>body</term><description>Cert ID is embedded in the JSON body via <see cref="ActivateBodyTemplate"/> (default).</description></item>
+    ///   <item><term>path</term><description>Cert ID is substituted for <c>{certId}</c> in <see cref="ActivateKeyRoute"/>; no request body is sent.</description></item>
+    /// </list>
+    /// </summary>
+    public string? ActivateCertIdLocation { get; set; }
+
+    /// <summary>
+    /// A JSON template for the activation request body. Use <c>{certId}</c> and <c>{reason}</c>
+    /// as placeholders; they are replaced at runtime. If null, a sensible default body is used.
+    /// Example: <c>{"keyId":"{certId}","comment":"{reason}"}</c>
+    /// Only relevant when <see cref="ActivateCertIdLocation"/> is <c>body</c> (or null).
+    /// </summary>
+    public string? ActivateBodyTemplate { get; set; }
 
     /// <summary>
     /// The connection / tenant ID expected by the SAML app's control-plane API

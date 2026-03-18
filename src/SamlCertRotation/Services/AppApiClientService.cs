@@ -72,24 +72,64 @@ public class AppApiClientService : IAppApiClient
 
         var http = await BuildAuthorisedClientAsync(config, ct);
 
-        var route = ResolveRoute(
-            config.ActivateKeyRoute ?? "/v1/idp-connections/{connectionId}/rotation/activate",
-            config.ConnectionId);
+        var routeTemplate = config.ActivateKeyRoute
+            ?? "/v1/idp-connections/{connectionId}/rotation/activate";
+
+        // Resolve {connectionId} first, then {certId} (for path-based cert ID placement).
+        var route = ResolveRoute(routeTemplate, config.ConnectionId);
+        route = ResolveCertId(route, certId);
 
         var url = BuildUrl(config.ApiBaseUrl, route);
-        _logger.LogInformation(
-            "POST activate key {CertId} on {Url} (app={AppId})", certId, url, config.RowKey);
 
-        var payload = JsonSerializer.Serialize(new
+        // Determine HTTP method — default POST, allow PUT or PATCH.
+        var method = config.ActivateHttpMethod?.Trim().ToUpperInvariant() switch
         {
-            targetCertIds = new[] { certId },
-            overlapUntilUtc = DateTimeOffset.UtcNow,
-            reason = reason ?? "Activated via SAML Cert Rotation dashboard"
-        });
+            "PUT" => HttpMethod.Put,
+            "PATCH" => HttpMethod.Patch,
+            _ => HttpMethod.Post
+        };
 
-        var content = new StringContent(payload, Encoding.UTF8, "application/json");
-        var response = await http.PostAsync(url, content, ct);
-        await EnsureSuccessAsync(response, "POST activate", config.RowKey);
+        // Determine whether cert ID goes in the URL path or the request body.
+        var certIdLocation = config.ActivateCertIdLocation?.Trim().ToLowerInvariant();
+        HttpContent? content = null;
+
+        if (certIdLocation != "path")
+        {
+            // Body-based: build the JSON payload from a template or a safe default.
+            var resolvedReason = reason ?? "Activated via SAML Cert Rotation dashboard";
+            string payload;
+
+            if (!string.IsNullOrWhiteSpace(config.ActivateBodyTemplate))
+            {
+                // Substitute {certId} and {reason} placeholders in the user-supplied template.
+                // JSON-encode both values to prevent injection into the JSON structure.
+                var encodedCertId = JsonSerializer.Serialize(certId)[1..^1]; // strip outer quotes
+                var encodedReason = JsonSerializer.Serialize(resolvedReason)[1..^1];
+                payload = config.ActivateBodyTemplate
+                    .Replace("{certId}", encodedCertId, StringComparison.OrdinalIgnoreCase)
+                    .Replace("{reason}", encodedReason, StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                // Default payload — matches the SAML Sample App convention.
+                payload = JsonSerializer.Serialize(new
+                {
+                    targetCertIds = new[] { certId },
+                    overlapUntilUtc = DateTimeOffset.UtcNow,
+                    reason = resolvedReason
+                });
+            }
+
+            content = new StringContent(payload, Encoding.UTF8, "application/json");
+        }
+
+        _logger.LogInformation(
+            "{Method} activate key {CertId} on {Url} (app={AppId}, certIdIn={Location})",
+            method.Method, certId, url, config.RowKey, certIdLocation ?? "body");
+
+        var request = new HttpRequestMessage(method, url) { Content = content };
+        var response = await http.SendAsync(request, ct);
+        await EnsureSuccessAsync(response, $"{method.Method} activate", config.RowKey);
     }
 
     // ── Auth token acquisition ─────────────────────────────────────────────────
@@ -299,6 +339,19 @@ public class AppApiClientService : IAppApiClient
             throw new ArgumentException("ConnectionId contains disallowed characters.", nameof(connectionId));
 
         return template.Replace("{connectionId}", Uri.EscapeDataString(connectionId),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveCertId(string template, string certId)
+    {
+        if (!template.Contains("{certId}", StringComparison.OrdinalIgnoreCase))
+            return template;
+
+        // Reject path-traversal attempts in certId before substitution.
+        if (certId.Contains("..") || certId.Contains('/') || certId.Contains('\\'))
+            throw new ArgumentException("CertId contains disallowed characters.", nameof(certId));
+
+        return template.Replace("{certId}", Uri.EscapeDataString(certId),
             StringComparison.OrdinalIgnoreCase);
     }
 

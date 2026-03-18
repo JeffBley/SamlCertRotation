@@ -985,6 +985,10 @@ async function openEditAppConfig(appId, appName) {
     document.getElementById('editAppConfigSecret').value = '';
     document.getElementById('editAppConfigGetKeysRoute').value = '';
     document.getElementById('editAppConfigActivateRoute').value = '';
+    document.getElementById('editAppConfigActivateMethod').value = '';
+    document.getElementById('editAppConfigCertIdLocation').value = '';
+    document.getElementById('editAppConfigBodyTemplate').value = '';
+    document.getElementById('editAppConfigBodyTemplateSection').style.display = '';
     onEditAppConfigAuthTypeChange();
 
     try {
@@ -1015,6 +1019,11 @@ async function openEditAppConfig(appId, appName) {
             document.getElementById('editAppConfigScope').value = config.oauthScope ?? '';
             document.getElementById('editAppConfigGetKeysRoute').value = config.getKeysRoute ?? '';
             document.getElementById('editAppConfigActivateRoute').value = config.activateKeyRoute ?? '';
+            document.getElementById('editAppConfigActivateMethod').value = config.activateHttpMethod ?? '';
+            const certIdLoc = config.activateCertIdLocation ?? '';
+            document.getElementById('editAppConfigCertIdLocation').value = certIdLoc;
+            document.getElementById('editAppConfigBodyTemplate').value = config.activateBodyTemplate ?? '';
+            document.getElementById('editAppConfigBodyTemplateSection').style.display = certIdLoc === 'path' ? 'none' : '';
             onEditAppConfigAuthTypeChange();
         }
     } catch (err) {
@@ -1065,6 +1074,9 @@ async function saveEditAppConfig() {
         oauthScope: document.getElementById('editAppConfigScope').value.trim() || null,
         getKeysRoute: document.getElementById('editAppConfigGetKeysRoute').value.trim() || null,
         activateKeyRoute: document.getElementById('editAppConfigActivateRoute').value.trim() || null,
+        activateHttpMethod: document.getElementById('editAppConfigActivateMethod').value || null,
+        activateCertIdLocation: document.getElementById('editAppConfigCertIdLocation').value || null,
+        activateBodyTemplate: document.getElementById('editAppConfigBodyTemplate').value.trim() || null,
         // Only include secret if the user typed something — null means "keep existing".
         secret: secret.length > 0 ? secret : null
     };
@@ -3558,6 +3570,10 @@ document.getElementById('btn-edit-app-config-cancel').addEventListener('click', 
 document.getElementById('btn-edit-app-config-save').addEventListener('click', saveEditAppConfig);
 document.getElementById('btn-edit-app-config-delete').addEventListener('click', deleteEditAppConfig);
 document.getElementById('editAppConfigAuthType').addEventListener('change', onEditAppConfigAuthTypeChange);
+document.getElementById('editAppConfigCertIdLocation').addEventListener('change', function () {
+    const isPath = this.value === 'path';
+    document.getElementById('editAppConfigBodyTemplateSection').style.display = isPath ? 'none' : '';
+});
 
 // View app keys modal
 document.getElementById('btn-view-app-keys-close').addEventListener('click', closeViewAppKeysModal);
