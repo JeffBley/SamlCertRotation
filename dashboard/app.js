@@ -994,7 +994,10 @@ async function openEditAppConfig(appId, appName) {
             config = await apiCall(`applications/${appId}/api-config`);
         } catch (err) {
             // 404 = no config yet — open in blank state.
-            if (!err.message || !err.message.includes('404')) throw err;
+            const isNotFound = err.message?.includes('404')
+                || err.message?.toLowerCase().includes('no api configuration found');
+            if (!isNotFound) throw err;
+            clearStatusBanner(); // suppress the error banner shown by apiCall
         }
         clearStatusBanner();
 
