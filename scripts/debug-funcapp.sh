@@ -6,14 +6,17 @@ RG="rg-saml-cert-rotation"
 FUNC="samlcert-func-hefor3uaz27ae"
 
 echo "====== 1. Getting Kudu credentials ======"
-CREDS=$(az functionapp deployment list-publishing-credentials \
-    -g "$RG" -n "$FUNC" \
-    --query 'publishingUserName + ":" + publishingPassword' -o tsv)
+KV_USER=$(az functionapp deployment list-publishing-credentials \
+    -g "$RG" -n "$FUNC" --query 'publishingUserName' -o tsv)
+KV_PASS=$(az functionapp deployment list-publishing-credentials \
+    -g "$RG" -n "$FUNC" --query 'publishingPassword' -o tsv)
+CREDS="$KV_USER:$KV_PASS"
 
-if [ -z "$CREDS" ]; then
+if [ -z "$KV_USER" ] || [ -z "$KV_PASS" ]; then
     echo "ERROR: Could not retrieve publishing credentials"
     exit 1
 fi
+echo "Credentials retrieved OK (user: $KV_USER)"
 
 echo "====== 2. Files deployed to wwwroot ======"
 curl -s -u "$CREDS" \
