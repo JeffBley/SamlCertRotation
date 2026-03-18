@@ -891,11 +891,11 @@
                     <option value="2">OAuth 2.0 Client Credentials — app issues a short-lived access token</option>
                     <option value="3">OAuth 2.0 + SAML Assertion Grant (RFC 7522) — exchange a SAML assertion for an OAuth token</option>
                 </select>
-                <p class="form-hint-tight">
-                    <strong>Static Token:</strong> Use when the app provides an API key or long-lived bearer token from its admin portal (most common). &nbsp;
-                    <strong>OAuth Client Credentials:</strong> Use when the app supports machine-to-machine OAuth — you register a client ID &amp; secret. &nbsp;
-                    <strong>SAML Assertion Grant:</strong> Use when the app's API is OAuth-protected and accepts a SAML assertion as the grant (RFC 7522).
-                </p>
+                <ul class="form-hint-tight" style="margin:4px 0 0 16px; padding:0;">
+                    <li><strong>Static Token:</strong> Use when the app provides an API key or long-lived bearer token from its admin portal (most common).</li>
+                    <li><strong>OAuth Client Credentials:</strong> Use when the app supports machine-to-machine OAuth — you register a client ID &amp; secret.</li>
+                    <li><strong>SAML Assertion Grant:</strong> Use when the app's API is OAuth-protected and accepts a SAML assertion as the grant (RFC 7522).</li>
+                </ul>
             </div>
 
             <!-- Auth type 1 / 4 fields -->
