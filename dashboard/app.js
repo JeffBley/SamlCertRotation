@@ -953,15 +953,15 @@ function onEditAppConfigAuthTypeChange() {
 
     const secretLabel = document.getElementById('editAppConfigSecretLabel');
     const secretHint = document.getElementById('editAppConfigSecretHint');
-    if (authType === 1 || authType === 4) {
+    if (authType === 1) {
         secretLabel.textContent = 'API Key / Bearer Token';
         secretHint.textContent = 'Stored encrypted in Key Vault. Leave blank to keep existing value.';
     } else if (authType === 2) {
         secretLabel.textContent = 'OAuth Client Secret';
         secretHint.textContent = 'Stored encrypted in Key Vault. Leave blank to keep existing value.';
     } else if (authType === 3) {
-        secretLabel.textContent = 'SAML Assertion (base64)';
-        secretHint.textContent = 'Base64-encoded SAML assertion. Stored encrypted in Key Vault. Leave blank to keep existing value.';
+        secretLabel.textContent = 'OAuth Client Secret';
+        secretHint.textContent = 'The client secret used when presenting the SAML assertion to the token endpoint. Stored encrypted in Key Vault. Leave blank to keep existing value.';
     }
 }
 
@@ -1004,7 +1004,10 @@ async function openEditAppConfig(appId, appName) {
         if (config) {
             document.getElementById('editAppConfigBaseUrl').value = config.apiBaseUrl ?? '';
             document.getElementById('editAppConfigConnectionId').value = config.connectionId ?? '';
-            document.getElementById('editAppConfigAuthType').value = String(config.authTypeCode ?? 1);
+            // authTypeCode 4 (legacy service account) is wire-identical to 1 (static token);
+            // normalise to 1 so the now-merged dropdown always has a valid selection.
+            const authTypeCode = config.authTypeCode === 4 ? 1 : (config.authTypeCode ?? 1);
+            document.getElementById('editAppConfigAuthType').value = String(authTypeCode);
             document.getElementById('editAppConfigHeaderName').value = config.apiKeyHeaderName ?? '';
             document.getElementById('editAppConfigHeaderPrefix').value = config.apiKeyHeaderPrefix ?? '';
             document.getElementById('editAppConfigTokenEndpoint').value = config.oauthTokenEndpoint ?? '';

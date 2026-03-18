@@ -878,23 +878,22 @@
             </div>
 
             <div class="mb-12">
-                <label class="form-label-sm">Connection / Tenant ID</label>
-                <input type="text" id="editAppConfigConnectionId" class="form-control-full" placeholder="e.g., GUID from app's admin panel" autocomplete="off">
-                <p class="form-hint-tight">Identifier used in API route templates (the <code>{connectionId}</code> placeholder).</p>
+                <label class="form-label-sm">Route Identifier</label>
+                <input type="text" id="editAppConfigConnectionId" class="form-control-full" placeholder="e.g., GUID or tenant ID from the app's admin portal" autocomplete="off">
+                <p class="form-hint-tight">Substituted for <code>{connectionId}</code> in route templates. Leave blank if your routes don't use a dynamic identifier.</p>
             </div>
 
             <div class="mb-12">
                 <label class="form-label-sm">Auth Type <span class="required-star">*</span></label>
                 <select id="editAppConfigAuthType" class="form-control-full">
-                    <option value="1">1 — API Key / Long-lived Bearer Token</option>
-                    <option value="2">2 — OAuth 2.0 Client Credentials Flow</option>
-                    <option value="3">3 — OAuth 2.0 with SAML Assertion Grant (RFC 7522)</option>
-                    <option value="4">4 — Service Account / Static Token (legacy)</option>
+                    <option value="1">Static Token / API Key — send a fixed token in a request header</option>
+                    <option value="2">OAuth 2.0 Client Credentials — app issues a short-lived access token</option>
+                    <option value="3">OAuth 2.0 + SAML Assertion Grant (RFC 7522) — exchange a SAML assertion for an OAuth token</option>
                 </select>
                 <p class="form-hint-tight">
-                    <strong>Option 1/4:</strong> static token in a custom header (most common). &nbsp;
-                    <strong>Option 2:</strong> app registers an OAuth client for machine-to-machine access. &nbsp;
-                    <strong>Option 3:</strong> bridges SAML identity into OAuth-protected APIs.
+                    <strong>Static Token:</strong> Use when the app provides an API key or long-lived bearer token from its admin portal (most common). &nbsp;
+                    <strong>OAuth Client Credentials:</strong> Use when the app supports machine-to-machine OAuth — you register a client ID &amp; secret. &nbsp;
+                    <strong>SAML Assertion Grant:</strong> Use when the app's API is OAuth-protected and accepts a SAML assertion as the grant (RFC 7522).
                 </p>
             </div>
 
