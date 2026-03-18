@@ -1,7 +1,5 @@
 using Azure;
 using Azure.Data.Tables;
-using Azure.Security.KeyVault.Secrets;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using SamlCertRotation.Models;
 
@@ -14,15 +12,15 @@ namespace SamlCertRotation.Services;
 /// Azure Table (PartitionKey = "AppApiConfig").
 ///
 /// The raw credential (API key, OAuth client secret, service-account token) is
-/// written to Key Vault under the secret name returned by
-/// <see cref="AppApiConfiguration.GetKeyVaultSecretName"/>.
-/// The managed identity already holds <c>Key Vault Secrets Officer</c> on the vault,
-/// so no additional RBAC change is required.
+/// written to Key Vault via <see cref="SecretClientFactory"/>, which resolves the
+/// correct vault per app (using <see cref="AppApiConfiguration.CredentialKeyVaultUri"/>
+/// if set, otherwise falling back to the global <c>KeyVaultUri</c> app setting).
+/// The managed identity must hold <c>Key Vault Secrets Officer</c> on each vault used.
 /// </summary>
 public class AppApiConfigService : IAppApiConfigService
 {
     private readonly TableClient _policyTable;
-    private readonly SecretClient _secretClient;
+    private readonly SecretClientFactory _kvFactory;
     private readonly ILogger<AppApiConfigService> _logger;
     private readonly object _ensureTableLock = new();
     private volatile Task? _ensureTableTask;
@@ -32,11 +30,11 @@ public class AppApiConfigService : IAppApiConfigService
 
     public AppApiConfigService(
         TableServiceClient tableServiceClient,
-        SecretClient secretClient,
+        SecretClientFactory kvFactory,
         ILogger<AppApiConfigService> logger)
     {
         _policyTable = tableServiceClient.GetTableClient(PolicyTableName);
-        _secretClient = secretClient;
+        _kvFactory = kvFactory;
         _logger = logger;
     }
 
@@ -115,7 +113,7 @@ public class AppApiConfigService : IAppApiConfigService
         // If a secret value was supplied, write it to Key Vault.
         if (secret is not null)
         {
-            await PutSecretAsync(config.GetKeyVaultSecretName(), secret, ct);
+            await PutSecretAsync(config.GetKeyVaultSecretName(), secret, config.CredentialKeyVaultUri, ct);
         }
     }
 
@@ -124,19 +122,21 @@ public class AppApiConfigService : IAppApiConfigService
     {
         ArgumentNullException.ThrowIfNull(config);
         var secretName = config.GetKeyVaultSecretName();
+        var kv = _kvFactory.GetClient(config.CredentialKeyVaultUri);
 
         try
         {
-            var response = await _secretClient.GetSecretAsync(secretName, cancellationToken: ct);
+            var response = await kv.GetSecretAsync(secretName, cancellationToken: ct);
             return response.Value.Value;
         }
-        catch (RequestFailedException ex) when (ex.Status == 404)
+        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
         {
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve Key Vault secret {SecretName}", secretName);
+            _logger.LogError(ex, "Failed to retrieve Key Vault secret {SecretName} from {KvUri}",
+                secretName, _kvFactory.GetClient(config.CredentialKeyVaultUri).VaultUri);
             throw;
         }
     }
@@ -159,10 +159,11 @@ public class AppApiConfigService : IAppApiConfigService
 
         // Best-effort secret removal. Key Vault soft-delete retains it for the configured
         // retention period; this starts the delete so the name can be reused after purge.
+        // Use the default vault since we no longer have the config entity's KV URI override.
         var secretName = new AppApiConfiguration { RowKey = appId }.GetKeyVaultSecretName();
         try
         {
-            await _secretClient.StartDeleteSecretAsync(secretName, ct);
+            await _kvFactory.GetClient().StartDeleteSecretAsync(secretName, ct);
             _logger.LogInformation("Initiated Key Vault secret deletion: {SecretName}", secretName);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
@@ -193,13 +194,14 @@ public class AppApiConfigService : IAppApiConfigService
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    private async Task PutSecretAsync(string secretName, string secretValue, CancellationToken ct)
+    private async Task PutSecretAsync(string secretName, string secretValue, string? kvUri, CancellationToken ct)
     {
         // Key Vault secret names: 1-127 characters, alphanumerics and dashes only.
         if (string.IsNullOrWhiteSpace(secretName))
             throw new ArgumentException("Secret name must not be empty.", nameof(secretName));
 
-        await _secretClient.SetSecretAsync(secretName, secretValue, ct);
+        var kv = _kvFactory.GetClient(kvUri);
+        await kv.SetSecretAsync(secretName, secretValue, ct);
         _logger.LogInformation("Stored/updated Key Vault secret: {SecretName}", secretName);
     }
 }

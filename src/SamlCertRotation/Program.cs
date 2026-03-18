@@ -53,14 +53,17 @@ var host = new HostBuilder()
             return new BlobServiceClient(connectionString);
         });
 
-        // Register Key Vault Secret Client (used for per-app API credentials storage)
+        // Register Key Vault Secret Client Factory.
+        // Each app's credential may live in a different Key Vault; the factory creates
+        // and caches one SecretClient per unique vault URI using the managed identity.
+        // The default vault URI comes from the KeyVaultUri app setting.
+        services.AddSingleton<SecretClientFactory>();
+
+        // Keep a default SecretClient singleton for code that doesn't need per-app routing.
         services.AddSingleton(sp =>
         {
-            var kvUri = configuration["KeyVaultUri"]
-                ?? throw new InvalidOperationException(
-                    "KeyVaultUri is not configured. Ensure the app setting is set.");
-            var credential = sp.GetRequiredService<TokenCredential>();
-            return new SecretClient(new Uri(kvUri), credential);
+            var factory = sp.GetRequiredService<SecretClientFactory>();
+            return factory.GetClient();
         });
 
         // Register application services

@@ -158,6 +158,50 @@ public class AppApiConfiguration : ITableEntity
     /// </summary>
     public string? ConnectionId { get; set; }
 
+    // ── Credential expiry tracking ────────────────────────────────────────────
+
+    /// <summary>
+    /// Optional expiry date for the credential stored in Key Vault.
+    /// For Static Token: entered manually by the admin (the token itself carries no expiry).
+    /// For OAuth Client Credentials: can be set manually; the system also reads
+    ///   <c>SecretProperties.ExpiresOn</c> from Key Vault metadata at health-check time
+    ///   and updates this field automatically.
+    /// Null means no expiry is tracked.
+    /// </summary>
+    public DateTimeOffset? CredentialExpiresOn { get; set; }
+
+    // ── Key Vault location override ───────────────────────────────────────────
+
+    /// <summary>
+    /// Optional override for which Key Vault holds this app's API credential.
+    /// If null, falls back to the global <c>KeyVaultUri</c> app setting.
+    /// Must be an HTTPS URI, e.g. <c>https://my-vault.vault.azure.net/</c>.
+    /// The Function App managed identity must have at least <c>Key Vault Secrets User</c>
+    /// on this vault.
+    /// </summary>
+    public string? CredentialKeyVaultUri { get; set; }
+
+    /// <summary>
+    /// Optional override for the secret name within <see cref="CredentialKeyVaultUri"/>
+    /// (or the global KV if that field is null).
+    /// If null, the default naming convention <c>app-api-{objectId}</c> is used.
+    /// </summary>
+    public string? CredentialKeyVaultSecretName { get; set; }
+
+    // ── Health check state (written by timer function, read-only in UI) ───────
+
+    /// <summary>UTC timestamp of the most recent health-check call.</summary>
+    public DateTimeOffset? LastHealthCheckUtc { get; set; }
+
+    /// <summary>
+    /// Result of the most recent health-check call.
+    /// One of: <c>OK</c>, <c>Unauthorized</c>, <c>Error</c>, <c>NotConfigured</c>.
+    /// </summary>
+    public string? LastHealthCheckStatus { get; set; }
+
+    /// <summary>Sanitized error message from the most recent failed health check, if any.</summary>
+    public string? LastHealthCheckError { get; set; }
+
     // ── Meta ──────────────────────────────────────────────────────────────────
 
     /// <summary>UTC timestamp when this configuration was last saved.</summary>
@@ -169,11 +213,15 @@ public class AppApiConfiguration : ITableEntity
     // ── Key Vault ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns the Key Vault secret name that holds the sensitive credential for this app.
-    /// Naming convention: <c>app-api-{objectId}</c>, lower-cased, with disallowed chars removed.
+    /// Returns the effective Key Vault secret name for this app's credential.
+    /// Uses <see cref="CredentialKeyVaultSecretName"/> if set; otherwise derives
+    /// the default name <c>app-api-{objectId}</c> from the service principal object ID.
     /// </summary>
     public string GetKeyVaultSecretName()
     {
+        if (!string.IsNullOrWhiteSpace(CredentialKeyVaultSecretName))
+            return CredentialKeyVaultSecretName;
+
         // Key Vault secret names may contain alphanumerics and dashes only.
         var safe = System.Text.RegularExpressions.Regex.Replace(
             RowKey.ToLowerInvariant(), "[^a-z0-9-]", "-");

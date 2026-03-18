@@ -162,6 +162,9 @@ public class AppApiConfigFunctions : DashboardFunctionBase
             ActivateCertIdLocation = body.ActivateCertIdLocation,
             ActivateBodyTemplate = body.ActivateBodyTemplate,
             ConnectionId = body.ConnectionId,
+            CredentialExpiresOn = body.CredentialExpiresOn,
+            CredentialKeyVaultUri = body.CredentialKeyVaultUri,
+            CredentialKeyVaultSecretName = body.CredentialKeyVaultSecretName,
             UpdatedBy = identity?.UserId ?? identity?.UserPrincipalName ?? "admin"
         };
 
@@ -398,6 +401,12 @@ public class AppApiConfigFunctions : DashboardFunctionBase
         ConnectionId = c.ConnectionId,
         UpdatedUtc = c.UpdatedUtc,
         UpdatedBy = c.UpdatedBy,
+        CredentialExpiresOn = c.CredentialExpiresOn,
+        CredentialKeyVaultUri = c.CredentialKeyVaultUri,
+        CredentialKeyVaultSecretName = c.CredentialKeyVaultSecretName,
+        LastHealthCheckUtc = c.LastHealthCheckUtc,
+        LastHealthCheckStatus = c.LastHealthCheckStatus,
+        LastHealthCheckError = c.LastHealthCheckError,
         HasSecret = true
     };
 }
@@ -432,6 +441,14 @@ public sealed class AppApiConfigRequest
     /// <summary>JSON body template with {certId} and {reason} placeholders. Null = use default.</summary>
     public string? ActivateBodyTemplate { get; set; }
     public string? ConnectionId { get; set; }
+
+    // Credential expiry & Key Vault location
+    /// <summary>Optional expiry date for the stored credential. For static tokens, entered manually. For OAuth, can be set manually or synced from KV metadata.</summary>
+    public DateTimeOffset? CredentialExpiresOn { get; set; }
+    /// <summary>Optional Key Vault URI override. Null = use the global KeyVaultUri app setting.</summary>
+    public string? CredentialKeyVaultUri { get; set; }
+    /// <summary>Optional secret name override within the target Key Vault. Null = use default app-api-{objectId} convention.</summary>
+    public string? CredentialKeyVaultSecretName { get; set; }
 
     /// <summary>
     /// The raw secret to store in Key Vault (API key, OAuth client secret, SAML assertion, etc.).
@@ -468,6 +485,15 @@ public sealed class AppApiConfigDto
     public string? ConnectionId { get; set; }
     public DateTimeOffset UpdatedUtc { get; set; }
     public string? UpdatedBy { get; set; }
+    public DateTimeOffset? CredentialExpiresOn { get; set; }
+    /// <summary>Vault URI where the credential is stored (null = global default vault).</summary>
+    public string? CredentialKeyVaultUri { get; set; }
+    /// <summary>Secret name override (null = default naming convention).</summary>
+    public string? CredentialKeyVaultSecretName { get; set; }
+    // Health check state (read-only)
+    public DateTimeOffset? LastHealthCheckUtc { get; set; }
+    public string? LastHealthCheckStatus { get; set; }
+    public string? LastHealthCheckError { get; set; }
 
     /// <summary>True when a secret is believed to be present in Key Vault.</summary>
     public bool HasSecret { get; set; }
