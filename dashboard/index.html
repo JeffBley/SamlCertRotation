@@ -935,6 +935,39 @@
                 <input type="password" id="editAppConfigSecret" class="form-control-full" placeholder="Stored in Key Vault — leave blank to keep existing" autocomplete="new-password">
                 <p class="form-hint-tight" id="editAppConfigSecretHint">Stored encrypted in Key Vault. Leave blank to keep the current value unchanged.</p>
             </div>
+            <div class="mb-12" id="editAppConfigExpirySection">
+                <label class="form-label-sm">Credential Expiry Date</label>
+                <input type="date" id="editAppConfigCredentialExpiry" class="form-control-full">
+                <p class="form-hint-tight">Optional. Used to send expiry notifications. Leave blank if the credential does not expire or expiry is not known.</p>
+            </div>
+
+            <!-- OAuth KV location section (shown instead of secret input for OAuth types) -->
+            <div id="editAppConfigOAuthKvSection" class="d-none">
+                <p class="form-hint-tight mb-12" style="background:#f0f4ff;border-left:3px solid #4a6cf7;padding:8px 10px;border-radius:3px;">
+                    The OAuth client secret is managed externally (e.g., by your own rotation automation). Configure where it is stored in Key Vault so this app can use it and monitor its expiry.
+                </p>
+                <div class="mb-12">
+                    <label class="form-label-sm">Key Vault URI</label>
+                    <input type="url" id="editAppConfigKvUri" class="form-control-full" placeholder="https://my-vault.vault.azure.net/" autocomplete="off">
+                    <p class="form-hint-tight">URI of the vault holding the secret. Leave blank to use the default vault configured for this tool.</p>
+                </div>
+                <div class="mb-12">
+                    <label class="form-label-sm">Secret Name</label>
+                    <input type="text" id="editAppConfigKvSecretName" class="form-control-full" placeholder="e.g., myapp-oauth-client-secret" autocomplete="off">
+                    <p class="form-hint-tight">Name of the secret within the vault. Leave blank to use the default naming convention (<code>app-api-{objectId}</code>).</p>
+                </div>
+                <div class="mb-12">
+                    <label class="form-label-sm">Credential Expiry Date (Override)</label>
+                    <input type="date" id="editAppConfigOAuthCredentialExpiry" class="form-control-full">
+                    <p class="form-hint-tight">Optional. The tool reads expiry from Key Vault secret metadata automatically. Set this only if you need to override that value.</p>
+                </div>
+            </div>
+
+            <!-- Health check status (read-only) -->
+            <div id="editAppConfigHealthStatus" class="d-none mb-12" style="background:#f8f8f8;border:1px solid #ddd;border-radius:4px;padding:10px 12px;font-size:13px;">
+                <strong>Last Health Check:</strong>
+                <span id="editAppConfigHealthStatusText">—</span>
+            </div>
 
             <!-- Advanced: custom route overrides -->
             <details class="mb-12">

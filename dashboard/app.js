@@ -950,6 +950,11 @@ function onEditAppConfigAuthTypeChange() {
     const isOAuth = authType === 2 || authType === 3;
     document.getElementById('editAppConfigApiKeySection').classList.toggle('d-none', isOAuth);
     document.getElementById('editAppConfigOAuthSection').classList.toggle('d-none', !isOAuth);
+    // Static token: show standard secret input + expiry date
+    document.getElementById('editAppConfigSecret').closest('.mb-12').classList.toggle('d-none', isOAuth);
+    document.getElementById('editAppConfigExpirySection').classList.toggle('d-none', isOAuth);
+    // OAuth types: show KV location section instead
+    document.getElementById('editAppConfigOAuthKvSection').classList.toggle('d-none', !isOAuth);
 
     const secretLabel = document.getElementById('editAppConfigSecretLabel');
     const secretHint = document.getElementById('editAppConfigSecretHint');
@@ -983,12 +988,17 @@ async function openEditAppConfig(appId, appName) {
     document.getElementById('editAppConfigClientId').value = '';
     document.getElementById('editAppConfigScope').value = '';
     document.getElementById('editAppConfigSecret').value = '';
+    document.getElementById('editAppConfigCredentialExpiry').value = '';
+    document.getElementById('editAppConfigKvUri').value = '';
+    document.getElementById('editAppConfigKvSecretName').value = '';
+    document.getElementById('editAppConfigOAuthCredentialExpiry').value = '';
     document.getElementById('editAppConfigGetKeysRoute').value = '';
     document.getElementById('editAppConfigActivateRoute').value = '';
     document.getElementById('editAppConfigActivateMethod').value = '';
     document.getElementById('editAppConfigCertIdLocation').value = '';
     document.getElementById('editAppConfigBodyTemplate').value = '';
     document.getElementById('editAppConfigBodyTemplateSection').style.display = '';
+    document.getElementById('editAppConfigHealthStatus').classList.add('d-none');
     onEditAppConfigAuthTypeChange();
 
     try {
@@ -1024,6 +1034,22 @@ async function openEditAppConfig(appId, appName) {
             document.getElementById('editAppConfigCertIdLocation').value = certIdLoc;
             document.getElementById('editAppConfigBodyTemplate').value = config.activateBodyTemplate ?? '';
             document.getElementById('editAppConfigBodyTemplateSection').style.display = certIdLoc === 'path' ? 'none' : '';
+            // Credential expiry & KV location
+            const expiryVal = config.credentialExpiresOn ? config.credentialExpiresOn.substring(0, 10) : '';
+            document.getElementById('editAppConfigCredentialExpiry').value = expiryVal;
+            document.getElementById('editAppConfigOAuthCredentialExpiry').value = expiryVal;
+            document.getElementById('editAppConfigKvUri').value = config.credentialKeyVaultUri ?? '';
+            document.getElementById('editAppConfigKvSecretName').value = config.credentialKeyVaultSecretName ?? '';
+            // Health check status
+            if (config.lastHealthCheckUtc) {
+                const statusEl = document.getElementById('editAppConfigHealthStatus');
+                const statusText = document.getElementById('editAppConfigHealthStatusText');
+                const ts = new Date(config.lastHealthCheckUtc).toLocaleString();
+                const statusClass = config.lastHealthCheckStatus === 'OK' ? 'color:green' : 'color:#c0392b';
+                statusText.innerHTML = `<span style="${statusClass};font-weight:600">${config.lastHealthCheckStatus}</span> &mdash; ${ts}`
+                    + (config.lastHealthCheckError ? ` &mdash; <em>${config.lastHealthCheckError}</em>` : '');
+                statusEl.classList.remove('d-none');
+            }
             onEditAppConfigAuthTypeChange();
         }
     } catch (err) {
@@ -1042,6 +1068,11 @@ async function saveEditAppConfig() {
     const connectionId = document.getElementById('editAppConfigConnectionId').value.trim();
     const secret = document.getElementById('editAppConfigSecret').value;
     const tokenEndpoint = document.getElementById('editAppConfigTokenEndpoint').value.trim();
+    const isOAuth = authType === 2 || authType === 3;
+    // Resolve credential expiry from the appropriate field
+    const expiryRaw = isOAuth
+        ? document.getElementById('editAppConfigOAuthCredentialExpiry').value
+        : document.getElementById('editAppConfigCredentialExpiry').value;
 
     // Client-side validation.
     if (!baseUrl) {
@@ -1077,6 +1108,9 @@ async function saveEditAppConfig() {
         activateHttpMethod: document.getElementById('editAppConfigActivateMethod').value || null,
         activateCertIdLocation: document.getElementById('editAppConfigCertIdLocation').value || null,
         activateBodyTemplate: document.getElementById('editAppConfigBodyTemplate').value.trim() || null,
+        credentialExpiresOn: expiryRaw || null,
+        credentialKeyVaultUri: document.getElementById('editAppConfigKvUri').value.trim() || null,
+        credentialKeyVaultSecretName: document.getElementById('editAppConfigKvSecretName').value.trim() || null,
         // Only include secret if the user typed something — null means "keep existing".
         secret: secret.length > 0 ? secret : null
     };
